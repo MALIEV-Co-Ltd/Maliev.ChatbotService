@@ -72,7 +72,7 @@ jobs:
 
       - name: Update image tag in maliev-gitops using Kustomize
         run: |
-          cd maliev-gitops/3-apps/_disabled/maliev-chatbot-service/overlays/staging
+          cd maliev-gitops/3-apps/maliev-chatbot-service/overlays/staging
           kustomize edit set image \
             asia-southeast1-docker.pkg.dev/maliev-website/maliev-website-artifact-staging/maliev-chatbot-service=asia-southeast1-docker.pkg.dev/maliev-website/maliev-website-artifact-staging/maliev-chatbot-service:${{ github.sha }}
 
