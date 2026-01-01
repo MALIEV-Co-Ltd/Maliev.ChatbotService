@@ -1,0 +1,21 @@
+  Determining projects to restore...
+b:\maliev\Maliev.ChatbotService\Maliev.ChatbotService.Tests\Maliev.ChatbotService.Tests.csproj : warning NU1510: PackageReference System.Text.Json will not be pruned. Consider removing this package from your dependencies, as it is likely unnecessary.
+  All projects are up-to-date for restore.
+b:\maliev\Maliev.ChatbotService\Maliev.ChatbotService.Tests\Maliev.ChatbotService.Tests.csproj : warning NU1510: PackageReference System.Text.Json will not be pruned. Consider removing this package from your dependencies, as it is likely unnecessary.
+  Maliev.ChatbotService.Domain -> b:\maliev\Maliev.ChatbotService\Maliev.ChatbotService.Domain\bin\Debug\net10.0\Maliev.ChatbotService.Domain.dll
+  Maliev.Aspire.ServiceDefaults -> b:\maliev\Maliev.Aspire\Maliev.Aspire.ServiceDefaults\bin\Debug\net10.0\Maliev.Aspire.ServiceDefaults.dll
+  Maliev.ChatbotService.Application -> b:\maliev\Maliev.ChatbotService\Maliev.ChatbotService.Application\bin\Debug\net10.0\Maliev.ChatbotService.Application.dll
+  Maliev.ChatbotService.Infrastructure -> b:\maliev\Maliev.ChatbotService\Maliev.ChatbotService.Infrastructure\bin\Debug\net10.0\Maliev.ChatbotService.Infrastructure.dll
+  Maliev.ChatbotService.Api -> b:\maliev\Maliev.ChatbotService\Maliev.ChatbotService.Api\bin\Debug\net10.0\Maliev.ChatbotService.Api.dll
+  Maliev.ChatbotService.Tests -> b:\maliev\Maliev.ChatbotService\Maliev.ChatbotService.Tests\bin\Debug\net10.0\Maliev.ChatbotService.Tests.dll
+Test run for b:\maliev\Maliev.ChatbotService\Maliev.ChatbotService.Tests\bin\Debug\net10.0\Maliev.ChatbotService.Tests.dll (.NETCoreApp,Version=v10.0)
+VSTest version 18.0.1- (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+b:\maliev\Maliev.ChatbotService\Maliev.ChatbotService.Tests\bin\Debug\net10.0\Maliev.ChatbotService.Tests.dll
+[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v3.1.4+50e68bbb8b (64-bit .NET 10.0.1)
+[xUnit.net 00:00:00.16]   Discovering: Maliev.ChatbotService.Tests
+[xUnit.net 00:00:00.24]   Discovered:  Maliev.ChatbotService.Tests
+No test matches the given testcase filter `FullyQualifiedName=Maliev.ChatbotService.Tests.Integration.AdminApiTests.GetInstructions_WithAuthent ication_ReturnsInstructionsList` in b:\maliev\Maliev.ChatbotService\Maliev.ChatbotService.Tests\bin\Debug\net10.0\Maliev.ChatbotService.Tests.dll
+

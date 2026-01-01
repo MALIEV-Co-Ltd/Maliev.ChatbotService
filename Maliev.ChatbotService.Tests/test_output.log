@@ -1,0 +1,80 @@
+  Determining projects to restore...
+b:\maliev\Maliev.ChatbotService\Maliev.ChatbotService.Tests\Maliev.ChatbotService.Tests.csproj : warning NU1510: PackageReference System.Text.Json will not be pruned. Consider removing this package from your dependencies, as it is likely unnecessary.
+  Restored b:\maliev\Maliev.ChatbotService\Maliev.ChatbotService.Domain\Maliev.ChatbotService.Domain.csproj (in 219 ms).
+  Restored b:\maliev\Maliev.ChatbotService\Maliev.ChatbotService.Application\Maliev.ChatbotService.Application.csproj (in 357 ms).
+  Restored b:\maliev\Maliev.ChatbotService\Maliev.ChatbotService.Api\Maliev.ChatbotService.Api.csproj (in 1.12 sec).
+  Restored b:\maliev\Maliev.ChatbotService\Maliev.ChatbotService.Tests\Maliev.ChatbotService.Tests.csproj (in 1.1 sec).
+  Restored b:\maliev\Maliev.ChatbotService\Maliev.ChatbotService.Infrastructure\Maliev.ChatbotService.Infrastructure.csproj (in 1.13 sec).
+  1 of 6 projects are up-to-date for restore.
+b:\maliev\Maliev.ChatbotService\Maliev.ChatbotService.Tests\Maliev.ChatbotService.Tests.csproj : warning NU1510: PackageReference System.Text.Json will not be pruned. Consider removing this package from your dependencies, as it is likely unnecessary.
+  Maliev.ChatbotService.Domain -> b:\maliev\Maliev.ChatbotService\Maliev.ChatbotService.Domain\bin\Debug\net10.0\Maliev.ChatbotService.Domain.dll
+  Maliev.Aspire.ServiceDefaults -> b:\maliev\Maliev.Aspire\Maliev.Aspire.ServiceDefaults\bin\Debug\net10.0\Maliev.Aspire.ServiceDefaults.dll
+  Maliev.ChatbotService.Application -> b:\maliev\Maliev.ChatbotService\Maliev.ChatbotService.Application\bin\Debug\net10.0\Maliev.ChatbotService.Application.dll
+  Maliev.ChatbotService.Infrastructure -> b:\maliev\Maliev.ChatbotService\Maliev.ChatbotService.Infrastructure\bin\Debug\net10.0\Maliev.ChatbotService.Infrastructure.dll
+  Maliev.ChatbotService.Api -> b:\maliev\Maliev.ChatbotService\Maliev.ChatbotService.Api\bin\Debug\net10.0\Maliev.ChatbotService.Api.dll
+  Maliev.ChatbotService.Tests -> b:\maliev\Maliev.ChatbotService\Maliev.ChatbotService.Tests\bin\Debug\net10.0\Maliev.ChatbotService.Tests.dll
+Test run for b:\maliev\Maliev.ChatbotService\Maliev.ChatbotService.Tests\bin\Debug\net10.0\Maliev.ChatbotService.Tests.dll (.NETCoreApp,Version=v10.0)
+VSTest version 18.0.1- (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:30.11]     Maliev.ChatbotService.Tests.Integration.AdminApiTests.GetInstructions_WithAuthentication_ReturnsInstructionsList [FAIL]
+  Failed Maliev.ChatbotService.Tests.Integration.AdminApiTests.GetInstructions_WithAuthentication_ReturnsInstructionsList [3 s]
+  Error Message:
+   Npgsql.PostgresException : 42601: syntax error at or near "["
+
+POSITION: 89
+  Stack Trace:
+     at Npgsql.Internal.NpgsqlConnector.ReadMessageLong(Boolean async, DataRowLoadingMode dataRowLoadingMode, Boolean readingNotifications, Boolean isReadingPrependedMessage)
+   at System.Runtime.CompilerServices.PoolingAsyncValueTaskMethodBuilder`1.StateMachineBox`1.System.Threading.Tasks.Sources.IValueTaskSource<TResult>.GetResult(Int16 token)
+   at Npgsql.NpgsqlDataReader.NextResult(Boolean async, Boolean isConsuming, CancellationToken cancellationToken)
+   at Npgsql.NpgsqlDataReader.NextResult(Boolean async, Boolean isConsuming, CancellationToken cancellationToken)
+   at Npgsql.NpgsqlCommand.ExecuteReader(Boolean async, CommandBehavior behavior, CancellationToken cancellationToken)
+   at Npgsql.NpgsqlCommand.ExecuteReader(Boolean async, CommandBehavior behavior, CancellationToken cancellationToken)
+   at Npgsql.NpgsqlCommand.ExecuteNonQuery(Boolean async, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.Storage.RelationalCommand.ExecuteNonQueryAsync(RelationalCommandParameterObject parameterObject, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.Storage.RelationalCommand.ExecuteNonQueryAsync(RelationalCommandParameterObject parameterObject, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.Storage.RelationalCommand.ExecuteNonQueryAsync(RelationalCommandParameterObject parameterObject, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.Migrations.Internal.MigrationCommandExecutor.ExecuteAsync(IReadOnlyList`1 migrationCommands, IRelationalConnection connection, MigrationExecutionState executionState, Boolean beginTransaction, Boolean commitTransaction, Nullable`1 isolationLevel, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.Migrations.Internal.MigrationCommandExecutor.ExecuteAsync(IReadOnlyList`1 migrationCommands, IRelationalConnection connection, MigrationExecutionState executionState, Boolean beginTransaction, Boolean commitTransaction, Nullable`1 isolationLevel, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.Storage.ExecutionStrategy.ExecuteAsync[TState,TResult](TState state, Func`4 operation, Func`4 verifySucceeded, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.Migrations.Internal.MigrationCommandExecutor.ExecuteNonQueryAsync(IReadOnlyList`1 migrationCommands, IRelationalConnection connection, MigrationExecutionState executionState, Boolean commitTransaction, Nullable`1 isolationLevel, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.Migrations.Internal.Migrator.MigrateImplementationAsync(DbContext context, String targetMigration, MigrationExecutionState state, Boolean useTransaction, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.Migrations.Internal.Migrator.MigrateImplementationAsync(DbContext context, String targetMigration, MigrationExecutionState state, Boolean useTransaction, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.Migrations.Internal.Migrator.<>c.<<MigrateAsync>b__22_1>d.MoveNext()
+--- End of stack trace from previous location ---
+   at Microsoft.EntityFrameworkCore.Storage.ExecutionStrategy.ExecuteAsync[TState,TResult](TState state, Func`4 operation, Func`4 verifySucceeded, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.Migrations.Internal.Migrator.MigrateAsync(String targetMigration, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.Migrations.Internal.Migrator.MigrateAsync(String targetMigration, CancellationToken cancellationToken)
+   at Npgsql.EntityFrameworkCore.PostgreSQL.Migrations.Internal.NpgsqlMigrator.MigrateAsync(String targetMigration, CancellationToken cancellationToken)
+   at Microsoft.Extensions.Hosting.DatabaseExtensions.<>c__DisplayClass2_0`1.<<MigrateDatabaseAsync>b__0>d.MoveNext() in b:\maliev\Maliev.Aspire\Maliev.Aspire.ServiceDefaults\Extensions.Database.cs:line 151
+--- End of stack trace from previous location ---
+   at Microsoft.EntityFrameworkCore.ExecutionStrategyExtensions.<>c.<<ExecuteAsync>b__3_0>d.MoveNext()
+--- End of stack trace from previous location ---
+   at Microsoft.EntityFrameworkCore.Storage.ExecutionStrategy.<>c__DisplayClass30_0`2.<<ExecuteAsync>b__0>d.MoveNext()
+--- End of stack trace from previous location ---
+   at Microsoft.EntityFrameworkCore.Storage.ExecutionStrategy.ExecuteImplementationAsync[TState,TResult](Func`4 operation, Func`4 verifySucceeded, TState state, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.Storage.ExecutionStrategy.ExecuteImplementationAsync[TState,TResult](Func`4 operation, Func`4 verifySucceeded, TState state, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.Storage.ExecutionStrategy.ExecuteAsync[TState,TResult](TState state, Func`4 operation, Func`4 verifySucceeded, CancellationToken cancellationToken)
+   at Microsoft.Extensions.Hosting.DatabaseExtensions.MigrateDatabaseAsync[TContext](IHost app, Nullable`1 maxRetries) in b:\maliev\Maliev.Aspire\Maliev.Aspire.ServiceDefaults\Extensions.Database.cs:line 132
+   at Program.<Main>$(String[] args) in b:\maliev\Maliev.ChatbotService\Maliev.ChatbotService.Api\Program.cs:line 146
+   at Program.<Main>(String[] args)
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeDirectByRefWithFewArgs(Object obj, Span`1 copyOfArgs, BindingFlags invokeAttr)
+--- End of stack trace from previous location ---
+   at Microsoft.AspNetCore.Mvc.Testing.DeferredHostBuilder.DeferredHost.StartAsync(CancellationToken cancellationToken)
+   at Microsoft.Extensions.Hosting.HostingAbstractionsHostExtensions.Start(IHost host)
+   at Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory`1.CreateHost(IHostBuilder builder)
+   at Maliev.ChatbotService.Tests.Infrastructure.TestcontainersIntegrationTestFactory`1.CreateHost(IHostBuilder builder) in b:\maliev\Maliev.ChatbotService\Maliev.ChatbotService.Tests\Infrastructure\TestcontainersIntegrationTestFactory.cs:line 40
+   at Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory`1.ConfigureHostBuilder(IHostBuilder hostBuilder)
+   at Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory`1.StartServer()
+   at Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory`1.CreateDefaultClient(DelegatingHandler[] handlers)
+   at Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory`1.CreateDefaultClient(Uri baseAddress, DelegatingHandler[] handlers)
+   at Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory`1.CreateClient(WebApplicationFactoryClientOptions options)
+   at Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory`1.CreateClient()
+   at Maliev.ChatbotService.Tests.Infrastructure.TestcontainersIntegrationTestFactory`1.CreateAuthenticatedClient(String[] permissions) in b:\maliev\Maliev.ChatbotService\Maliev.ChatbotService.Tests\Infrastructure\TestcontainersIntegrationTestFactory.cs:line 111
+   at Maliev.ChatbotService.Tests.Integration.AdminApiTests.CreateAuthenticatedClient(String[] permissions) in b:\maliev\Maliev.ChatbotService\Maliev.ChatbotService.Tests\Integration\AdminApiTests.cs:line 25
+   at Maliev.ChatbotService.Tests.Integration.AdminApiTests.GetInstructions_WithAuthentication_ReturnsInstructionsList() in b:\maliev\Maliev.ChatbotService\Maliev.ChatbotService.Tests\Integration\AdminApiTests.cs:line 33
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 3 s - Maliev.ChatbotService.Tests.dll (net10.0)
