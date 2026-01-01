@@ -259,7 +259,7 @@ This project uses Maliev's 5-Layer Clean Architecture:
 - [X] T160 Configure Program.cs with builder.AddJwtAuthentication()
 - [X] T161 Configure Program.cs with builder.AddPostgresDbContext<ChatbotDbContext>("ChatbotDbContext")
 - [X] T162 Configure Program.cs with builder.AddRedisDistributedCache("Cache")
-- [X] T163 Configure Program.cs with builder.AddMassTransitWithRabbitMq() and configure MassTransitHostOptions with WaitUntilStarted=true
+- [X] T163 Configure Program.cs with builder.AddMassTransitWithRabbitMq()
 - [X] T164 Configure Program.cs with builder.AddDefaultApiVersioning()
 - [X] T165 Configure Program.cs with builder.AddDefaultCors()
 - [X] T166 Configure Program.cs with app.MigrateDatabaseAsync<ChatbotDbContext>() on startup
