@@ -73,3 +73,8 @@ Desktop.ini
 
 # Documentation generation
 docs/_site/
+
+# Test output files
+test_output.txt
+test_results.log
+*.test.log
