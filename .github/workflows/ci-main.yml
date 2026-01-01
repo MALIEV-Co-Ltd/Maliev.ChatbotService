@@ -29,8 +29,8 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore Maliev.ChatbotService.sln
         env:
-          GITHUB_ACTOR: ${{ github.actor }}
-          NUGET_AUTH_TOKEN: ${{ secrets.GITOPS_PAT }}
+          NUGET_USERNAME: ${{ github.actor }}
+          NUGET_PASSWORD: ${{ secrets.GITOPS_PAT }}
 
       - name: Build solution
         run: dotnet build Maliev.ChatbotService.sln --no-restore --configuration Release
@@ -55,20 +55,8 @@ jobs:
 
       - name: Build and push Docker image
         run: |
-          docker build \
-            -f Maliev.ChatbotService.Api/Dockerfile \
-            -t asia-southeast1-docker.pkg.dev/maliev-website/maliev-website-artifact-prod/maliev-chatbot-service:${{ github.sha }} \
-            -t asia-southeast1-docker.pkg.dev/maliev-website/maliev-website-artifact-prod/maliev-chatbot-service:latest \
-            --build-arg BUILDKIT_INLINE_CACHE=1 \
-            --secret id=nuget_username,env=GITHUB_ACTOR \
-            --secret id=nuget_password,env=NUGET_AUTH_TOKEN \
-            .
-
+          NUGET_USERNAME=${{ github.actor }} NUGET_PASSWORD=${{ secrets.GITOPS_PAT }} docker build --secret id=nuget_username,env=NUGET_USERNAME --secret id=nuget_password,env=NUGET_PASSWORD -t asia-southeast1-docker.pkg.dev/maliev-website/maliev-website-artifact-prod/maliev-chatbot-service:${{ github.sha }} -f Maliev.ChatbotService.Api/Dockerfile .
           docker push asia-southeast1-docker.pkg.dev/maliev-website/maliev-website-artifact-prod/maliev-chatbot-service:${{ github.sha }}
-          docker push asia-southeast1-docker.pkg.dev/maliev-website/maliev-website-artifact-prod/maliev-chatbot-service:latest
-        env:
-          GITHUB_ACTOR: ${{ github.actor }}
-          NUGET_AUTH_TOKEN: ${{ secrets.GITOPS_PAT }}
 
       - name: Checkout maliev-gitops repository
         uses: actions/checkout@v5
