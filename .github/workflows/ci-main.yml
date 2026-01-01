@@ -29,8 +29,8 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore Maliev.ChatbotService.sln
         env:
-          NUGET_USERNAME: ${{ github.actor }}
-          NUGET_PASSWORD: ${{ secrets.GITOPS_PAT }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          NUGET_AUTH_TOKEN: ${{ secrets.GITOPS_PAT }}
 
       - name: Build solution
         run: dotnet build Maliev.ChatbotService.sln --no-restore --configuration Release
