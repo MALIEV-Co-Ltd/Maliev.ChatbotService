@@ -1,0 +1,38 @@
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Specs and documentation
+specs/
+*.md
+!README.md
+
+# Tests
+**/Maliev.ChatbotService.Tests/
+
+# Build outputs
+**/bin/
+**/obj/
+**/out/
+
+# IDE files
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userprefs
+*.sln.iml
+
+# Environment files
+.env
+.env.*
+
+# CI/CD
+.github/
+.pre-commit-config.yaml
+
+# Other
+**/.DS_Store
+**/Thumbs.db
