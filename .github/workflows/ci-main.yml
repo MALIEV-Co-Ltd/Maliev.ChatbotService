@@ -60,10 +60,15 @@ jobs:
             -t asia-southeast1-docker.pkg.dev/maliev-website/maliev-website-artifact-prod/maliev-chatbot-service:${{ github.sha }} \
             -t asia-southeast1-docker.pkg.dev/maliev-website/maliev-website-artifact-prod/maliev-chatbot-service:latest \
             --build-arg BUILDKIT_INLINE_CACHE=1 \
+            --secret id=nuget_username,env=GITHUB_ACTOR \
+            --secret id=nuget_password,env=NUGET_AUTH_TOKEN \
             .
 
           docker push asia-southeast1-docker.pkg.dev/maliev-website/maliev-website-artifact-prod/maliev-chatbot-service:${{ github.sha }}
           docker push asia-southeast1-docker.pkg.dev/maliev-website/maliev-website-artifact-prod/maliev-chatbot-service:latest
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          NUGET_AUTH_TOKEN: ${{ secrets.GITOPS_PAT }}
 
       - name: Checkout maliev-gitops repository
         uses: actions/checkout@v5
