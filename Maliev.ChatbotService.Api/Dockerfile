@@ -13,8 +13,8 @@ COPY ["Maliev.ChatbotService.Infrastructure/Maliev.ChatbotService.Infrastructure
 # Restore with BuildKit secrets for NuGet authentication
 RUN --mount=type=secret,id=nuget_username \
     --mount=type=secret,id=nuget_password \
-    NUGET_USERNAME=$(cat /run/secrets/nuget_username) \
-    NUGET_PASSWORD=$(cat /run/secrets/nuget_password) \
+    GITHUB_ACTOR=$(cat /run/secrets/nuget_username) \
+    NUGET_AUTH_TOKEN=$(cat /run/secrets/nuget_password) \
     dotnet restore "Maliev.ChatbotService.Api/Maliev.ChatbotService.Api.csproj"
 
 # Copy all source code
