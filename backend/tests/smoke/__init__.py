@@ -1,1 +1,0 @@
-"""Smoke tests package - end-to-end tests with real application and external services."""

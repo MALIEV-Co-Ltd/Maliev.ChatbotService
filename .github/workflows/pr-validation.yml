@@ -1,0 +1,46 @@
+name: PR Validation
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - staging
+      - main
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup .NET 10.0
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.x'
+          source-url: https://nuget.pkg.github.com/MALIEV-Co-Ltd/index.json
+        env:
+          NUGET_AUTH_TOKEN: ${{ secrets.GITOPS_PAT }}
+
+      - name: Switch to PackageReference for CI
+        run: |
+          # Replace ProjectReference with PackageReference in all service csproj files
+          for file in $(find . -name "*.csproj"); do
+            sed -i 's|<ProjectReference Include=".*Maliev.Aspire.ServiceDefaults.*.csproj" />|<PackageReference Include="Maliev.Aspire.ServiceDefaults" Version="1.0.*" />|g' "$file"
+          done
+          echo "Switched to PackageReference for ServiceDefaults"
+
+      - name: Restore dependencies
+        run: dotnet restore Maliev.ChatbotService.sln
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          NUGET_AUTH_TOKEN: ${{ secrets.GITOPS_PAT }}
+
+      - name: Build solution
+        run: dotnet build Maliev.ChatbotService.sln --no-restore --configuration Release
+
+      - name: Run tests
+        run: dotnet test Maliev.ChatbotService.sln --no-build --configuration Release --verbosity normal
+        # Testcontainers will automatically spin up PostgreSQL, Redis, and RabbitMQ
+        # No manual connection strings allowed - tests must use Testcontainers infrastructure

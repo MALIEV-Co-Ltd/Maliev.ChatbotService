@@ -1,1 +1,0 @@
-"""Component tests package - integration tests using real dependencies via containers."""

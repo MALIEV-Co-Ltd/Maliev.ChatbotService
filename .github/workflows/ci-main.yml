@@ -1,193 +1,130 @@
-name: CI - Main to Production
+name: CI - Production
 
 on:
   push:
     branches:
       - main
-    tags:
-      - 'v*'
 
 jobs:
-  build-and-deploy:
+  build-test-deploy:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v5
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
+      - name: Setup .NET 10.0
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.x'
 
-    - name: Cache dependencies
-      uses: actions/cache@v3
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
+      - name: Switch to PackageReference for CI
+        run: |
+          # Replace ProjectReference with PackageReference in all service csproj files
+          for file in $(find . -name "*.csproj"); do
+            sed -i 's|<ProjectReference Include=".*Maliev.Aspire.ServiceDefaults.*.csproj" />|<PackageReference Include="Maliev.Aspire.ServiceDefaults" Version="1.0.*" />|g' "$file"
+          done
+          echo "Switched to PackageReference for ServiceDefaults"
 
-    - name: Install dependencies
-      run: |
-        cd backend
-        python -m pip install --upgrade pip
-        pip install -r requirements-dev.txt
+      - name: Restore dependencies
+        run: dotnet restore Maliev.ChatbotService.sln
+        env:
+          NUGET_USERNAME: ${{ github.actor }}
+          NUGET_PASSWORD: ${{ secrets.GITOPS_PAT }}
 
-    - name: Run linting
-      run: |
-        cd backend
-        ruff check src/ tests/
-        mypy src/
+      - name: Build solution
+        run: dotnet build Maliev.ChatbotService.sln --no-restore --configuration Release
 
-    - name: Run tests
-      run: |
-        cd backend
-        pytest --cov=src --cov-report=xml --cov-report=term-missing
+      - name: Run tests
+        run: dotnet test Maliev.ChatbotService.sln --no-build --configuration Release --verbosity normal
+        # Testcontainers will automatically spin up PostgreSQL, Redis, and RabbitMQ
+        # No manual connection strings allowed - tests must use Testcontainers infrastructure
 
-    - name: Determine version and tag
-      id: version
-      run: |
-        if [[ $GITHUB_REF == refs/tags/* ]]; then
-          # Tagged release
-          VERSION=${GITHUB_REF#refs/tags/}
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "is_tag=true" >> $GITHUB_OUTPUT
-          echo "tag_type=release" >> $GITHUB_OUTPUT
-        else
-          # Main branch push
-          VERSION="v$(date +%Y.%m.%d)-$(date +%H%M)-${GITHUB_SHA:0:7}"
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "is_tag=false" >> $GITHUB_OUTPUT
-          echo "tag_type=snapshot" >> $GITHUB_OUTPUT
-        fi
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-    - name: Authenticate to Google Cloud
-      uses: google-github-actions/auth@v3
-      with:
-        credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: maliev-website
 
-    - name: Set up Google Cloud SDK
-      uses: google-github-actions/setup-gcloud@v3
-      with:
-        project_id: maliev-website
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker asia-southeast1-docker.pkg.dev
 
-    - name: Build and push Docker image
-      run: |
-        cd backend
-        gcloud auth configure-docker asia-southeast1-docker.pkg.dev
-        
-        IMAGE_TAG="${{ steps.version.outputs.version }}"
-        
-        # Create Dockerfile
-        cat > Dockerfile << 'EOF'
-        FROM python:3.11-slim
+      - name: Build and push Docker image
+        run: |
+          docker build \
+            -f Maliev.ChatbotService.Api/Dockerfile \
+            -t asia-southeast1-docker.pkg.dev/maliev-website/maliev-website-artifact-prod/maliev-chatbot-service:${{ github.sha }} \
+            -t asia-southeast1-docker.pkg.dev/maliev-website/maliev-website-artifact-prod/maliev-chatbot-service:latest \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            .
 
-        # Set working directory
-        WORKDIR /app
+          docker push asia-southeast1-docker.pkg.dev/maliev-website/maliev-website-artifact-prod/maliev-chatbot-service:${{ github.sha }}
+          docker push asia-southeast1-docker.pkg.dev/maliev-website/maliev-website-artifact-prod/maliev-chatbot-service:latest
 
-        # Install system dependencies
-        RUN apt-get update && apt-get install -y \
-            build-essential \
-            curl \
-            && rm -rf /var/lib/apt/lists/*
+      - name: Checkout maliev-gitops repository
+        uses: actions/checkout@v5
+        with:
+          repository: MALIEV-Co-Ltd/maliev-gitops
+          token: ${{ secrets.GITOPS_PAT }}
+          path: maliev-gitops
 
-        # Copy requirements first for better caching
-        COPY requirements.txt .
-        COPY requirements-dev.txt .
+      - name: Install Kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
 
-        # Install Python dependencies
-        RUN pip install --no-cache-dir -r requirements.txt
+      - name: Update image tag in maliev-gitops using Kustomize
+        run: |
+          cd maliev-gitops/3-apps/maliev-chatbot-service/overlays/production
+          kustomize edit set image \
+            asia-southeast1-docker.pkg.dev/maliev-website/maliev-website-artifact-prod/maliev-chatbot-service=asia-southeast1-docker.pkg.dev/maliev-website/maliev-website-artifact-prod/maliev-chatbot-service:${{ github.sha }}
 
-        # Copy application code
-        COPY . .
+      - name: Create Pull Request to maliev-gitops
+        run: |
+          cd maliev-gitops
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
 
-        # Create non-root user
-        RUN useradd --create-home --shell /bin/bash app \
-            && chown -R app:app /app
-        USER app
+          # Create feature branch
+          BRANCH_NAME="update-chatbot-service-prod-${{ github.sha }}"
+          git checkout -b "$BRANCH_NAME"
 
-        # Health check
-        HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-            CMD curl -f http://localhost:8000/health || exit 1
+          git add .
+          git commit -m "chore(prod): Update ChatbotService image to ${{ github.sha }}" \
+                     -m "Automated deployment from main branch" \
+                     -m "Commit: ${{ github.sha }}" \
+                     -m "Ref: ${{ github.ref }}"
 
-        # Expose port
-        EXPOSE 8000
+          git push origin "$BRANCH_NAME"
 
-        # Run the application
-        CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
-        EOF
-        
-        docker build -t asia-southeast1-docker.pkg.dev/maliev-website/maliev-website-artifact-prod/maliev-line-chatbot-service:$IMAGE_TAG .
-        docker push asia-southeast1-docker.pkg.dev/maliev-website/maliev-website-artifact-prod/maliev-line-chatbot-service:$IMAGE_TAG
-        
-        # Also tag as latest for production
-        docker tag asia-southeast1-docker.pkg.dev/maliev-website/maliev-website-artifact-prod/maliev-line-chatbot-service:$IMAGE_TAG asia-southeast1-docker.pkg.dev/maliev-website/maliev-website-artifact-prod/maliev-line-chatbot-service:latest
-        docker push asia-southeast1-docker.pkg.dev/maliev-website/maliev-website-artifact-prod/maliev-line-chatbot-service:latest
+          # Create PR using GitHub CLI
+          echo "${{ secrets.GITOPS_PAT }}" | gh auth login --with-token
+          gh pr create \
+            --repo MALIEV-Co-Ltd/maliev-gitops \
+            --base main \
+            --head "$BRANCH_NAME" \
+            --title "chore(prod): Update ChatbotService to ${{ github.sha }}" \
+            --body "**Automated GitOps Update - PRODUCTION**
 
-    - name: Checkout maliev-gitops repository
-      uses: actions/checkout@v4
-      with:
-        repository: MALIEV-Co-Ltd/maliev-gitops
-        token: ${{ secrets.GITOPS_PAT }}
-        path: maliev-gitops
+**Service**: ChatbotService
+**Environment**: Production
+**Image Tag**: \`${{ github.sha }}\`
+**Source Branch**: \`main\`
+**Commit**: ${{ github.sha }}
 
-    - name: Install Kustomize
-      run: |
-        curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
-        sudo mv kustomize /usr/local/bin/
+**Changes**:
+- Updates \`maliev-chatbot-service\` image in production overlay
 
-    - name: Update image tag in maliev-gitops using Kustomize
-      run: |
-        IMAGE_TAG="${{ steps.version.outputs.version }}"
-        cd maliev-gitops/3-apps/line-chatbot-service/overlays/production
-        kustomize edit set image asia-southeast1-docker.pkg.dev/maliev-website/maliev-website-artifact/maliev-line-chatbot-service=asia-southeast1-docker.pkg.dev/maliev-website/maliev-website-artifact-prod/maliev-line-chatbot-service:$IMAGE_TAG
-        
-    - name: Commit and push changes
-      run: |
-        cd maliev-gitops
-        git config --global user.name 'github-actions[bot]'
-        git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-        git add .
-        git commit -m "Update line-chatbot-service image to ${{ steps.version.outputs.version }}"
-        git push
+⚠️ **PRODUCTION DEPLOYMENT** ⚠️
 
-    - name: Create GitHub Release (for tags only)
-      if: steps.version.outputs.is_tag == 'true'
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ steps.version.outputs.version }}
-        release_name: LINE Chatbot Service ${{ steps.version.outputs.version }}
-        body: |
-          ## 🚀 LINE Chatbot Service Release ${{ steps.version.outputs.version }}
-          
-          ### 📦 Deployment Information
-          - **Environment**: Production
-          - **Image**: `asia-southeast1-docker.pkg.dev/maliev-website/maliev-website-artifact-prod/maliev-line-chatbot-service:${{ steps.version.outputs.version }}`
-          - **Commit**: `${{ github.sha }}`
-          - **Deployed**: `$(date -u +'%Y-%m-%d %H:%M:%S UTC')`
-          
-          ### 🌐 Service URLs
-          - **Production**: https://line-chatbot.maliev.com
-          - **Health Check**: https://line-chatbot.maliev.com/health
-          - **Admin Panel**: https://line-chatbot.maliev.com/admin
-          
-          ### 🔧 Features & Changes
-          - Multi-provider AI integration (Gemini 2.5-flash, OpenAI, DeepSeek)
-          - Intelligent LLM response caching (40-70% cost reduction)
-          - Dynamic system instructions for 3D printing business
-          - Customer management and analytics
-          - Redis-based session and cache management
-          
-          ### 🏗️ Technical Details
-          - **Framework**: FastAPI with async Python
-          - **AI Providers**: Primary Gemini 2.5-flash with fallbacks
-          - **Database**: Redis for caching and configuration
-          - **Secrets**: Google Secret Manager integration
-          - **Monitoring**: Structured logging with correlation IDs
-          
-          🤖 Auto-generated release by GitHub Actions
-        draft: false
-        prerelease: false
+This PR was automatically created by GitHub Actions. Once merged, ArgoCD will automatically sync the changes to the \`maliev-prod\` namespace.
+
+**Triggered by**: ${{ github.actor }}
+**Workflow**: ${{ github.workflow }}
+**Run**: ${{ github.run_id }}
+
+**Approval Required**: This is a production deployment and should be reviewed before merging."
