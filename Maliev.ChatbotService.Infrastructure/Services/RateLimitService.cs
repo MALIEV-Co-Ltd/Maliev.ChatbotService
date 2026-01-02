@@ -31,12 +31,11 @@ public class RateLimitService : IRateLimitService
         var key = GetCacheKey(userProfileId);
         var countString = await _cache.GetAsync<string>(key, cancellationToken);
 
-        if (string.IsNullOrEmpty(countString))
+        if (string.IsNullOrEmpty(countString) || !int.TryParse(countString, out var count))
         {
             return false;
         }
 
-        var count = int.Parse(countString);
         return count >= MaxMessagesPerHour;
     }
 
@@ -44,12 +43,8 @@ public class RateLimitService : IRateLimitService
     public async Task<int> IncrementMessageCountAsync(Guid userProfileId, CancellationToken cancellationToken = default)
     {
         var key = GetCacheKey(userProfileId);
-        var countString = await _cache.GetAsync<string>(key, cancellationToken);
-
-        var currentCount = (string.IsNullOrEmpty(countString) || !int.TryParse(countString, out var count)) ? 0 : count;
-        var newCount = currentCount + 1;
-
-        await _cache.SetAsync(key, newCount.ToString(), _windowDuration, cancellationToken);
+        
+        var newCount = (int)await _cache.IncrementAsync(key, _windowDuration, cancellationToken);
 
         if (newCount >= MaxMessagesPerHour)
         {

@@ -16,6 +16,7 @@ public class SystemInstructionService : ISystemInstructionService
     private readonly ILogger<SystemInstructionService> _logger;
     private const string CacheKey = "chatbot:system_instruction:active";
     private readonly TimeSpan _cacheExpiration = TimeSpan.FromHours(1);
+    private static DateTimeOffset _nextRedisCheck = DateTimeOffset.MinValue;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SystemInstructionService"/> class.
@@ -72,7 +73,14 @@ public class SystemInstructionService : ISystemInstructionService
                 _logger.LogWarning(ex, "Redis cache write failed - continuing with PostgreSQL-only mode");
             }
         }
-        else if (instruction != null && !redisAvailable)
+        // If Redis is already known to be down, only check occasionally to avoid latency on every request
+        if (!redisAvailable && DateTimeOffset.UtcNow < _nextRedisCheck)
+        {
+            _logger.LogDebug("Redis still unavailable, continuing with PostgreSQL-only reads (skipping recovery check until {NextCheck})", _nextRedisCheck);
+            return instruction;
+        }
+
+        if (!redisAvailable)
         {
             // Try to detect Redis recovery
             try
@@ -83,11 +91,15 @@ public class SystemInstructionService : ISystemInstructionService
                 _logger.LogInformation("Redis connection recovered - caching resumed");
 
                 // Cache the instruction now that Redis is back
-                await _cache.SetAsync(CacheKey, instruction, _cacheExpiration, cancellationToken);
+                if (instruction != null)
+                {
+                    await _cache.SetAsync(CacheKey, instruction, _cacheExpiration, cancellationToken);
+                }
             }
             catch
             {
-                // Redis still unavailable - continue with PostgreSQL only
+                // Redis still unavailable - update backoff timer
+                _nextRedisCheck = DateTimeOffset.UtcNow.AddMinutes(1);
                 _logger.LogDebug("Redis still unavailable, continuing with PostgreSQL-only reads");
             }
         }
