@@ -64,6 +64,11 @@ public class ChatbotDbContext : DbContext
     public DbSet<SearchDomainLog> SearchDomainLogs => Set<SearchDomainLog>();
 
     /// <summary>
+    /// Gets or sets the FallbackResponseTemplates DbSet.
+    /// </summary>
+    public DbSet<FallbackResponseTemplate> FallbackResponseTemplates => Set<FallbackResponseTemplate>();
+
+    /// <summary>
     /// Configures the model for this context.
     /// </summary>
     /// <param name="modelBuilder">The builder being used to construct the model for this context.</param>
@@ -80,6 +85,7 @@ public class ChatbotDbContext : DbContext
         modelBuilder.ApplyConfiguration(new IdentityLinkConfiguration());
         modelBuilder.ApplyConfiguration(new OperationLogConfiguration());
         modelBuilder.ApplyConfiguration(new SearchDomainLogConfiguration());
+        modelBuilder.ApplyConfiguration(new FallbackResponseTemplateConfiguration());
 
         // Seed default system instruction
         SeedData(modelBuilder);
@@ -144,6 +150,29 @@ Communication style:
 }",
                 IsActive = true,
                 Version = 1
+            }
+        );
+
+        modelBuilder.Entity<FallbackResponseTemplate>().HasData(
+            new FallbackResponseTemplate
+            {
+                Id = Guid.Parse("00000000-0000-0000-0000-000000000010"),
+                ScenarioType = "UnexpectedError",
+                Language = Domain.Enums.Language.English,
+                ResponseText = "I apologize, but I encountered an unexpected error while processing your request. Please try again in a few moments. If the issue persists, you can contact our support team at support@maliev.com.",
+                IsActive = true,
+                Priority = 100,
+                CreatedAt = new DateTimeOffset(2025, 12, 31, 0, 0, 0, TimeSpan.Zero)
+            },
+            new FallbackResponseTemplate
+            {
+                Id = Guid.Parse("00000000-0000-0000-0000-000000000011"),
+                ScenarioType = "UnexpectedError",
+                Language = Domain.Enums.Language.Thai,
+                ResponseText = "ขออภัยด้วยครับ เกิดข้อผิดพลาดที่ไม่คาดคิดขณะประมวลผลคำขอของคุณ โปรดลองอีกครั้งในอีกสักครู่ หากปัญหายังคงอยู่ คุณสามารถติดต่อทีมสนับสนุนของเราได้ที่ support@maliev.com",
+                IsActive = true,
+                Priority = 100,
+                CreatedAt = new DateTimeOffset(2025, 12, 31, 0, 0, 0, TimeSpan.Zero)
             }
         );
     }
