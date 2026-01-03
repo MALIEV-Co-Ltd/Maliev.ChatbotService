@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Maliev.ChatbotService.Infrastructure.Migrations
 {
     [DbContext(typeof(ChatbotDbContext))]
-    [Migration("20260103021655_InitialCreate")]
+    [Migration("20260103024713_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -452,22 +452,22 @@ namespace Maliev.ChatbotService.Infrastructure.Migrations
 
                     b.HasIndex("FacebookId")
                         .IsUnique()
-                        .HasFilter("[FacebookId] IS NOT NULL");
+                        .HasFilter("\"FacebookId\" IS NOT NULL");
 
                     b.HasIndex("InstagramId")
                         .IsUnique()
-                        .HasFilter("[InstagramId] IS NOT NULL");
+                        .HasFilter("\"InstagramId\" IS NOT NULL");
 
                     b.HasIndex("InternalUserId")
-                        .HasFilter("[InternalUserId] IS NOT NULL");
+                        .HasFilter("\"InternalUserId\" IS NOT NULL");
 
                     b.HasIndex("LineUserId")
                         .IsUnique()
-                        .HasFilter("[LineUserId] IS NOT NULL");
+                        .HasFilter("\"LineUserId\" IS NOT NULL");
 
                     b.HasIndex("WhatsAppId")
                         .IsUnique()
-                        .HasFilter("[WhatsAppId] IS NOT NULL");
+                        .HasFilter("\"WhatsAppId\" IS NOT NULL");
 
                     b.ToTable("UserProfiles");
                 });

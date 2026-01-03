@@ -400,34 +400,34 @@ namespace Maliev.ChatbotService.Infrastructure.Migrations
                 table: "UserProfiles",
                 column: "FacebookId",
                 unique: true,
-                filter: "[FacebookId] IS NOT NULL");
+                filter: "\"FacebookId\" IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_UserProfiles_InstagramId",
                 table: "UserProfiles",
                 column: "InstagramId",
                 unique: true,
-                filter: "[InstagramId] IS NOT NULL");
+                filter: "\"InstagramId\" IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_UserProfiles_InternalUserId",
                 table: "UserProfiles",
                 column: "InternalUserId",
-                filter: "[InternalUserId] IS NOT NULL");
+                filter: "\"InternalUserId\" IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_UserProfiles_LineUserId",
                 table: "UserProfiles",
                 column: "LineUserId",
                 unique: true,
-                filter: "[LineUserId] IS NOT NULL");
+                filter: "\"LineUserId\" IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_UserProfiles_WhatsAppId",
                 table: "UserProfiles",
                 column: "WhatsAppId",
                 unique: true,
-                filter: "[WhatsAppId] IS NOT NULL");
+                filter: "\"WhatsAppId\" IS NOT NULL");
         }
 
         /// <inheritdoc />
