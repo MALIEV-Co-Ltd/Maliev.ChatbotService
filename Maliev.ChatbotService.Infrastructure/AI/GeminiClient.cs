@@ -52,8 +52,9 @@ public class GeminiClient : IGeminiClient
         {
             try
             {
-                var url = $"v1beta/models/{_modelName}:generateContent?key={_apiKey}";
+                var url = $"v1beta/models/{_modelName}:generateContent";
 
+                // ... (build contents logic same as before)
                 // Build contents with multimodal support
                 var contentsParts = new List<object>();
 
@@ -152,12 +153,14 @@ public class GeminiClient : IGeminiClient
                     PropertyNamingPolicy = JsonNamingPolicy.CamelCase
                 });
 
-                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                using var messageRequest = new HttpRequestMessage(HttpMethod.Post, url);
+                messageRequest.Headers.Add("x-goog-api-key", _apiKey);
+                messageRequest.Content = new StringContent(json, Encoding.UTF8, "application/json");
 
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 cts.CancelAfter(TimeSpan.FromSeconds(request.TimeoutSeconds));
 
-                var response = await _httpClient.PostAsync(url, content, cts.Token);
+                var response = await _httpClient.SendAsync(messageRequest, cts.Token);
                 var responseContent = await response.Content.ReadAsStringAsync(cts.Token);
 
                 if (!response.IsSuccessStatusCode)

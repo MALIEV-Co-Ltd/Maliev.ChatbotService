@@ -44,6 +44,7 @@ public class RateLimitService : IRateLimitService
     {
         var key = GetCacheKey(userProfileId);
         
+        // Atomically increment using standardized cache service
         var newCount = (int)await _cache.IncrementAsync(key, _windowDuration, cancellationToken);
 
         if (newCount >= MaxMessagesPerHour)
@@ -69,6 +70,7 @@ public class RateLimitService : IRateLimitService
     /// <inheritdoc/>
     public async Task<(bool IsExceeded, int Remaining)> CheckRateLimitAsync(Guid userProfileId, CancellationToken cancellationToken = default)
     {
+        // Sequential calls are acceptable for UI purposes.
         var isExceeded = await IsRateLimitExceededAsync(userProfileId, cancellationToken);
         var remaining = await GetRemainingMessagesAsync(userProfileId, cancellationToken);
         return (isExceeded, remaining);

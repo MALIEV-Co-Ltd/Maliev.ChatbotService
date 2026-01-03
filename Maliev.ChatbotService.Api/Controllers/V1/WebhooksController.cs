@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using Maliev.ChatbotService.Api.Models.Webhooks;
 using Maliev.ChatbotService.Application.Commands;
 using Maliev.ChatbotService.Application.Handlers;
@@ -18,6 +19,7 @@ public class WebhooksController : ControllerBase
     private readonly ProcessWebhookCommandHandler _webhookHandler;
     private readonly ILineClient _lineClient;
     private readonly IMetaClient _metaClient;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<WebhooksController> _logger;
 
     /// <summary>
@@ -26,28 +28,29 @@ public class WebhooksController : ControllerBase
     /// <param name="webhookHandler">The webhook command handler.</param>
     /// <param name="lineClient">The LINE client.</param>
     /// <param name="metaClient">The Meta client.</param>
+    /// <param name="configuration">The configuration.</param>
     /// <param name="logger">The logger.</param>
     public WebhooksController(
         ProcessWebhookCommandHandler webhookHandler,
         ILineClient lineClient,
         IMetaClient metaClient,
+        IConfiguration configuration,
         ILogger<WebhooksController> logger)
     {
         _webhookHandler = webhookHandler;
         _lineClient = lineClient;
         _metaClient = metaClient;
+        _configuration = configuration;
         _logger = logger;
     }
 
     /// <summary>
     /// Handles LINE webhook events.
     /// </summary>
-    /// <param name="event">The LINE webhook event.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>HTTP 200 OK if successful.</returns>
     [HttpPost("line")]
-    [Consumes("application/json")]
-    public async Task<IActionResult> HandleLineWebhook([FromBody] LineWebhookEvent @event, CancellationToken cancellationToken)
+    public async Task<IActionResult> HandleLineWebhook(CancellationToken cancellationToken)
     {
         // Verify signature
         var signature = Request.Headers["X-Line-Signature"].ToString();
@@ -58,6 +61,9 @@ public class WebhooksController : ControllerBase
             _logger.LogWarning("Invalid LINE webhook signature");
             return Unauthorized(new { error = "Invalid signature" });
         }
+
+        var @event = JsonSerializer.Deserialize<LineWebhookEvent>(requestBody, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower });
+        if (@event == null) return BadRequest();
 
         // Process each event
         foreach (var lineEvent in @event.Events)
@@ -105,7 +111,7 @@ public class WebhooksController : ControllerBase
         [FromQuery(Name = "hub.verify_token")] string? token,
         [FromQuery(Name = "hub.challenge")] string? challenge)
     {
-        var verifyToken = HttpContext.RequestServices.GetRequiredService<IConfiguration>()["Meta:VerifyToken"];
+        var verifyToken = _configuration["Meta:VerifyToken"];
 
         if (mode == "subscribe" && token == verifyToken)
         {
@@ -120,12 +126,10 @@ public class WebhooksController : ControllerBase
     /// <summary>
     /// Handles Meta webhook events (Facebook, Instagram, WhatsApp).
     /// </summary>
-    /// <param name="event">The Meta webhook event.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>HTTP 200 OK if successful.</returns>
     [HttpPost("meta")]
-    [Consumes("application/json")]
-    public async Task<IActionResult> HandleMetaWebhook([FromBody] MetaWebhookEvent @event, CancellationToken cancellationToken)
+    public async Task<IActionResult> HandleMetaWebhook(CancellationToken cancellationToken)
     {
         // Verify signature
         var signature = Request.Headers["X-Hub-Signature-256"].ToString();
@@ -136,6 +140,9 @@ public class WebhooksController : ControllerBase
             _logger.LogWarning("Invalid Meta webhook signature");
             return Unauthorized(new { error = "Invalid signature" });
         }
+
+        var @event = JsonSerializer.Deserialize<MetaWebhookEvent>(requestBody, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower });
+        if (@event == null) return BadRequest();
 
         // Process each entry
         foreach (var entry in @event.Entry)

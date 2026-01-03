@@ -28,6 +28,8 @@ builder.AddServiceMeters("chatbot-service");
 // --- Data & Cache ---
 builder.AddPostgresDbContext<ChatbotDbContext>("ChatbotDbContext", enableDynamicJson: true);
 builder.AddRedisDistributedCache("redis");
+builder.Services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(sp => 
+    StackExchange.Redis.ConnectionMultiplexer.Connect(builder.Configuration.GetConnectionString("redis") ?? "localhost"));
 
 // --- Messaging ---
 builder.AddMassTransitWithRabbitMq(cfg =>
