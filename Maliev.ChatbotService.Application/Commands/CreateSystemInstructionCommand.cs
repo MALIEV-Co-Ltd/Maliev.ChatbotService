@@ -1,3 +1,5 @@
+using Maliev.ChatbotService.Domain.Enums;
+
 namespace Maliev.ChatbotService.Application.Commands;
 
 /// <summary>
@@ -9,6 +11,21 @@ public class CreateSystemInstructionCommand
     /// Gets or sets the name of the instruction set.
     /// </summary>
     public string Name { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the category of the instruction.
+    /// </summary>
+    public SystemInstructionCategory Category { get; set; }
+
+    /// <summary>
+    /// Gets or sets the topic key for specialized instructions.
+    /// </summary>
+    public string? TopicKey { get; set; }
+
+    /// <summary>
+    /// Gets or sets the priority for injection order.
+    /// </summary>
+    public int Priority { get; set; }
 
     /// <summary>
     /// Gets or sets the persona definition for the chatbot.

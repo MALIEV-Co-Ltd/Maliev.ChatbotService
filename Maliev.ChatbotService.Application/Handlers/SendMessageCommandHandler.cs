@@ -18,10 +18,12 @@ public class SendMessageCommandHandler
     private readonly IConversationSessionRepository _sessionRepository;
     private readonly IMessageRepository _messageRepository;
     private readonly IUserProfileRepository _userProfileRepository;
+    private readonly IKnowledgeBaseRepository _knowledgeBaseRepository;
     private readonly IConversationSummaryService _summaryService;
     private readonly IRateLimitService _rateLimitService;
     private readonly IGeminiClient _geminiClient;
     private readonly ISystemInstructionService _systemInstructionService;
+    private readonly IIntentClassificationService _intentClassificationService;
     private readonly ILanguageDetectionService _languageDetectionService;
     private readonly IResponseFormatterService _responseFormatterService;
     private readonly IOperationExecutionService? _operationExecutionService;
@@ -39,10 +41,12 @@ public class SendMessageCommandHandler
     /// <param name="sessionRepository">The conversation session repository.</param>
     /// <param name="messageRepository">The message repository.</param>
     /// <param name="userProfileRepository">The user profile repository.</param>
+    /// <param name="knowledgeBaseRepository">The knowledge base repository.</param>
     /// <param name="summaryService">The conversation summary service.</param>
     /// <param name="rateLimitService">The rate limit service.</param>
     /// <param name="geminiClient">The Gemini API client.</param>
     /// <param name="systemInstructionService">The system instruction service.</param>
+    /// <param name="intentClassificationService">The intent classification service.</param>
     /// <param name="languageDetectionService">The language detection service.</param>
     /// <param name="responseFormatterService">The response formatter service.</param>
     /// <param name="operationExecutionService">The operation execution service (optional for internal agents).</param>
@@ -57,10 +61,12 @@ public class SendMessageCommandHandler
         IConversationSessionRepository sessionRepository,
         IMessageRepository messageRepository,
         IUserProfileRepository userProfileRepository,
+        IKnowledgeBaseRepository knowledgeBaseRepository,
         IConversationSummaryService summaryService,
         IRateLimitService rateLimitService,
         IGeminiClient geminiClient,
         ISystemInstructionService systemInstructionService,
+        IIntentClassificationService intentClassificationService,
         ILanguageDetectionService languageDetectionService,
         IResponseFormatterService responseFormatterService,
         IOperationExecutionService? operationExecutionService,
@@ -75,10 +81,12 @@ public class SendMessageCommandHandler
         _sessionRepository = sessionRepository;
         _messageRepository = messageRepository;
         _userProfileRepository = userProfileRepository;
+        _knowledgeBaseRepository = knowledgeBaseRepository;
         _summaryService = summaryService;
         _rateLimitService = rateLimitService;
         _geminiClient = geminiClient;
         _systemInstructionService = systemInstructionService;
+        _intentClassificationService = intentClassificationService;
         _languageDetectionService = languageDetectionService;
         _responseFormatterService = responseFormatterService;
         _operationExecutionService = operationExecutionService;
@@ -276,11 +284,53 @@ public class SendMessageCommandHandler
         var previousSummaries = await _summaryService.GetRecentSummariesAsync(session.UserProfileId, 2, cancellationToken);
         var summariesContext = BuildSummariesContext(previousSummaries);
 
-        // Get system instruction
-        var systemInstruction = await _systemInstructionService.GetActiveInstructionAsync(cancellationToken);
-        var systemInstructionText = systemInstruction != null
-            ? $"{systemInstruction.PersonaDefinition}\n\n{systemInstruction.BusinessConstraints}"
-            : GetDefaultSystemInstruction(detectedLanguage);
+        // 1. Classify Intent
+        var classification = await _intentClassificationService.ClassifyIntentAsync(command.Content, cancellationToken);
+        _metrics.RecordIntentClassification(classification.Intent, classification.Confidence);
+
+        var topicKeys = new List<string>();
+        if (classification.Intent != "General" && classification.Confidence > 0.7)
+        {
+            topicKeys.Add(classification.Intent);
+            _metrics.RecordContextInjection("Topic", classification.Intent);
+        }
+        if (classification.AdditionalTopics != null)
+        {
+            foreach (var topic in classification.AdditionalTopics)
+            {
+                topicKeys.Add(topic);
+                _metrics.RecordContextInjection("Topic", topic);
+            }
+        }
+
+        // 2. Get Merged Instructions
+        var systemInstructionText = await _systemInstructionService.GetMergedInstructionsAsync(topicKeys, cancellationToken);
+
+        // 3. Fetch Knowledge Base Facts
+        var injectedKnowledgeIds = new List<Guid>();
+        if (topicKeys.Any())
+        {
+            var facts = new List<KnowledgeBase>();
+            foreach (var topic in topicKeys)
+            {
+                var topicFacts = await _knowledgeBaseRepository.GetByTopicAsync(topic, cancellationToken);
+                foreach (var fact in topicFacts)
+                {
+                    facts.Add(fact);
+                    _metrics.RecordContextInjection("KnowledgeBase", fact.TopicKey);
+                }
+            }
+
+            if (facts.Any())
+            {
+                systemInstructionText += "\n\n## RELEVANT FACTS AND CONTEXT\n";
+                foreach (var fact in facts)
+                {
+                    systemInstructionText += $"- {fact.Content}\n";
+                    injectedKnowledgeIds.Add(fact.Id);
+                }
+            }
+        }
 
         // Add summaries context to system instruction if available
         if (!string.IsNullOrEmpty(summariesContext))
@@ -288,10 +338,13 @@ public class SendMessageCommandHandler
             systemInstructionText += $"\n\nPrevious conversation context:\n{summariesContext}";
         }
 
+        // Get system instruction for business constraint validation (Core only for now)
+        var coreInstruction = await _systemInstructionService.GetActiveInstructionAsync(cancellationToken);
+
         // Check if web search should be triggered
         string? webSearchContext = null;
-        if (systemInstruction != null &&
-            systemInstruction.EnableWebSearch &&
+        if (coreInstruction != null &&
+            coreInstruction.EnableWebSearch &&
             ShouldTriggerWebSearch(command.Content))
         {
             _logger.LogInformation("Web search triggered for query: {Query}", command.Content);
@@ -311,7 +364,7 @@ public class SendMessageCommandHandler
                     var searchResults = await _webSearchService.SearchAsync(command.Content, searchCts.Token);
 
                     // Log domains if enabled
-                    if (systemInstruction.LogSearchDomains && searchResults.Count > 0)
+                    if (coreInstruction.LogSearchDomains && searchResults.Count > 0)
                     {
                         var domains = searchResults.Select(r => r.Domain).Distinct().ToList();
 
@@ -354,7 +407,7 @@ public class SendMessageCommandHandler
         }
 
         // Check if message is off-topic
-        if (systemInstruction != null && !_businessConstraintValidator.IsOnTopic(command.Content, systemInstruction))
+        if (coreInstruction != null && !_businessConstraintValidator.IsOnTopic(command.Content, coreInstruction))
         {
             _logger.LogWarning("Off-topic message detected for session {SessionId}: {Content}", session.Id, command.Content);
 
@@ -369,7 +422,7 @@ public class SendMessageCommandHandler
                 Success = false
             }, cancellationToken);
 
-            var rejectionMessage = _businessConstraintValidator.GetRejectionMessage(command.Content, systemInstruction);
+            var rejectionMessage = _businessConstraintValidator.GetRejectionMessage(command.Content, coreInstruction);
 
             var rejectionMessageEntity = new Message
             {
@@ -378,7 +431,15 @@ public class SendMessageCommandHandler
                 Role = MessageRole.Assistant,
                 Content = rejectionMessage,
                 ContentType = ContentType.Text,
-                CreatedAt = DateTimeOffset.UtcNow
+                CreatedAt = DateTimeOffset.UtcNow,
+                            MetadataJson = JsonSerializer.Serialize(new
+                            {
+                                intent = classification.Intent,
+                                confidence = classification.Confidence,
+                                isOnTopic = false,
+                                injectedKnowledgeIds = injectedKnowledgeIds
+                            })
+                
             };
 
             await _messageRepository.CreateAsync(rejectionMessageEntity, cancellationToken);
@@ -463,7 +524,14 @@ public class SendMessageCommandHandler
             Role = MessageRole.Assistant,
             Content = formattedContent,
             ContentType = ContentType.Text,
-            CreatedAt = DateTimeOffset.UtcNow
+            CreatedAt = DateTimeOffset.UtcNow,
+            MetadataJson = JsonSerializer.Serialize(new
+            {
+                intent = classification.Intent,
+                confidence = classification.Confidence,
+                injectedTopicKeys = topicKeys,
+                injectedKnowledgeIds = injectedKnowledgeIds
+            })
         };
 
         await _messageRepository.CreateAsync(assistantMessage, cancellationToken);

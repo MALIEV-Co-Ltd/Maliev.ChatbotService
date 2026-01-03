@@ -1,5 +1,6 @@
 using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Domain.Entities;
+using Maliev.ChatbotService.Domain.Enums;
 using Maliev.ChatbotService.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -37,19 +38,58 @@ public class SystemInstructionRepository : ISystemInstructionRepository
     }
 
     /// <inheritdoc/>
-    public async Task<SystemInstruction?> GetActiveAsync(CancellationToken cancellationToken = default)
+    public async Task<SystemInstruction?> GetActiveCoreAsync(CancellationToken cancellationToken = default)
     {
         return await _context.SystemInstructions
-            .Where(x => x.IsActive)
+            .Where(x => x.IsActive && x.Category == SystemInstructionCategory.Core)
             .OrderByDescending(x => x.Version)
             .FirstOrDefaultAsync(cancellationToken);
     }
 
     /// <inheritdoc/>
-    public async Task<(List<SystemInstruction> Instructions, int TotalCount)> GetAllAsync(int page, int pageSize, CancellationToken cancellationToken = default)
+    public async Task<List<SystemInstruction>> GetActiveByTopicsAsync(IEnumerable<string> topicKeys, CancellationToken cancellationToken = default)
     {
-        var query = _context.SystemInstructions
-            .OrderByDescending(x => x.Version);
+        return await _context.SystemInstructions
+            .Where(x => x.IsActive && 
+                       x.Category == SystemInstructionCategory.Topic && 
+                       x.TopicKey != null && 
+                       topicKeys.Contains(x.TopicKey))
+            .OrderByDescending(x => x.Priority)
+            .ThenByDescending(x => x.Version)
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public async Task<SystemInstruction?> GetActiveAsync(SystemInstructionCategory? category = null, CancellationToken cancellationToken = default)
+    {
+        var query = _context.SystemInstructions.Where(x => x.IsActive);
+
+        if (category.HasValue)
+        {
+            query = query.Where(x => x.Category == category.Value);
+        }
+
+        return await query
+            .OrderByDescending(x => x.Version)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public async Task<(List<SystemInstruction> Instructions, int TotalCount)> GetAllAsync(int page, int pageSize, SystemInstructionCategory? category = null, string? topicKey = null, CancellationToken cancellationToken = default)
+    {
+        var query = _context.SystemInstructions.AsQueryable();
+
+        if (category.HasValue)
+        {
+            query = query.Where(x => x.Category == category.Value);
+        }
+
+        if (!string.IsNullOrEmpty(topicKey))
+        {
+            query = query.Where(x => x.TopicKey == topicKey);
+        }
+
+        query = query.OrderByDescending(x => x.Version);
 
         var totalCount = await query.CountAsync(cancellationToken);
         var instructions = await query
@@ -68,11 +108,21 @@ public class SystemInstructionRepository : ISystemInstructionRepository
     }
 
     /// <inheritdoc/>
-    public async Task DeactivateAllAsync(CancellationToken cancellationToken = default)
+    public async Task DeactivateAllAsync(SystemInstructionCategory? category = null, string? topicKey = null, CancellationToken cancellationToken = default)
     {
-        var activeInstructions = await _context.SystemInstructions
-            .Where(x => x.IsActive)
-            .ToListAsync(cancellationToken);
+        var query = _context.SystemInstructions.Where(x => x.IsActive);
+
+        if (category.HasValue)
+        {
+            query = query.Where(x => x.Category == category.Value);
+        }
+
+        if (!string.IsNullOrEmpty(topicKey))
+        {
+            query = query.Where(x => x.TopicKey == topicKey);
+        }
+
+        var activeInstructions = await query.ToListAsync(cancellationToken);
 
         foreach (var instruction in activeInstructions)
         {
@@ -96,17 +146,16 @@ public class SystemInstructionRepository : ISystemInstructionRepository
     /// <inheritdoc/>
     public Task<SystemInstruction?> GetActiveInstructionAsync(CancellationToken cancellationToken = default)
     {
-        return GetActiveAsync(cancellationToken);
+        return GetActiveCoreAsync(cancellationToken);
     }
 
     /// <inheritdoc/>
     public async Task ActivateAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        await DeactivateAllAsync(cancellationToken);
-
         var instruction = await GetByIdAsync(id, cancellationToken);
         if (instruction != null)
         {
+            await DeactivateAllAsync(instruction.Category, instruction.TopicKey, cancellationToken);
             instruction.IsActive = true;
             await _context.SaveChangesAsync(cancellationToken);
         }

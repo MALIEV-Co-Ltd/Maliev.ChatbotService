@@ -1,4 +1,5 @@
 using Maliev.ChatbotService.Domain.Entities;
+using Maliev.ChatbotService.Domain.Enums;
 using Maliev.ChatbotService.Infrastructure.Data.Configurations;
 using Microsoft.EntityFrameworkCore;
 
@@ -69,6 +70,11 @@ public class ChatbotDbContext : DbContext
     public DbSet<FallbackResponseTemplate> FallbackResponseTemplates => Set<FallbackResponseTemplate>();
 
     /// <summary>
+    /// Gets or sets the KnowledgeBase DbSet.
+    /// </summary>
+    public DbSet<KnowledgeBase> KnowledgeBase => Set<KnowledgeBase>();
+
+    /// <summary>
     /// Configures the model for this context.
     /// </summary>
     /// <param name="modelBuilder">The builder being used to construct the model for this context.</param>
@@ -86,6 +92,7 @@ public class ChatbotDbContext : DbContext
         modelBuilder.ApplyConfiguration(new OperationLogConfiguration());
         modelBuilder.ApplyConfiguration(new SearchDomainLogConfiguration());
         modelBuilder.ApplyConfiguration(new FallbackResponseTemplateConfiguration());
+        modelBuilder.ApplyConfiguration(new KnowledgeBaseConfiguration());
 
         // Seed default system instruction
         SeedData(modelBuilder);
@@ -100,6 +107,8 @@ public class ChatbotDbContext : DbContext
             {
                 Id = defaultInstructionId,
                 Name = "Manufacturing Chatbot - Default",
+                Category = SystemInstructionCategory.Core,
+                Priority = 0,
                 PersonaDefinition = @"You are Mali, a helpful and knowledgeable female AI assistant for Maliev Manufacturing Company. You specialize in manufacturing processes, materials, and customer inquiries about our services.
 
 Your expertise includes:

@@ -15,6 +15,14 @@ public interface ISystemInstructionService
     Task<SystemInstruction?> GetActiveInstructionAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Gets the merged system instruction set based on detected topics.
+    /// </summary>
+    /// <param name="topicKeys">List of detected topic keys.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A merged instruction text containing core and topic-specific instructions.</returns>
+    Task<string> GetMergedInstructionsAsync(IEnumerable<string> topicKeys, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Invalidates the cache for system instructions.
     /// </summary>
     /// <param name="cancellationToken">Cancellation token.</param>

@@ -1,3 +1,5 @@
+using Maliev.ChatbotService.Domain.Enums;
+
 namespace Maliev.ChatbotService.Application.Queries;
 
 /// <summary>
@@ -9,4 +11,14 @@ public class GetSystemInstructionsQuery
     /// Gets or sets a value indicating whether to return only active instructions.
     /// </summary>
     public bool ActiveOnly { get; set; }
+
+    /// <summary>
+    /// Gets or sets the category filter.
+    /// </summary>
+    public SystemInstructionCategory? Category { get; set; }
+
+    /// <summary>
+    /// Gets or sets the topic key filter.
+    /// </summary>
+    public string? TopicKey { get; set; }
 }

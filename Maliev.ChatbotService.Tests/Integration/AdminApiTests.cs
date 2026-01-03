@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using Maliev.ChatbotService.Api.Models.Requests;
 using Maliev.ChatbotService.Api.Models.Responses;
 using Maliev.ChatbotService.Tests.Infrastructure;
+using Maliev.ChatbotService.Domain.Enums;
 
 namespace Maliev.ChatbotService.Tests.Integration;
 
@@ -78,6 +79,37 @@ public class AdminApiTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// Tests that POST /v1/admin/instructions with authentication creates new categorized instruction.
+    /// </summary>
+    [Fact]
+    public async Task CreateCategorizedInstruction_WithAuthentication_CreatesInstruction()
+    {
+        // Arrange
+        var client = CreateAuthenticatedClient(new[] { "chatbot.instructions.write" });
+        var request = new CreateSystemInstructionRequest
+        {
+            Name = "Topic Instruction",
+            Category = SystemInstructionCategory.Topic,
+            TopicKey = "3D-Scanning",
+            Priority = 10,
+            PersonaDefinition = "You are a 3D scanning expert",
+            BusinessConstraints = "3D scanning rules only",
+            IsActive = true
+        };
+
+        // Act
+        var response = await client.PostAsJsonAsync("/chatbot/v1/admin/instructions", request, _factory.JsonSerializerOptions);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var instruction = await response.Content.ReadFromJsonAsync<SystemInstructionDto>(_factory.JsonSerializerOptions);
+        Assert.NotNull(instruction);
+        Assert.Equal(SystemInstructionCategory.Topic, instruction.Category);
+        Assert.Equal("3D-Scanning", instruction.TopicKey);
+        Assert.Equal(10, instruction.Priority);
+    }
+
+    /// <summary>
     /// Tests that PUT /v1/admin/instructions/{id} with authentication updates instruction.
     /// </summary>
     [Fact]
@@ -114,6 +146,47 @@ public class AdminApiTests : IAsyncLifetime
         Assert.NotNull(updated);
         Assert.Equal("Updated Instruction", updated.Name);
         Assert.True(updated.IsActive);
+    }
+
+    /// <summary>
+    /// Tests that PUT /v1/admin/instructions/{id} with authentication updates categorized properties.
+    /// </summary>
+    [Fact]
+    public async Task UpdateCategorizedInstruction_WithAuthentication_UpdatesInstruction()
+    {
+        // Arrange
+        var client = CreateAuthenticatedClient(new[] { "chatbot.instructions.write" });
+
+        // First create an instruction
+        var createRequest = new CreateSystemInstructionRequest
+        {
+            Name = "Topic Instruction",
+            Category = SystemInstructionCategory.Topic,
+            TopicKey = "Original-Topic",
+            Priority = 5,
+            PersonaDefinition = "Original persona",
+            BusinessConstraints = "Original constraints",
+            IsActive = true
+        };
+        var createResponse = await client.PostAsJsonAsync("/chatbot/v1/admin/instructions", createRequest, _factory.JsonSerializerOptions);
+        var created = await createResponse.Content.ReadFromJsonAsync<SystemInstructionDto>(_factory.JsonSerializerOptions);
+
+        var updateRequest = new UpdateSystemInstructionRequest
+        {
+            TopicKey = "Updated-Topic",
+            Priority = 20
+        };
+
+        // Act
+        Assert.NotNull(created);
+        var response = await client.PutAsJsonAsync($"/chatbot/v1/admin/instructions/{created.Id}", updateRequest, _factory.JsonSerializerOptions);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var updated = await response.Content.ReadFromJsonAsync<SystemInstructionDto>(_factory.JsonSerializerOptions);
+        Assert.NotNull(updated);
+        Assert.Equal("Updated-Topic", updated.TopicKey);
+        Assert.Equal(20, updated.Priority);
     }
 
     /// <summary>

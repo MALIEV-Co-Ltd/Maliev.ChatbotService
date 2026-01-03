@@ -4,6 +4,7 @@ using Maliev.ChatbotService.Api.Models.Requests;
 using Maliev.ChatbotService.Api.Models.Responses;
 using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Domain.Entities;
+using Maliev.ChatbotService.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -35,6 +36,8 @@ public class SystemInstructionsController : ControllerBase
     /// <summary>
     /// Gets a list of system instructions.
     /// </summary>
+    /// <param name="category">Optional category filter.</param>
+    /// <param name="topicKey">Optional topic key filter.</param>
     /// <param name="activeOnly">If set to true, returns only active instructions.</param>
     /// <param name="page">The page number.</param>
     /// <param name="pageSize">The page size.</param>
@@ -44,6 +47,8 @@ public class SystemInstructionsController : ControllerBase
     [RequirePermission("chatbot.instructions.read")]
     [ProducesResponseType(typeof(IEnumerable<SystemInstructionDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IEnumerable<SystemInstructionDto>>> GetInstructions(
+        [FromQuery] SystemInstructionCategory? category = null,
+        [FromQuery] string? topicKey = null,
         [FromQuery] bool activeOnly = false,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 10,
@@ -51,7 +56,7 @@ public class SystemInstructionsController : ControllerBase
     {
         if (activeOnly)
         {
-            var active = await _repository.GetActiveAsync(cancellationToken);
+            var active = await _repository.GetActiveAsync(category, cancellationToken);
             if (active == null)
             {
                 return Ok(Array.Empty<SystemInstructionDto>());
@@ -59,7 +64,7 @@ public class SystemInstructionsController : ControllerBase
             return Ok(new[] { MapToDto(active) });
         }
 
-        var (instructions, _) = await _repository.GetAllAsync(page, pageSize, cancellationToken);
+        var (instructions, _) = await _repository.GetAllAsync(page, pageSize, category, topicKey, cancellationToken);
         return Ok(instructions.Select(MapToDto));
     }
 
@@ -80,6 +85,9 @@ public class SystemInstructionsController : ControllerBase
         {
             Id = Guid.NewGuid(),
             Name = request.Name,
+            Category = request.Category,
+            TopicKey = request.TopicKey,
+            Priority = request.Priority,
             PersonaDefinition = request.PersonaDefinition,
             BusinessConstraints = request.BusinessConstraints,
             IsActive = request.IsActive,
@@ -90,7 +98,7 @@ public class SystemInstructionsController : ControllerBase
 
         if (instruction.IsActive)
         {
-            await _repository.DeactivateAllAsync(cancellationToken);
+            await _repository.DeactivateAllAsync(instruction.Category, instruction.TopicKey, cancellationToken);
         }
 
         await _repository.CreateAsync(instruction, cancellationToken);
@@ -122,6 +130,9 @@ public class SystemInstructionsController : ControllerBase
         }
 
         if (request.Name != null) instruction.Name = request.Name;
+        if (request.Category.HasValue) instruction.Category = request.Category.Value;
+        if (request.TopicKey != null) instruction.TopicKey = request.TopicKey;
+        if (request.Priority.HasValue) instruction.Priority = request.Priority.Value;
         if (request.PersonaDefinition != null) instruction.PersonaDefinition = request.PersonaDefinition;
         if (request.BusinessConstraints != null) instruction.BusinessConstraints = request.BusinessConstraints;
         
@@ -129,7 +140,7 @@ public class SystemInstructionsController : ControllerBase
         {
              if (request.IsActive.Value && !instruction.IsActive)
              {
-                 await _repository.DeactivateAllAsync(cancellationToken);
+                 await _repository.DeactivateAllAsync(instruction.Category, instruction.TopicKey, cancellationToken);
              }
              instruction.IsActive = request.IsActive.Value;
         }
@@ -174,6 +185,9 @@ public class SystemInstructionsController : ControllerBase
         {
             Id = instruction.Id,
             Name = instruction.Name,
+            Category = instruction.Category,
+            TopicKey = instruction.TopicKey,
+            Priority = instruction.Priority,
             PersonaDefinition = instruction.PersonaDefinition,
             BusinessConstraints = instruction.BusinessConstraints,
             IsActive = instruction.IsActive,

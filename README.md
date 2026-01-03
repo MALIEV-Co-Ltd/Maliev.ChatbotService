@@ -84,7 +84,7 @@ The Chatbot Service provides intelligent, context-aware conversational AI across
 | Messaging | RabbitMQ | via MassTransit |
 | ORM | Entity Framework Core | 10.x |
 | Testing | xUnit + Testcontainers | - |
-| AI Model | Google Gemini | gemini-2.0-flash-exp |
+| AI Model | Google Gemini | gemini-2.5-flash |
 | API Docs | Scalar | - |
 | Metrics | Prometheus | via OpenTelemetry |
 
@@ -250,13 +250,13 @@ All metrics include tags: `service_name`, `version`, `region`, `environment`
 {
   "Gemini": {
     "ApiKey": "YOUR_API_KEY",
-    "ModelName": "gemini-2.0-flash-exp"
+    "ModelName": "gemini-2.5-flash"
   }
 }
 ```
 
 **Supported Models:**
-- `gemini-2.0-flash-exp` (Default - Latest experimental)
+- `gemini-2.5-flash` (Default - Latest experimental)
 - `gemini-3-flash` (Stable)
 
 ### Rate Limiting
@@ -280,7 +280,6 @@ All metrics include tags: `service_name`, `version`, `region`, `environment`
 ```json
 {
   "Features": {
-    "IAMIntegrationEnabled": true,
     "WebSearchEnabled": true
   }
 }
@@ -288,7 +287,6 @@ All metrics include tags: `service_name`, `version`, `region`, `environment`
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `IAMIntegrationEnabled` | `true` | Enable IAM permission checking |
 | `WebSearchEnabled` | `true` | Allow web search for technical specs |
 
 ### Timeouts

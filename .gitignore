@@ -70,6 +70,8 @@ Desktop.ini
 .env
 .env.local
 .env.*.local
+appsettings.Development.json
+
 
 # Documentation generation
 docs/_site/
