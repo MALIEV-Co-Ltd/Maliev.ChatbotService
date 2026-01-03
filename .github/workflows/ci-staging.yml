@@ -96,9 +96,25 @@ jobs:
 
           # Create PR using GitHub CLI
           echo "${{ secrets.GITOPS_PAT }}" | gh auth login --with-token
+          PR_BODY="Automated GitOps Update
+
+          - **Service**: ChatbotService
+          - **Environment**: Staging
+          - **Image Tag**: ${{ github.sha }}
+          - **Source Branch**: ${{ github.ref_name }}
+          - **Commit**: ${{ github.sha }}
+
+          Updates maliev-chatbot-service image in staging overlay.
+          This PR was automatically created by GitHub Actions.
+          Once merged, ArgoCD will automatically sync the changes to the maliev-staging namespace.
+
+          Triggered by: ${{ github.actor }}
+          Workflow: ${{ github.workflow }}
+          Run: [${{ github.run_id }}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+
           gh pr create \
             --repo MALIEV-Co-Ltd/maliev-gitops \
             --base main \
             --head "$BRANCH_NAME" \
-            --title "chore(staging): Update ChatbotService to ${{ github.sha }}" \
-            --body "Automated GitOps Update - Service: ChatbotService, Environment: Staging, Image Tag: ${{ github.sha }}, Source Branch: ${{ github.ref }}, Commit: ${{ github.sha }}. Updates maliev-chatbot-service image in staging overlay. This PR was automatically created by GitHub Actions. Once merged, ArgoCD will automatically sync the changes to the maliev-staging namespace. Triggered by: ${{ github.actor }}, Workflow: ${{ github.workflow }}, Run: ${{ github.run_id }}"
+            --title "chore(staging): Update chatbot-service" \
+            --body "$PR_BODY"

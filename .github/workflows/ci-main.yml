@@ -96,9 +96,26 @@ jobs:
 
           # Create PR using GitHub CLI
           echo "${{ secrets.GITOPS_PAT }}" | gh auth login --with-token
+          PR_BODY="Automated GitOps Update - **PRODUCTION**
+
+          - **Service**: ChatbotService
+          - **Environment**: Production
+          - **Image Tag**: ${{ github.sha }}
+          - **Source Branch**: ${{ github.ref_name }}
+          - **Commit**: ${{ github.sha }}
+
+          Updates maliev-chatbot-service image in production overlay.
+          **WARNING**: This is a production deployment and should be reviewed before merging.
+          This PR was automatically created by GitHub Actions.
+          Once merged, ArgoCD will automatically sync the changes to the maliev-prod namespace.
+
+          Triggered by: ${{ github.actor }}
+          Workflow: ${{ github.workflow }}
+          Run: [${{ github.run_id }}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+
           gh pr create \
             --repo MALIEV-Co-Ltd/maliev-gitops \
             --base main \
             --head "$BRANCH_NAME" \
-            --title "chore(prod): Update ChatbotService to ${{ github.sha }}" \
-            --body "Automated GitOps Update - PRODUCTION - Service: ChatbotService, Environment: Production, Image Tag: ${{ github.sha }}, Source Branch: main, Commit: ${{ github.sha }}. Updates maliev-chatbot-service image in production overlay. WARNING: PRODUCTION DEPLOYMENT - This PR was automatically created by GitHub Actions. Once merged, ArgoCD will automatically sync the changes to the maliev-prod namespace. Triggered by: ${{ github.actor }}, Workflow: ${{ github.workflow }}, Run: ${{ github.run_id }}. APPROVAL REQUIRED: This is a production deployment and should be reviewed before merging."
+            --title "chore(prod): Update chatbot-service" \
+            --body "$PR_BODY"
