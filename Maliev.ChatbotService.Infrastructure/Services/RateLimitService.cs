@@ -1,6 +1,6 @@
 using Maliev.ChatbotService.Application.Interfaces;
-using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
+using StackExchange.Redis;
 
 namespace Maliev.ChatbotService.Infrastructure.Services;
 
@@ -9,7 +9,7 @@ namespace Maliev.ChatbotService.Infrastructure.Services;
 /// </summary>
 public class RateLimitService : IRateLimitService
 {
-    private readonly IDistributedCache _cache;
+    private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<RateLimitService> _logger;
     private const int MaxMessagesPerHour = 100;
     private readonly TimeSpan _windowDuration = TimeSpan.FromHours(1);
@@ -17,60 +17,60 @@ public class RateLimitService : IRateLimitService
     /// <summary>
     /// Initializes a new instance of the <see cref="RateLimitService"/> class.
     /// </summary>
-    /// <param name="cache">The distributed cache.</param>
+    /// <param name="redis">The Redis connection multiplexer.</param>
     /// <param name="logger">The logger.</param>
-    public RateLimitService(IDistributedCache cache, ILogger<RateLimitService> logger)
+    public RateLimitService(IConnectionMultiplexer redis, ILogger<RateLimitService> logger)
     {
-        _cache = cache;
+        _redis = redis;
         _logger = logger;
     }
 
     /// <inheritdoc/>
     public async Task<bool> IsRateLimitExceededAsync(Guid userProfileId, CancellationToken cancellationToken = default)
     {
+        var db = _redis.GetDatabase();
         var key = GetCacheKey(userProfileId);
-        var countString = await _cache.GetStringAsync(key, cancellationToken);
+        var count = await db.StringGetAsync(key);
 
-        if (string.IsNullOrEmpty(countString))
+        if (!count.HasValue)
         {
             return false;
         }
 
-        var count = int.Parse(countString);
-        return count >= MaxMessagesPerHour;
+        return (int)count >= MaxMessagesPerHour;
     }
 
     /// <inheritdoc/>
     public async Task<int> IncrementMessageCountAsync(Guid userProfileId, CancellationToken cancellationToken = default)
     {
+        var db = _redis.GetDatabase();
         var key = GetCacheKey(userProfileId);
-        var countString = await _cache.GetStringAsync(key, cancellationToken);
-
-        var currentCount = string.IsNullOrEmpty(countString) ? 0 : int.Parse(countString);
-        var newCount = currentCount + 1;
-
-        var options = new DistributedCacheEntryOptions
+        
+        // Atomic increment
+        var newCount = await db.StringIncrementAsync(key);
+        
+        // If it's a new key, set expiration
+        if (newCount == 1)
         {
-            AbsoluteExpirationRelativeToNow = _windowDuration
-        };
-
-        await _cache.SetStringAsync(key, newCount.ToString(), options, cancellationToken);
+            await db.KeyExpireAsync(key, _windowDuration);
+        }
 
         if (newCount >= MaxMessagesPerHour)
         {
             _logger.LogWarning("User {UserProfileId} has exceeded rate limit: {Count}/{Max}", userProfileId, newCount, MaxMessagesPerHour);
         }
 
-        return newCount;
+        return (int)newCount;
     }
 
     /// <inheritdoc/>
     public async Task<int> GetRemainingMessagesAsync(Guid userProfileId, CancellationToken cancellationToken = default)
     {
+        var db = _redis.GetDatabase();
         var key = GetCacheKey(userProfileId);
-        var countString = await _cache.GetStringAsync(key, cancellationToken);
+        var count = await db.StringGetAsync(key);
 
-        var currentCount = string.IsNullOrEmpty(countString) ? 0 : int.Parse(countString);
+        var currentCount = !count.HasValue ? 0 : (int)count;
         var remaining = Math.Max(0, MaxMessagesPerHour - currentCount);
 
         return remaining;
@@ -79,6 +79,11 @@ public class RateLimitService : IRateLimitService
     /// <inheritdoc/>
     public async Task<(bool IsExceeded, int Remaining)> CheckRateLimitAsync(Guid userProfileId, CancellationToken cancellationToken = default)
     {
+        var db = _redis.GetDatabase();
+        var key = GetCacheKey(userProfileId);
+        
+        // We use a transaction or Lua script if we wanted absolute atomicity for both check and get remaining, 
+        // but for this UI purpose, sequential calls are acceptable.
         var isExceeded = await IsRateLimitExceededAsync(userProfileId, cancellationToken);
         var remaining = await GetRemainingMessagesAsync(userProfileId, cancellationToken);
         return (isExceeded, remaining);

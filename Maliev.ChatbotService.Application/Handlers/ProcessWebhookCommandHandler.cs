@@ -3,6 +3,7 @@ using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Domain.Entities;
 using Maliev.ChatbotService.Domain.Enums;
 using Microsoft.Extensions.Logging;
+using StackExchange.Redis;
 
 namespace Maliev.ChatbotService.Application.Handlers;
 
@@ -17,7 +18,12 @@ public class ProcessWebhookCommandHandler
     private readonly SendMessageCommandHandler _sendMessageHandler;
     private readonly ILineClient _lineClient;
     private readonly IMetaClient _metaClient;
+    private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<ProcessWebhookCommandHandler> _logger;
+
+    private const string BufferKeyPrefix = "chatbot:buffer:";
+    private const string TimerKeyPrefix = "chatbot:timer:";
+    private static readonly TimeSpan DebounceWindow = TimeSpan.FromSeconds(2);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ProcessWebhookCommandHandler"/> class.
@@ -28,6 +34,7 @@ public class ProcessWebhookCommandHandler
     /// <param name="sendMessageHandler">The send message handler.</param>
     /// <param name="lineClient">The LINE client.</param>
     /// <param name="metaClient">The Meta client.</param>
+    /// <param name="redis">The Redis connection multiplexer.</param>
     /// <param name="logger">The logger.</param>
     public ProcessWebhookCommandHandler(
         IUserProfileRepository userProfileRepository,
@@ -36,6 +43,7 @@ public class ProcessWebhookCommandHandler
         SendMessageCommandHandler sendMessageHandler,
         ILineClient lineClient,
         IMetaClient metaClient,
+        IConnectionMultiplexer redis,
         ILogger<ProcessWebhookCommandHandler> logger)
     {
         _userProfileRepository = userProfileRepository;
@@ -44,6 +52,7 @@ public class ProcessWebhookCommandHandler
         _sendMessageHandler = sendMessageHandler;
         _lineClient = lineClient;
         _metaClient = metaClient;
+        _redis = redis;
         _logger = logger;
     }
 
@@ -129,20 +138,70 @@ public class ProcessWebhookCommandHandler
                 activeSession.Id, userProfile.Id);
         }
 
-        // Process the message through SendMessageHandler
-        var sendMessageCommand = new SendMessageCommand
+        // Buffer message for debouncing
+        await BufferMessageAndProcessAsync(activeSession.Id, command, cancellationToken);
+    }
+
+    private async Task BufferMessageAndProcessAsync(Guid sessionId, ProcessWebhookCommand command, CancellationToken cancellationToken)
+    {
+        var db = _redis.GetDatabase();
+        var bufferKey = $"{BufferKeyPrefix}{sessionId}";
+        var timerKey = $"{TimerKeyPrefix}{sessionId}";
+
+        // Push current message to buffer
+        await db.ListRightPushAsync(bufferKey, command.MessageText);
+        
+        // Try to set a timer key with NX (only if not exists)
+        // If it succeeds, this task becomes the 'worker' that will process the buffer after delay
+        var isTimerStarter = await db.StringSetAsync(timerKey, "active", DebounceWindow, When.NotExists);
+
+        if (isTimerStarter)
         {
-            SessionId = activeSession.Id,
-            Content = command.MessageText
-        };
+            // Background task to wait and then process
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    // Wait for the debounce window
+                    await Task.Delay(DebounceWindow);
 
-        var result = await _sendMessageHandler.HandleAsync(sendMessageCommand, cancellationToken);
+                    // Check if more messages arrived (by checking if timer was refreshed? 
+                    // Simple approach: just wait and then take everything in buffer)
+                    
+                    var messages = await db.ListRangeAsync(bufferKey);
+                    if (messages.Length == 0) return;
 
-        // Send response back to platform
-        await SendResponseToPlatformAsync(command, result, cancellationToken);
+                    // Clear buffer and timer
+                    await db.KeyDeleteAsync(bufferKey);
+                    await db.KeyDeleteAsync(timerKey);
 
-        _logger.LogInformation("Webhook processed successfully for {Channel} user {UserId}",
-            command.Channel, command.PlatformUserId);
+                    var combinedContent = string.Join("\n", messages.Select(m => m.ToString()));
+                    _logger.LogInformation("Processing {Count} buffered messages for session {SessionId}", messages.Length, sessionId);
+
+                    // Process combined message
+                    var sendMessageCommand = new SendMessageCommand
+                    {
+                        SessionId = sessionId,
+                        Content = combinedContent
+                    };
+
+                    var result = await _sendMessageHandler.HandleAsync(sendMessageCommand, CancellationToken.None);
+
+                    // Send response back to platform
+                    await SendResponseToPlatformAsync(command, result, CancellationToken.None);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error processing buffered messages for session {SessionId}", sessionId);
+                }
+            }, CancellationToken.None);
+        }
+        else
+        {
+            // Optional: refresh timer to extend the window if messages keep coming
+            await db.KeyExpireAsync(timerKey, DebounceWindow);
+            _logger.LogDebug("Extended debounce window for session {SessionId}", sessionId);
+        }
     }
 
     /// <summary>
