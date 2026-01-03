@@ -5,7 +5,6 @@
     <ProjectReference Include="..\..\Maliev.MessagingContracts\generated\csharp\Maliev.MessagingContracts.csproj" />
     <ProjectReference Include="..\Maliev.ChatbotService.Application\Maliev.ChatbotService.Application.csproj" />
     <ProjectReference Include="..\Maliev.ChatbotService.Domain\Maliev.ChatbotService.Domain.csproj" />
-    <ProjectReference Include="..\..\Maliev.MessagingContracts\generated\csharp\Maliev.MessagingContracts.csproj" />
   </ItemGroup>
 
   <ItemGroup>
