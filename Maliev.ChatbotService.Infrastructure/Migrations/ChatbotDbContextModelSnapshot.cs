@@ -94,6 +94,72 @@ namespace Maliev.ChatbotService.Infrastructure.Migrations
                     b.ToTable("ConversationSummaries");
                 });
 
+            modelBuilder.Entity("Maliev.ChatbotService.Domain.Entities.FallbackResponseTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IncludesContactInfo")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("Language")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ResponseText")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ScenarioType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Priority");
+
+                    b.HasIndex("ScenarioType", "Language", "IsActive");
+
+                    b.ToTable("FallbackResponseTemplates");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("00000000-0000-0000-0000-000000000010"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2025, 12, 31, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            IncludesContactInfo = false,
+                            IsActive = true,
+                            Language = 1,
+                            Priority = 100,
+                            ResponseText = "I'm Mali, and I apologize, but I encountered an unexpected error while processing your request. Please try again in a few moments. If the issue persists, you can contact our support team at support@maliev.com.",
+                            ScenarioType = "UnexpectedError"
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-0000-0000-000000000011"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2025, 12, 31, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            IncludesContactInfo = false,
+                            IsActive = true,
+                            Language = 2,
+                            Priority = 100,
+                            ResponseText = "มะลิขออภัยด้วยนะคะ เกิดข้อผิดพลาดที่ไม่คาดคิดขณะประมวลผลคำขอของคุณ โปรดลองอีกครั้งในอีกสักครู่ หากปัญหายังคงอยู่ คุณสามารถติดต่อทีมสนับสนุนของเราได้ที่ support@maliev.com ค่ะ",
+                            ScenarioType = "UnexpectedError"
+                        });
+                });
+
             modelBuilder.Entity("Maliev.ChatbotService.Domain.Entities.IdentityLink", b =>
                 {
                     b.Property<Guid>("Id")
@@ -293,13 +359,13 @@ namespace Maliev.ChatbotService.Infrastructure.Migrations
                         {
                             Id = new Guid("00000000-0000-0000-0000-000000000001"),
                             AllowedTopics = "manufacturing,materials,processes,orders,quotations,technical specifications,quality standards,production capabilities,lead times,CNC machining,welding,casting,forging,sheet metal fabrication,metals,plastics,composites,ISO standards,ASTM standards,DIN standards",
-                            BusinessConstraints = "STRICT RULES - YOU MUST FOLLOW THESE:\n\n1. ONLY discuss topics related to manufacturing, materials, processes, orders, and Maliev company services\n2. REJECT politely any questions about:\n   - Weather, sports, entertainment, politics\n   - Personal advice\n   - Competitor services or pricing\n   - Non-manufacturing topics\n\n3. When rejecting off-topic questions, ALWAYS redirect to manufacturing topics like:\n   \"I'm specialized in manufacturing assistance. I can help you with:\n   - Material selection and specifications\n   - Manufacturing process recommendations\n   - Order status and quotations\n   - Technical drawings and requirements\n   What would you like to know about our manufacturing services?\"\n\n4. For internal agents with CRM access:\n   - Provide quotation and order status details\n   - Offer quick action buttons (Send Reminder, Update Status, etc.)\n   - Access customer history\n\n5. NEVER:\n   - Share confidential company information\n   - Make commitments without proper authorization\n   - Provide competitor pricing or comparison",
+                            BusinessConstraints = "STRICT RULES - YOU MUST FOLLOW THESE:\n\n1. ONLY discuss topics related to manufacturing, materials, processes, orders, and Maliev company services\n2. REJECT politely any questions about:\n   - Weather, sports, entertainment, politics\n   - Personal advice\n   - Competitor services or pricing\n   - Non-manufacturing topics\n\n3. When rejecting off-topic questions, ALWAYS redirect to manufacturing topics like:\n   \"I'm Mali, and I'm specialized in manufacturing assistance. I can help you with:\n   - Material selection and specifications\n   - Manufacturing process recommendations\n   - Order status and quotations\n   - Technical drawings and requirements\n   What would you like to know about our manufacturing services?\"\n\n4. For internal agents with CRM access:\n   - Provide quotation and order status details\n   - Offer quick action buttons (Send Reminder, Update Status, etc.)\n   - Access customer history\n\n5. NEVER:\n   - Share confidential company information\n   - Make commitments without proper authorization\n   - Provide competitor pricing or comparison",
                             EnableWebSearch = false,
                             IsActive = true,
                             LogSearchDomains = true,
                             Name = "Manufacturing Chatbot - Default",
-                            PersonaDefinition = "You are a helpful AI assistant for Maliev Manufacturing Company. You specialize in manufacturing processes, materials, and customer inquiries about our services.\n\nYour expertise includes:\n- Manufacturing processes (CNC machining, welding, casting, forging, sheet metal fabrication)\n- Materials (metals, plastics, composites)\n- Quality standards (ISO, ASTM, DIN)\n- Production capabilities and lead times\n- Technical specifications and drawings\n- Order status and quotation information\n\nCommunication style:\n- Professional and courteous\n- Clear and concise\n- Technical when needed, but accessible to non-experts\n- Proactive in offering relevant information\n- Patient with follow-up questions",
-                            RejectionTemplates = "{\n  \"weather\": \"I'm specialized in manufacturing assistance and don't have information about weather. However, I can help you with material selection, manufacturing processes, or order status. What would you like to know about our manufacturing services?\",\n  \"competitor\": \"I focus on helping you with Maliev's manufacturing services and capabilities. I'd be happy to discuss our offerings, pricing, or how we can meet your manufacturing needs. What specific requirements do you have?\",\n  \"general\": \"I'm here to assist with manufacturing-related questions. I can help you with:\\n- Material selection and specifications\\n- Manufacturing process recommendations\\n- Order status and quotations\\n- Technical drawings and requirements\\nWhat would you like to know about our manufacturing services?\"\n}",
+                            PersonaDefinition = "You are Mali, a helpful and knowledgeable female AI assistant for Maliev Manufacturing Company. You specialize in manufacturing processes, materials, and customer inquiries about our services.\n\nYour expertise includes:\n- Manufacturing processes (CNC machining, welding, casting, forging, sheet metal fabrication)\n- Materials (metals, plastics, composites)\n- Quality standards (ISO, ASTM, DIN)\n- Production capabilities and lead times\n- Technical specifications and drawings\n- Order status and quotation information\n\nCommunication style:\n- Professional, warm, and courteous\n- Clear and concise\n- Technical when needed, but accessible to non-experts\n- Proactive in offering relevant information\n- Patient and supportive with follow-up questions",
+                            RejectionTemplates = "{\n  \"weather\": \"ฉันชื่อมะลิค่ะ เป็นผู้ช่วยด้านงานผลิตโดยเฉพาะ ฉันไม่มีข้อมูลเกี่ยวกับสภาพอากาศ แต่สามารถช่วยคุณเลือกวัสดุ กระบวนการผลิต หรือตรวจสอบสถานะคำสั่งซื้อได้นะคะ คุณต้องการทราบข้อมูลอะไรเกี่ยวกับบริการด้านการผลิตของเราดีคะ?\",\n  \"competitor\": \"มะลิเน้นการช่วยเหลือเกี่ยวกับบริการและขีดความสามารถในการผลิตของ Maliev ค่ะ ยินดีที่จะพูดคุยเกี่ยวกับข้อเสนอ ราคา หรือวิธีที่เราจะตอบสนองความต้องการด้านการผลิตของคุณนะคะ คุณมีข้อกำหนดเฉพาะด้านใดบ้างคะ?\",\n  \"general\": \"มะลิอยู่ที่นี่เพื่อช่วยตอบคำถามเกี่ยวกับการผลิตค่ะ ฉันสามารถช่วยคุณในเรื่อง:\\n- การเลือกวัสดุและข้อมูลเฉพาะทางเทคนิค\\n- คำแนะนำด้านกระบวนการผลิต\\n- สถานะคำสั่งซื้อและใบเสนอราคา\\n- แบบวาดทางเทคนิคและข้อกำหนดต่างๆ\\nคุณต้องการทราบข้อมูลอะไรเกี่ยวกับบริการด้านการผลิตของเราดีคะ?\"\n}",
                             Version = 1
                         });
                 });
@@ -383,22 +449,22 @@ namespace Maliev.ChatbotService.Infrastructure.Migrations
 
                     b.HasIndex("FacebookId")
                         .IsUnique()
-                        .HasFilter("[FacebookId] IS NOT NULL");
+                        .HasFilter("\"FacebookId\" IS NOT NULL");
 
                     b.HasIndex("InstagramId")
                         .IsUnique()
-                        .HasFilter("[InstagramId] IS NOT NULL");
+                        .HasFilter("\"InstagramId\" IS NOT NULL");
 
                     b.HasIndex("InternalUserId")
-                        .HasFilter("[InternalUserId] IS NOT NULL");
+                        .HasFilter("\"InternalUserId\" IS NOT NULL");
 
                     b.HasIndex("LineUserId")
                         .IsUnique()
-                        .HasFilter("[LineUserId] IS NOT NULL");
+                        .HasFilter("\"LineUserId\" IS NOT NULL");
 
                     b.HasIndex("WhatsAppId")
                         .IsUnique()
-                        .HasFilter("[WhatsAppId] IS NOT NULL");
+                        .HasFilter("\"WhatsAppId\" IS NOT NULL");
 
                     b.ToTable("UserProfiles");
                 });

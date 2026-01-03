@@ -27,7 +27,7 @@ jobs:
           echo "Switched to PackageReference for ServiceDefaults"
 
       - name: Restore dependencies
-        run: dotnet restore Maliev.ChatbotService.sln
+        run: dotnet restore Maliev.ChatbotService.sln --no-cache
         env:
           NUGET_USERNAME: ${{ github.actor }}
           NUGET_PASSWORD: ${{ secrets.GITOPS_PAT }}

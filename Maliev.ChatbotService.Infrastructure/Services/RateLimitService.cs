@@ -1,5 +1,5 @@
 using Maliev.ChatbotService.Application.Interfaces;
-using Microsoft.Extensions.Caching.Distributed;
+using Maliev.Aspire.ServiceDefaults.Caching;
 using Microsoft.Extensions.Logging;
 
 namespace Maliev.ChatbotService.Infrastructure.Services;
@@ -9,7 +9,7 @@ namespace Maliev.ChatbotService.Infrastructure.Services;
 /// </summary>
 public class RateLimitService : IRateLimitService
 {
-    private readonly IDistributedCache _cache;
+    private readonly ICacheService _cache;
     private readonly ILogger<RateLimitService> _logger;
     private const int MaxMessagesPerHour = 100;
     private readonly TimeSpan _windowDuration = TimeSpan.FromHours(1);
@@ -17,9 +17,9 @@ public class RateLimitService : IRateLimitService
     /// <summary>
     /// Initializes a new instance of the <see cref="RateLimitService"/> class.
     /// </summary>
-    /// <param name="cache">The distributed cache.</param>
+    /// <param name="cache">The standardized cache service.</param>
     /// <param name="logger">The logger.</param>
-    public RateLimitService(IDistributedCache cache, ILogger<RateLimitService> logger)
+    public RateLimitService(ICacheService cache, ILogger<RateLimitService> logger)
     {
         _cache = cache;
         _logger = logger;
@@ -29,14 +29,13 @@ public class RateLimitService : IRateLimitService
     public async Task<bool> IsRateLimitExceededAsync(Guid userProfileId, CancellationToken cancellationToken = default)
     {
         var key = GetCacheKey(userProfileId);
-        var countString = await _cache.GetStringAsync(key, cancellationToken);
+        var countString = await _cache.GetAsync<string>(key, cancellationToken);
 
-        if (string.IsNullOrEmpty(countString))
+        if (string.IsNullOrEmpty(countString) || !int.TryParse(countString, out var count))
         {
             return false;
         }
 
-        var count = int.Parse(countString);
         return count >= MaxMessagesPerHour;
     }
 
@@ -44,17 +43,8 @@ public class RateLimitService : IRateLimitService
     public async Task<int> IncrementMessageCountAsync(Guid userProfileId, CancellationToken cancellationToken = default)
     {
         var key = GetCacheKey(userProfileId);
-        var countString = await _cache.GetStringAsync(key, cancellationToken);
-
-        var currentCount = string.IsNullOrEmpty(countString) ? 0 : int.Parse(countString);
-        var newCount = currentCount + 1;
-
-        var options = new DistributedCacheEntryOptions
-        {
-            AbsoluteExpirationRelativeToNow = _windowDuration
-        };
-
-        await _cache.SetStringAsync(key, newCount.ToString(), options, cancellationToken);
+        
+        var newCount = (int)await _cache.IncrementAsync(key, _windowDuration, cancellationToken);
 
         if (newCount >= MaxMessagesPerHour)
         {
@@ -68,9 +58,9 @@ public class RateLimitService : IRateLimitService
     public async Task<int> GetRemainingMessagesAsync(Guid userProfileId, CancellationToken cancellationToken = default)
     {
         var key = GetCacheKey(userProfileId);
-        var countString = await _cache.GetStringAsync(key, cancellationToken);
+        var countString = await _cache.GetAsync<string>(key, cancellationToken);
 
-        var currentCount = string.IsNullOrEmpty(countString) ? 0 : int.Parse(countString);
+        var currentCount = (string.IsNullOrEmpty(countString) || !int.TryParse(countString, out var count)) ? 0 : count;
         var remaining = Math.Max(0, MaxMessagesPerHour - currentCount);
 
         return remaining;

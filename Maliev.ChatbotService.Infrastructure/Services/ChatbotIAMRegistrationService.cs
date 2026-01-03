@@ -1,5 +1,6 @@
 using Maliev.Aspire.ServiceDefaults.IAM;
 using Microsoft.Extensions.Logging;
+using System.Collections.Generic;
 
 namespace Maliev.ChatbotService.Infrastructure.Services;
 
@@ -142,7 +143,7 @@ public class ChatbotIAMRegistrationService : IAMRegistrationService
             new RoleRegistration
             {
                 RoleId = "chatbot.admin",
-                Description = "Administrator role for chatbot management",
+                Description = "Administrator role for full chatbot management and monitoring",
                 PermissionIds = new List<string>
                 {
                     "chatbot.instructions.read",

@@ -37,16 +37,16 @@ jobs:
           
           # Replace ProjectReference with PackageReference in all service csproj files
           for file in $(find . -name "*.csproj"); do
-            sed -i "s|<ProjectReference Include=".*Maliev.Aspire.ServiceDefaults.*.csproj" />|<PackageReference Include=\"Maliev.Aspire.ServiceDefaults\" Version=\"$VERSION_FORMAT\" />|g" "$file"
-            sed -i "s|<ProjectReference Include=".*Maliev.MessagingContracts.*.csproj" />|<PackageReference Include=\"Maliev.MessagingContracts\" Version=\"$VERSION_FORMAT\" />|g" "$file"
+            sed -i "s|<ProjectReference Include=\".*Maliev.Aspire.ServiceDefaults.*.csproj\" />|<PackageReference Include=\"Maliev.Aspire.ServiceDefaults\" Version=\"$VERSION_FORMAT\" />|g" "$file"
+            sed -i "s|<ProjectReference Include=\".*Maliev.MessagingContracts.*.csproj\" />|<PackageReference Include=\"Maliev.MessagingContracts\" Version=\"$VERSION_FORMAT\" />|g" "$file"
           done
           echo "Switched to PackageReference for ServiceDefaults and MessagingContracts"
 
       - name: Restore dependencies
-        run: dotnet restore Maliev.ChatbotService.sln
+        run: dotnet restore Maliev.ChatbotService.sln --no-cache
         env:
-          GITHUB_ACTOR: ${{ github.actor }}
-          NUGET_AUTH_TOKEN: ${{ secrets.GITOPS_PAT }}
+          NUGET_USERNAME: ${{ github.actor }}
+          NUGET_PASSWORD: ${{ secrets.GITOPS_PAT }}
 
       - name: Build solution
         run: dotnet build Maliev.ChatbotService.sln --no-restore --configuration Release
