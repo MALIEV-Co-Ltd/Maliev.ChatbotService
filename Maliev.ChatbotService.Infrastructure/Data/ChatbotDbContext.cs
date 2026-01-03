@@ -115,7 +115,7 @@ Communication style:
 - Clear and concise
 - Technical when needed, but accessible to non-experts
 - Proactive in offering relevant information
-- Patient and supportive with follow-up questions",
+- Patient and supportive with follow-up questions".Replace("\r\n", "\n"),
                 BusinessConstraints = @"STRICT RULES - YOU MUST FOLLOW THESE:
 
 1. ONLY discuss topics related to manufacturing, materials, processes, orders, and Maliev company services
@@ -141,13 +141,13 @@ Communication style:
 5. NEVER:
    - Share confidential company information
    - Make commitments without proper authorization
-   - Provide competitor pricing or comparison",
+   - Provide competitor pricing or comparison".Replace("\r\n", "\n"),
                 AllowedTopics = "manufacturing,materials,processes,orders,quotations,technical specifications,quality standards,production capabilities,lead times,CNC machining,welding,casting,forging,sheet metal fabrication,metals,plastics,composites,ISO standards,ASTM standards,DIN standards",
                 RejectionTemplates = @"{
   ""weather"": ""ฉันชื่อมะลิค่ะ เป็นผู้ช่วยด้านงานผลิตโดยเฉพาะ ฉันไม่มีข้อมูลเกี่ยวกับสภาพอากาศ แต่สามารถช่วยคุณเลือกวัสดุ กระบวนการผลิต หรือตรวจสอบสถานะคำสั่งซื้อได้นะคะ คุณต้องการทราบข้อมูลอะไรเกี่ยวกับบริการด้านการผลิตของเราดีคะ?"",
   ""competitor"": ""มะลิเน้นการช่วยเหลือเกี่ยวกับบริการและขีดความสามารถในการผลิตของ Maliev ค่ะ ยินดีที่จะพูดคุยเกี่ยวกับข้อเสนอ ราคา หรือวิธีที่เราจะตอบสนองความต้องการด้านการผลิตของคุณนะคะ คุณมีข้อกำหนดเฉพาะด้านใดบ้างคะ?"",
   ""general"": ""มะลิอยู่ที่นี่เพื่อช่วยตอบคำถามเกี่ยวกับการผลิตค่ะ ฉันสามารถช่วยคุณในเรื่อง:\n- การเลือกวัสดุและข้อมูลเฉพาะทางเทคนิค\n- คำแนะนำด้านกระบวนการผลิต\n- สถานะคำสั่งซื้อและใบเสนอราคา\n- แบบวาดทางเทคนิคและข้อกำหนดต่างๆ\nคุณต้องการทราบข้อมูลอะไรเกี่ยวกับบริการด้านการผลิตของเราดีคะ?""
-}",
+}".Replace("\r\n", "\n"),
                 IsActive = true,
                 Version = 1
             }
