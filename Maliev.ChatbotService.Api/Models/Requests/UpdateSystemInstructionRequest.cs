@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Maliev.ChatbotService.Domain.Enums;
 
 namespace Maliev.ChatbotService.Api.Models.Requests;
 
@@ -12,6 +13,22 @@ public class UpdateSystemInstructionRequest
     /// </summary>
     [StringLength(200, MinimumLength = 1)]
     public string? Name { get; set; }
+
+    /// <summary>
+    /// Gets or sets the category of the instruction (Core, Topic).
+    /// </summary>
+    public SystemInstructionCategory? Category { get; set; }
+
+    /// <summary>
+    /// Gets or sets the topic key for specialized instructions.
+    /// </summary>
+    [StringLength(100)]
+    public string? TopicKey { get; set; }
+
+    /// <summary>
+    /// Gets or sets the priority for injection order.
+    /// </summary>
+    public int? Priority { get; set; }
 
     /// <summary>
     /// Gets or sets the persona definition for the chatbot.

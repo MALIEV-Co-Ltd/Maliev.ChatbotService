@@ -187,7 +187,6 @@ public class BaseIntegrationTestFactory<TProgram, TDbContext> : WebApplicationFa
                 ["Service:Version"] = "1.0.0-test",
                 // IAM Integration MUST be enabled per Constitution
                 // Tests use AllowAllAuthorizationHandler to bypass permission checks
-                ["Features:IAMIntegrationEnabled"] = "true",
                 ["Features:WebSearchEnabled"] = "false",
                 // Connection strings for Testcontainers
                 [$"ConnectionStrings:{DbConnectionStringName}"] = _postgresContainer.GetConnectionString(),
@@ -639,6 +638,21 @@ internal class MockGeminiClient : IGeminiClient
         if (lastMessage.Contains("สวัสดี") || systemPrompt.Contains("สวัสดี"))
         {
             content = "สวัสดีครับ นี่คือคำตอบจำลองจาก Gemini API";
+        }
+        // Handle Intent Classification requests
+        else if (request.SystemInstruction.Contains("intent classifier"))
+        {
+            var intent = "General";
+            if (lastMessage.Contains("3d scanning")) intent = "3D-Scanning";
+            else if (lastMessage.Contains("pricing") || lastMessage.Contains("price")) intent = "Pricing";
+            else if (lastMessage.Contains("cnc")) intent = "CNC-Machining";
+
+            content = JsonSerializer.Serialize(new
+            {
+                intent = intent,
+                confidence = 0.99,
+                additionalTopics = new List<string>()
+            });
         }
         // Off-topic questions should redirect to manufacturing topics
         else if (lastMessage.Contains("weather") || lastMessage.Contains("sports") ||

@@ -14,6 +14,9 @@ public class ConversationMetrics : IConversationMetrics
     private readonly ObservableGauge<double> _geminiApiSuccessRateGauge;
     private readonly ObservableGauge<int> _activeSessionsCountGauge;
     private readonly ObservableGauge<double> _userSatisfactionScoreGauge;
+    private readonly Histogram<double> _intentClassificationConfidenceHistogram;
+    private readonly Counter<long> _contextInjectionCounter;
+    private readonly Counter<long> _cacheEventCounter;
 
     private double _geminiApiSuccessRate;
     private int _activeSessionsCount;
@@ -71,9 +74,30 @@ public class ConversationMetrics : IConversationMetrics
             unit: "score",
             description: "Average user satisfaction score (0.0 to 5.0)");
 
+        // Histogram: Intent classification confidence
+        _intentClassificationConfidenceHistogram = _meter.CreateHistogram<double>(
+            name: "intent_classification_confidence",
+            unit: "ratio",
+            description: "Confidence scores for intent classification (0.0 to 1.0)");
+
+        // Counter: Context injection volume
+        _contextInjectionCounter = _meter.CreateCounter<long>(
+            name: "context_injection_volume",
+            unit: "injections",
+            description: "Total number of context injections from Topic instructions or Knowledge Base");
+
+        // Counter: Cache events (hits/misses)
+        _cacheEventCounter = _meter.CreateCounter<long>(
+            name: "chatbot_cache_events",
+            unit: "events",
+            description: "Instruction cache events tracked by type and result");
+
         // Initialize counter and histogram with zero values to ensure they appear in metrics output
         _conversationVolumeCounter.Add(0, GetStandardTags().ToArray());
         _responseLatencyHistogram.Record(0, GetStandardTags().ToArray());
+        _intentClassificationConfidenceHistogram.Record(0, GetStandardTags().ToArray());
+        _contextInjectionCounter.Add(0, GetStandardTags().ToArray());
+        _cacheEventCounter.Add(0, GetStandardTags().ToArray());
     }
 
     /// <summary>
@@ -135,13 +159,36 @@ public class ConversationMetrics : IConversationMetrics
         _activeSessionsCount = Math.Max(0, count);
     }
 
-    /// <summary>
-    /// Updates the user satisfaction score.
-    /// </summary>
-    /// <param name="score">The satisfaction score (0.0 to 5.0).</param>
+    /// <inheritdoc/>
     public void UpdateUserSatisfactionScore(double score)
     {
         _userSatisfactionScore = Math.Clamp(score, 0.0, 5.0);
+    }
+
+    /// <inheritdoc/>
+    public void RecordIntentClassification(string intent, double confidence)
+    {
+        var tags = GetStandardTags();
+        tags.Add(new KeyValuePair<string, object?>("intent", intent));
+        _intentClassificationConfidenceHistogram.Record(confidence, tags.ToArray());
+    }
+
+    /// <inheritdoc/>
+    public void RecordContextInjection(string sourceType, string sourceId)
+    {
+        var tags = GetStandardTags();
+        tags.Add(new KeyValuePair<string, object?>("source_type", sourceType));
+        tags.Add(new KeyValuePair<string, object?>("source_id", sourceId));
+        _contextInjectionCounter.Add(1, tags.ToArray());
+    }
+
+    /// <inheritdoc/>
+    public void RecordCacheEvent(string cacheType, bool isHit)
+    {
+        var tags = GetStandardTags();
+        tags.Add(new KeyValuePair<string, object?>("cache_type", cacheType));
+        tags.Add(new KeyValuePair<string, object?>("result", isHit ? "hit" : "miss"));
+        _cacheEventCounter.Add(1, tags.ToArray());
     }
 
     /// <summary>

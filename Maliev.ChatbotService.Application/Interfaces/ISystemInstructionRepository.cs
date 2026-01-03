@@ -1,4 +1,5 @@
 using Maliev.ChatbotService.Domain.Entities;
+using Maliev.ChatbotService.Domain.Enums;
 
 namespace Maliev.ChatbotService.Application.Interfaces;
 
@@ -24,20 +25,38 @@ public interface ISystemInstructionRepository
     Task<SystemInstruction?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets the active system instruction.
+    /// Gets the active core system instruction.
     /// </summary>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>The active system instruction if found; otherwise, null.</returns>
-    Task<SystemInstruction?> GetActiveAsync(CancellationToken cancellationToken = default);
+    /// <returns>The active core system instruction if found; otherwise, null.</returns>
+    Task<SystemInstruction?> GetActiveCoreAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets all system instructions with pagination.
+    /// Gets the active topic-specific system instructions for the given topic keys.
+    /// </summary>
+    /// <param name="topicKeys">The topic keys to filter by.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A list of active topic-specific system instructions.</returns>
+    Task<List<SystemInstruction>> GetActiveByTopicsAsync(IEnumerable<string> topicKeys, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the active system instruction.
+    /// </summary>
+    /// <param name="category">Optional category filter.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The active system instruction if found; otherwise, null.</returns>
+    Task<SystemInstruction?> GetActiveAsync(SystemInstructionCategory? category = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets all system instructions with pagination and filtering.
     /// </summary>
     /// <param name="page">Page number (1-based).</param>
     /// <param name="pageSize">Page size.</param>
+    /// <param name="category">Optional category filter.</param>
+    /// <param name="topicKey">Optional topic key filter.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Tuple of instructions list and total count.</returns>
-    Task<(List<SystemInstruction> Instructions, int TotalCount)> GetAllAsync(int page, int pageSize, CancellationToken cancellationToken = default);
+    Task<(List<SystemInstruction> Instructions, int TotalCount)> GetAllAsync(int page, int pageSize, SystemInstructionCategory? category = null, string? topicKey = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Updates a system instruction.
@@ -48,11 +67,13 @@ public interface ISystemInstructionRepository
     Task UpdateAsync(SystemInstruction instruction, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Deactivates all system instructions.
+    /// Deactivates all system instructions for a specific category or topic.
     /// </summary>
+    /// <param name="category">The category to deactivate.</param>
+    /// <param name="topicKey">Optional topic key to deactivate.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
-    Task DeactivateAllAsync(CancellationToken cancellationToken = default);
+    Task DeactivateAllAsync(SystemInstructionCategory? category = null, string? topicKey = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Deletes a system instruction.

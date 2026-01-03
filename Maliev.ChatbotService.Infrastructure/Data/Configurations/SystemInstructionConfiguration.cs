@@ -21,6 +21,17 @@ public class SystemInstructionConfiguration : IEntityTypeConfiguration<SystemIns
             .IsRequired()
             .HasMaxLength(200);
 
+        builder.Property(x => x.Category)
+            .IsRequired()
+            .HasConversion<int>();
+
+        builder.Property(x => x.TopicKey)
+            .HasMaxLength(100);
+
+        builder.Property(x => x.Priority)
+            .IsRequired()
+            .HasDefaultValue(0);
+
         builder.Property(x => x.PersonaDefinition)
             .IsRequired();
 
@@ -35,6 +46,8 @@ public class SystemInstructionConfiguration : IEntityTypeConfiguration<SystemIns
 
         // Indexes
         builder.HasIndex(x => x.IsActive);
+
+        builder.HasIndex(x => x.TopicKey);
 
         builder.HasIndex(x => new { x.Name, x.Version });
     }

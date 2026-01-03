@@ -34,23 +34,28 @@ public class CreateSystemInstructionCommandHandler
     /// <returns>The created system instruction.</returns>
     public async Task<SystemInstruction> HandleAsync(CreateSystemInstructionCommand command, CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Creating new system instruction: {Name}", command.Name);
+        _logger.LogInformation("Creating new system instruction: {Name} (Category: {Category}, TopicKey: {TopicKey})", 
+            command.Name, command.Category, command.TopicKey);
 
-        // If this instruction should be active, deactivate all others
+        // If this instruction should be active, deactivate all others in the same category/topic
         if (command.IsActive)
         {
-            await _repository.DeactivateAllAsync(cancellationToken);
-            _logger.LogInformation("Deactivated all existing system instructions");
+            await _repository.DeactivateAllAsync(command.Category, command.TopicKey, cancellationToken);
+            _logger.LogInformation("Deactivated existing system instructions for Category {Category} and TopicKey {TopicKey}", 
+                command.Category, command.TopicKey);
         }
 
         // Get the next version number
-        var (existingInstructions, _) = await _repository.GetAllAsync(1, int.MaxValue, cancellationToken);
+        var (existingInstructions, _) = await _repository.GetAllAsync(1, int.MaxValue, command.Category, command.TopicKey, cancellationToken);
         var nextVersion = existingInstructions.Any() ? existingInstructions.Max(i => i.Version) + 1 : 1;
 
         var instruction = new SystemInstruction
         {
             Id = Guid.NewGuid(),
             Name = command.Name,
+            Category = command.Category,
+            TopicKey = command.TopicKey,
+            Priority = command.Priority,
             PersonaDefinition = command.PersonaDefinition,
             BusinessConstraints = command.BusinessConstraints,
             IsActive = command.IsActive,

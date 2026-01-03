@@ -37,7 +37,7 @@ public class GeminiClient : IGeminiClient
         _logger = logger;
         _metrics = metrics;
         _apiKey = configuration["Gemini:ApiKey"] ?? throw new InvalidOperationException("Gemini API key not configured");
-        _modelName = configuration["Gemini:ModelName"] ?? "gemini-2.0-flash-exp";
+        _modelName = configuration["Gemini:MainModelName"] ?? "gemini-2.5-flash";
         _totalApiCalls = 0;
         _successfulApiCalls = 0;
     }
@@ -52,7 +52,8 @@ public class GeminiClient : IGeminiClient
         {
             try
             {
-                var url = $"v1beta/models/{_modelName}:generateContent";
+                var modelName = request.ModelName ?? _modelName;
+                var url = $"v1beta/models/{modelName}:generateContent";
 
                 // ... (build contents logic same as before)
                 // Build contents with multimodal support
