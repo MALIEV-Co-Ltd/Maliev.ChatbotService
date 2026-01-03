@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Domain.Entities;
-using Microsoft.Extensions.Caching.Distributed;
+using Maliev.Aspire.ServiceDefaults.Caching;
 using Microsoft.Extensions.Logging;
 
 namespace Maliev.ChatbotService.Infrastructure.Services;
@@ -12,20 +12,21 @@ namespace Maliev.ChatbotService.Infrastructure.Services;
 public class SystemInstructionService : ISystemInstructionService
 {
     private readonly ISystemInstructionRepository _repository;
-    private readonly IDistributedCache _cache;
+    private readonly ICacheService _cache;
     private readonly ILogger<SystemInstructionService> _logger;
     private const string CacheKey = "chatbot:system_instruction:active";
     private readonly TimeSpan _cacheExpiration = TimeSpan.FromHours(1);
+    private static DateTimeOffset _nextRedisCheck = DateTimeOffset.MinValue;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SystemInstructionService"/> class.
     /// </summary>
     /// <param name="repository">The system instruction repository.</param>
-    /// <param name="cache">The distributed cache.</param>
+    /// <param name="cache">The standardized cache service.</param>
     /// <param name="logger">The logger.</param>
     public SystemInstructionService(
         ISystemInstructionRepository repository,
-        IDistributedCache cache,
+        ICacheService cache,
         ILogger<SystemInstructionService> logger)
     {
         _repository = repository;
@@ -41,11 +42,11 @@ public class SystemInstructionService : ISystemInstructionService
         try
         {
             // Try to get from Redis cache first
-            var cachedData = await _cache.GetStringAsync(CacheKey, cancellationToken);
-            if (!string.IsNullOrEmpty(cachedData))
+            var cachedData = await _cache.GetAsync<SystemInstruction>(CacheKey, cancellationToken);
+            if (cachedData != null)
             {
                 _logger.LogDebug("Retrieved active system instruction from Redis cache");
-                return JsonSerializer.Deserialize<SystemInstruction>(cachedData);
+                return cachedData;
             }
 
             _logger.LogDebug("Cache miss for active system instruction, querying PostgreSQL");
@@ -64,12 +65,7 @@ public class SystemInstructionService : ISystemInstructionService
             try
             {
                 // Attempt to cache the result
-                var serialized = JsonSerializer.Serialize(instruction);
-                var options = new DistributedCacheEntryOptions
-                {
-                    AbsoluteExpirationRelativeToNow = _cacheExpiration
-                };
-                await _cache.SetStringAsync(CacheKey, serialized, options, cancellationToken);
+                await _cache.SetAsync(CacheKey, instruction, _cacheExpiration, cancellationToken);
                 _logger.LogDebug("Cached active system instruction in Redis");
             }
             catch (Exception ex)
@@ -77,30 +73,33 @@ public class SystemInstructionService : ISystemInstructionService
                 _logger.LogWarning(ex, "Redis cache write failed - continuing with PostgreSQL-only mode");
             }
         }
-        else if (instruction != null && !redisAvailable)
+        // If Redis is already known to be down, only check occasionally to avoid latency on every request
+        if (!redisAvailable && DateTimeOffset.UtcNow < _nextRedisCheck)
+        {
+            _logger.LogDebug("Redis still unavailable, continuing with PostgreSQL-only reads (skipping recovery check until {NextCheck})", _nextRedisCheck);
+            return instruction;
+        }
+
+        if (!redisAvailable)
         {
             // Try to detect Redis recovery
             try
             {
                 var testKey = "chatbot:redis:health_check";
-                await _cache.SetStringAsync(testKey, "test", new DistributedCacheEntryOptions
-                {
-                    AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(10)
-                }, cancellationToken);
+                await _cache.SetAsync(testKey, "test", TimeSpan.FromSeconds(10), cancellationToken);
 
                 _logger.LogInformation("Redis connection recovered - caching resumed");
 
                 // Cache the instruction now that Redis is back
-                var serialized = JsonSerializer.Serialize(instruction);
-                var options = new DistributedCacheEntryOptions
+                if (instruction != null)
                 {
-                    AbsoluteExpirationRelativeToNow = _cacheExpiration
-                };
-                await _cache.SetStringAsync(CacheKey, serialized, options, cancellationToken);
+                    await _cache.SetAsync(CacheKey, instruction, _cacheExpiration, cancellationToken);
+                }
             }
             catch
             {
-                // Redis still unavailable - continue with PostgreSQL only
+                // Redis still unavailable - update backoff timer
+                _nextRedisCheck = DateTimeOffset.UtcNow.AddMinutes(1);
                 _logger.LogDebug("Redis still unavailable, continuing with PostgreSQL-only reads");
             }
         }

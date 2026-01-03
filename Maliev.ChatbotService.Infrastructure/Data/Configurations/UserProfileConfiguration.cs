@@ -44,22 +44,22 @@ public class UserProfileConfiguration : IEntityTypeConfiguration<UserProfile>
         // Indexes
         builder.HasIndex(x => x.LineUserId)
             .IsUnique()
-            .HasFilter("[LineUserId] IS NOT NULL");
+            .HasFilter("\"LineUserId\" IS NOT NULL");
 
         builder.HasIndex(x => x.FacebookId)
             .IsUnique()
-            .HasFilter("[FacebookId] IS NOT NULL");
+            .HasFilter("\"FacebookId\" IS NOT NULL");
 
         builder.HasIndex(x => x.InstagramId)
             .IsUnique()
-            .HasFilter("[InstagramId] IS NOT NULL");
+            .HasFilter("\"InstagramId\" IS NOT NULL");
 
         builder.HasIndex(x => x.WhatsAppId)
             .IsUnique()
-            .HasFilter("[WhatsAppId] IS NOT NULL");
+            .HasFilter("\"WhatsAppId\" IS NOT NULL");
 
         builder.HasIndex(x => x.InternalUserId)
-            .HasFilter("[InternalUserId] IS NOT NULL");
+            .HasFilter("\"InternalUserId\" IS NOT NULL");
 
         // Relationships
         builder.HasMany(x => x.Sessions)
