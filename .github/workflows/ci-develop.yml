@@ -24,7 +24,8 @@ jobs:
           for file in $(find . -name "*.csproj"); do
             sed -i 's|<ProjectReference Include=".*Maliev.Aspire.ServiceDefaults.*.csproj" />|<PackageReference Include="Maliev.Aspire.ServiceDefaults" Version="1.0.*-*" />|g' "$file"
           done
-          echo "Switched to PackageReference for ServiceDefaults"
+          find . -name "*.csproj" -type f -exec sed -i 's|<ProjectReference Include=".*Maliev.MessagingContracts.*.csproj" />|<PackageReference Include="Maliev.MessagingContracts" Version="1.0.*-*" />|g' {} ;
+          echo "Switched to PackageReference for ServiceDefaults and MessagingContracts"
 
       - name: Restore dependencies
         run: dotnet restore Maliev.ChatbotService.sln --no-cache
