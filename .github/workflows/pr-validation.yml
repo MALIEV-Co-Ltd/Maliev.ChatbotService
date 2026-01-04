@@ -15,15 +15,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Setup .NET 10.0
+      - name: Set up .NET
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: '10.x'
-          source-url: https://nuget.pkg.github.com/MALIEV-Co-Ltd/index.json
-        env:
-          NUGET_AUTH_TOKEN: ${{ secrets.GITOPS_PAT }}
+          dotnet-version: "10.x"
 
-      - name: Switch to PackageReference for CI
+      - name: Switch to PackageReference for CI build
         run: |
           # Determine version format based on target branch
           BASE_BRANCH="${{ github.base_ref }}"
@@ -32,26 +29,27 @@ jobs:
           else
             VERSION_FORMAT="1.0.*-*"
           fi
-          
+
           echo "Target branch is $BASE_BRANCH. Using version format: $VERSION_FORMAT"
-          
+
           # Replace ProjectReference with PackageReference in all service csproj files
-          for file in $(find . -name "*.csproj"); do
-            sed -i "s|<ProjectReference Include=\".*Maliev.Aspire.ServiceDefaults.*.csproj\" />|<PackageReference Include=\"Maliev.Aspire.ServiceDefaults\" Version=\"$VERSION_FORMAT\" />|g" "$file"
-            sed -i "s|<ProjectReference Include=\".*Maliev.MessagingContracts.*.csproj\" />|<PackageReference Include=\"Maliev.MessagingContracts\" Version=\"$VERSION_FORMAT\" />|g" "$file"
-          done
+          find . -name "*.csproj" -type f -exec sed -i \
+            's|<ProjectReference Include=".*Maliev.Aspire.ServiceDefaults.*.csproj" />|<PackageReference Include="Maliev.Aspire.ServiceDefaults" Version="'$VERSION_FORMAT'" />|g' \
+            {} \;
+          find . -name "*.csproj" -type f -exec sed -i \
+            's|<ProjectReference Include=".*Maliev.MessagingContracts.*.csproj" />|<PackageReference Include="Maliev.MessagingContracts" Version="'$VERSION_FORMAT'" />|g' \
+            {} \;
           echo "Switched to PackageReference for ServiceDefaults and MessagingContracts"
 
       - name: Restore dependencies
-        run: dotnet restore Maliev.ChatbotService.sln --no-cache
+        run: dotnet restore Maliev.ChatbotService.sln
         env:
           NUGET_USERNAME: ${{ github.actor }}
           NUGET_PASSWORD: ${{ secrets.GITOPS_PAT }}
 
-      - name: Build solution
+      - name: Build
         run: dotnet build Maliev.ChatbotService.sln --no-restore --configuration Release
 
-      - name: Run tests
+      - name: Test
         run: dotnet test Maliev.ChatbotService.sln --no-build --configuration Release --verbosity normal
-        # Testcontainers will automatically spin up PostgreSQL, Redis, and RabbitMQ
-        # No manual connection strings allowed - tests must use Testcontainers infrastructure
+        working-directory: ${{ github.workspace }}
