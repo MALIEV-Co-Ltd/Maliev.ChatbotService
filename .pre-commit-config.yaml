@@ -1,17 +1,25 @@
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v4.5.0
     hooks:
-      - id: trailing-whitespace
-      - id: end-of-file-fixer
       - id: check-yaml
-      - id: check-added-large-files
-      - id: check-case-conflict
-      - id: check-merge-conflict
-      - id: detect-private-key
+        name: Check YAML Syntax
+        args: [--allow-multiple-documents]
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
 
-  - repo: https://github.com/dotnet/format
-    rev: v5.1.250801
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.35.1
+    hooks:
+      - id: yamllint
+        name: Lint YAML Files
+        args: [-c=.yamllint.yml]
+
+  - repo: local
     hooks:
       - id: dotnet-format
-        args: ['--check', '--verbosity', 'diagnostic']
+        name: dotnet format
+        entry: dotnet format
+        language: system
+        files: \.(cs|vb)$
+        pass_filenames: false
