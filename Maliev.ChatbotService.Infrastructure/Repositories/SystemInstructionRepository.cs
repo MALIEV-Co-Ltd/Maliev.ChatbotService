@@ -50,9 +50,9 @@ public class SystemInstructionRepository : ISystemInstructionRepository
     public async Task<List<SystemInstruction>> GetActiveByTopicsAsync(IEnumerable<string> topicKeys, CancellationToken cancellationToken = default)
     {
         return await _context.SystemInstructions
-            .Where(x => x.IsActive && 
-                       x.Category == SystemInstructionCategory.Topic && 
-                       x.TopicKey != null && 
+            .Where(x => x.IsActive &&
+                       x.Category == SystemInstructionCategory.Topic &&
+                       x.TopicKey != null &&
                        topicKeys.Contains(x.TopicKey))
             .OrderByDescending(x => x.Priority)
             .ThenByDescending(x => x.Version)

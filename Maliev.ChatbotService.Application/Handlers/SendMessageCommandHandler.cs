@@ -432,14 +432,14 @@ public class SendMessageCommandHandler
                 Content = rejectionMessage,
                 ContentType = ContentType.Text,
                 CreatedAt = DateTimeOffset.UtcNow,
-                            MetadataJson = JsonSerializer.Serialize(new
-                            {
-                                intent = classification.Intent,
-                                confidence = classification.Confidence,
-                                isOnTopic = false,
-                                injectedKnowledgeIds = injectedKnowledgeIds
-                            })
-                
+                MetadataJson = JsonSerializer.Serialize(new
+                {
+                    intent = classification.Intent,
+                    confidence = classification.Confidence,
+                    isOnTopic = false,
+                    injectedKnowledgeIds = injectedKnowledgeIds
+                })
+
             };
 
             await _messageRepository.CreateAsync(rejectionMessageEntity, cancellationToken);

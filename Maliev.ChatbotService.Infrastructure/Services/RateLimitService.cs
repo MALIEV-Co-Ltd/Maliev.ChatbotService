@@ -43,7 +43,7 @@ public class RateLimitService : IRateLimitService
     public async Task<int> IncrementMessageCountAsync(Guid userProfileId, CancellationToken cancellationToken = default)
     {
         var key = GetCacheKey(userProfileId);
-        
+
         // Atomically increment using standardized cache service
         var newCount = (int)await _cache.IncrementAsync(key, _windowDuration, cancellationToken);
 

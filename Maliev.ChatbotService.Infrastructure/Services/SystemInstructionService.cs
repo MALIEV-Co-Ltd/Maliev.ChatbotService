@@ -163,7 +163,7 @@ public class SystemInstructionService : ISystemInstructionService
                 foreach (var topic in topicInstructions)
                 {
                     var topicText = $"### Topic: {topic.TopicKey}\n{topic.PersonaDefinition}\n\n{topic.BusinessConstraints}";
-                    
+
                     if (currentTotalLength + topicText.Length > MaxPromptCharacters)
                     {
                         _logger.LogWarning("System instruction truncation: Topic {TopicKey} omitted due to character limit", topic.TopicKey);

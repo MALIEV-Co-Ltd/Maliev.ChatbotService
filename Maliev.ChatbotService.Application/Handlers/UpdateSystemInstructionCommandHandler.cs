@@ -47,8 +47,8 @@ public class UpdateSystemInstructionCommandHandler
         if (command.IsActive == true && !instruction.IsActive)
         {
             await _repository.DeactivateAllAsync(
-                command.Category ?? instruction.Category, 
-                command.TopicKey ?? instruction.TopicKey, 
+                command.Category ?? instruction.Category,
+                command.TopicKey ?? instruction.TopicKey,
                 cancellationToken);
             _logger.LogInformation("Deactivated existing system instructions for Category and TopicKey");
         }
