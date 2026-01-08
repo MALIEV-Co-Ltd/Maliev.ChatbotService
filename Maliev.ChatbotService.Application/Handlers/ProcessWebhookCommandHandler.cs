@@ -150,7 +150,7 @@ public class ProcessWebhookCommandHandler
 
         // Push current message to buffer
         await db.ListRightPushAsync(bufferKey, command.MessageText);
-        
+
         // Try to set a timer key with NX (only if not exists)
         // If it succeeds, this task becomes the 'worker' that will process the buffer after delay
         var isTimerStarter = await db.StringSetAsync(timerKey, "active", DebounceWindow, When.NotExists);
@@ -162,18 +162,26 @@ public class ProcessWebhookCommandHandler
             {
                 try
                 {
-                    // Wait for the debounce window
-                    await Task.Delay(DebounceWindow);
+                    // Wait for the debounce window to pass without further activity
+                    // If KeyExpireAsync is called, the timer key existence is extended
+                    while (await db.KeyExistsAsync(timerKey))
+                    {
+                        await Task.Delay(TimeSpan.FromMilliseconds(500));
+                    }
 
-                    // Check if more messages arrived (by checking if timer was refreshed? 
-                    // Simple approach: just wait and then take everything in buffer)
-                    
-                    var messages = await db.ListRangeAsync(bufferKey);
+                    // Use Lua script to fetch and clear atomically to prevent data loss 
+                    // if new messages arrive during processing
+                    var result = await db.ScriptEvaluateAsync(@"
+                        local msgs = redis.call('LRANGE', KEYS[1], 0, -1)
+                        redis.call('DEL', KEYS[1])
+                        redis.call('DEL', KEYS[2])
+                        return msgs",
+                        [bufferKey, timerKey]);
+
+                    if (result.IsNull) return;
+
+                    var messages = (RedisValue[])result!;
                     if (messages.Length == 0) return;
-
-                    // Clear buffer and timer
-                    await db.KeyDeleteAsync(bufferKey);
-                    await db.KeyDeleteAsync(timerKey);
 
                     var combinedContent = string.Join("\n", messages.Select(m => m.ToString()));
                     _logger.LogInformation("Processing {Count} buffered messages for session {SessionId}", messages.Length, sessionId);
@@ -185,10 +193,10 @@ public class ProcessWebhookCommandHandler
                         Content = combinedContent
                     };
 
-                    var result = await _sendMessageHandler.HandleAsync(sendMessageCommand, CancellationToken.None);
+                    var sendMessageResult = await _sendMessageHandler.HandleAsync(sendMessageCommand, CancellationToken.None);
 
                     // Send response back to platform
-                    await SendResponseToPlatformAsync(command, result, CancellationToken.None);
+                    await SendResponseToPlatformAsync(command, sendMessageResult, CancellationToken.None);
                 }
                 catch (Exception ex)
                 {
