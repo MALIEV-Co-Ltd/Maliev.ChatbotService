@@ -5,6 +5,19 @@ using System.Collections.Generic;
 namespace Maliev.ChatbotService.Infrastructure.Services;
 
 /// <summary>
+/// Provides constant role IDs for the Chatbot service.
+/// </summary>
+public static class ChatbotRoles
+{
+    /// <summary>Standard user role for chatbot interactions.</summary>
+    public const string User = "roles.chatbot.user";
+    /// <summary>Administrator role for full chatbot management.</summary>
+    public const string Admin = "roles.chatbot.admin";
+    /// <summary>Internal agent role for CRM operations.</summary>
+    public const string InternalAgent = "roles.chatbot.internalagent";
+}
+
+/// <summary>
 /// Service responsible for registering chatbot permissions and roles with the IAM service.
 /// </summary>
 public class ChatbotIAMRegistrationService : IAMRegistrationService
@@ -14,12 +27,14 @@ public class ChatbotIAMRegistrationService : IAMRegistrationService
     /// </summary>
     /// <param name="httpClientFactory">The HTTP client factory.</param>
     /// <param name="tokenProvider">The service account token provider.</param>
+    /// <param name="configuration">The configuration.</param>
     /// <param name="logger">The logger.</param>
     public ChatbotIAMRegistrationService(
         IHttpClientFactory httpClientFactory,
         IServiceAccountTokenProvider tokenProvider,
+        Microsoft.Extensions.Configuration.IConfiguration configuration,
         ILogger<ChatbotIAMRegistrationService> logger)
-        : base(httpClientFactory, tokenProvider, logger, "chatbot")
+        : base(httpClientFactory, tokenProvider, configuration, logger, "chatbot")
     {
     }
 
@@ -126,7 +141,7 @@ public class ChatbotIAMRegistrationService : IAMRegistrationService
             // ChatbotUser role - Standard users interacting with the chatbot
             new RoleRegistration
             {
-                RoleId = "roles.chatbot.user",
+                RoleId = ChatbotRoles.User,
                 Description = "Standard user role for chatbot interactions",
                 PermissionIds = new List<string>
                 {
@@ -144,7 +159,7 @@ public class ChatbotIAMRegistrationService : IAMRegistrationService
             // ChatbotAdmin role - Administrators managing chatbot configuration
             new RoleRegistration
             {
-                RoleId = "roles.chatbot.admin",
+                RoleId = ChatbotRoles.Admin,
                 Description = "Administrator role for full chatbot management and monitoring",
                 PermissionIds = new List<string>
                 {
@@ -163,7 +178,7 @@ public class ChatbotIAMRegistrationService : IAMRegistrationService
             // InternalAgent role - Internal CRM agents using chatbot for operations
             new RoleRegistration
             {
-                RoleId = "roles.chatbot.internalagent",
+                RoleId = ChatbotRoles.InternalAgent,
                 Description = "Internal agent role for CRM operations and queries",
                 PermissionIds = new List<string>
                 {

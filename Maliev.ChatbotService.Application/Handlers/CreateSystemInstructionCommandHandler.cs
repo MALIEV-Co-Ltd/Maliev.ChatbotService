@@ -34,15 +34,13 @@ public class CreateSystemInstructionCommandHandler
     /// <returns>The created system instruction.</returns>
     public async Task<SystemInstruction> HandleAsync(CreateSystemInstructionCommand command, CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Creating new system instruction: {Name} (Category: {Category}, TopicKey: {TopicKey})",
-            command.Name, command.Category, command.TopicKey);
+        _logger.LogInformation("Creating new system instruction: {Name} (Category: {Category}, TopicKey: {TopicKey})", command.Name, command.Category, command.TopicKey);
 
         // If this instruction should be active, deactivate all others in the same category/topic
         if (command.IsActive)
         {
             await _repository.DeactivateAllAsync(command.Category, command.TopicKey, cancellationToken);
-            _logger.LogInformation("Deactivated existing system instructions for Category {Category} and TopicKey {TopicKey}",
-                command.Category, command.TopicKey);
+            _logger.LogInformation("Deactivated existing system instructions for Category {Category} and TopicKey {TopicKey}", command.Category, command.TopicKey);
         }
 
         // Get the next version number

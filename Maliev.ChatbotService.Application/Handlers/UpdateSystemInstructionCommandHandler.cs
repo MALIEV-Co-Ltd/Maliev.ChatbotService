@@ -43,16 +43,12 @@ public class UpdateSystemInstructionCommandHandler
             throw new InvalidOperationException($"System instruction {command.Id} not found");
         }
 
-        // If setting this instruction to active, deactivate all others in the same category/topic
+        // If setting this instruction to active, deactivate all others in the same category/topic      
         if (command.IsActive == true && !instruction.IsActive)
         {
-            await _repository.DeactivateAllAsync(
-                command.Category ?? instruction.Category,
-                command.TopicKey ?? instruction.TopicKey,
-                cancellationToken);
+            await _repository.DeactivateAllAsync(command.Category ?? instruction.Category, command.TopicKey ?? instruction.TopicKey, cancellationToken);
             _logger.LogInformation("Deactivated existing system instructions for Category and TopicKey");
         }
-
         // Update fields if provided
         if (command.Name != null)
         {

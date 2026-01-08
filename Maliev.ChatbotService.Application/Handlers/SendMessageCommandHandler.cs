@@ -437,9 +437,8 @@ public class SendMessageCommandHandler
                     intent = classification.Intent,
                     confidence = classification.Confidence,
                     isOnTopic = false,
-                    injectedKnowledgeIds = injectedKnowledgeIds
+                    injectedKnowledgeIds
                 })
-
             };
 
             await _messageRepository.CreateAsync(rejectionMessageEntity, cancellationToken);

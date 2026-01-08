@@ -42,7 +42,7 @@ public class DynamicInjectionTests : IAsyncLifetime
     {
         // Arrange
         var adminClient = _factory.CreateAuthenticatedClient("admin", new[] { "chatbot.instructions.write" });
-        
+
         // 1. Create Topic Instruction
         var topicRequest = new CreateSystemInstructionRequest
         {
@@ -77,7 +77,7 @@ public class DynamicInjectionTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var result = await response.Content.ReadFromJsonAsync<MessageResponse>(_factory.JsonSerializerOptions);
         Assert.NotNull(result);
-        
+
         // Verification of injected topics in MetadataJson should be done here if we can access the message from DB
         // or check if the LLM response contains specific domain markers
     }

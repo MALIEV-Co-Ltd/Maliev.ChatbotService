@@ -161,8 +161,12 @@ public class SystemInstructionService : ISystemInstructionService
                 var currentTotalLength = promptParts.Sum(p => p.Length);
 
                 foreach (var topic in topicInstructions)
+
                 {
+
                     var topicText = $"### Topic: {topic.TopicKey}\n{topic.PersonaDefinition}\n\n{topic.BusinessConstraints}";
+
+
 
                     if (currentTotalLength + topicText.Length > MaxPromptCharacters)
                     {

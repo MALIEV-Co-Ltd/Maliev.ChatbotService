@@ -34,8 +34,7 @@ public class GetSystemInstructionsQueryHandler
     /// <returns>List of system instructions.</returns>
     public async Task<List<SystemInstruction>> HandleAsync(GetSystemInstructionsQuery query, CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Getting system instructions (activeOnly: {ActiveOnly}, category: {Category}, topicKey: {TopicKey})",
-            query.ActiveOnly, query.Category, query.TopicKey);
+        _logger.LogInformation("Getting system instructions (activeOnly: {ActiveOnly}, category: {Category}, topicKey: {TopicKey})", query.ActiveOnly, query.Category, query.TopicKey);
 
         var (instructions, _) = await _repository.GetAllAsync(1, int.MaxValue, query.Category, query.TopicKey, cancellationToken);
 
