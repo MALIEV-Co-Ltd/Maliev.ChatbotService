@@ -13,11 +13,13 @@ public class ChatbotIAMRegistrationService : IAMRegistrationService
     /// Initializes a new instance of the <see cref="ChatbotIAMRegistrationService"/> class.
     /// </summary>
     /// <param name="httpClientFactory">The HTTP client factory.</param>
+    /// <param name="tokenProvider">The service account token provider.</param>
     /// <param name="logger">The logger.</param>
     public ChatbotIAMRegistrationService(
         IHttpClientFactory httpClientFactory,
+        IServiceAccountTokenProvider tokenProvider,
         ILogger<ChatbotIAMRegistrationService> logger)
-        : base(httpClientFactory, logger, "chatbot")
+        : base(httpClientFactory, tokenProvider, logger, "chatbot")
     {
     }
 
@@ -124,7 +126,7 @@ public class ChatbotIAMRegistrationService : IAMRegistrationService
             // ChatbotUser role - Standard users interacting with the chatbot
             new RoleRegistration
             {
-                RoleId = "chatbot.user",
+                RoleId = "roles.chatbot.user",
                 Description = "Standard user role for chatbot interactions",
                 PermissionIds = new List<string>
                 {
@@ -142,7 +144,7 @@ public class ChatbotIAMRegistrationService : IAMRegistrationService
             // ChatbotAdmin role - Administrators managing chatbot configuration
             new RoleRegistration
             {
-                RoleId = "chatbot.admin",
+                RoleId = "roles.chatbot.admin",
                 Description = "Administrator role for full chatbot management and monitoring",
                 PermissionIds = new List<string>
                 {
@@ -161,7 +163,7 @@ public class ChatbotIAMRegistrationService : IAMRegistrationService
             // InternalAgent role - Internal CRM agents using chatbot for operations
             new RoleRegistration
             {
-                RoleId = "chatbot.internalagent",
+                RoleId = "roles.chatbot.internalagent",
                 Description = "Internal agent role for CRM operations and queries",
                 PermissionIds = new List<string>
                 {
