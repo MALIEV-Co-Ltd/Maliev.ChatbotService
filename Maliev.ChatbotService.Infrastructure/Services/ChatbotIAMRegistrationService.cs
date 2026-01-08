@@ -27,12 +27,14 @@ public class ChatbotIAMRegistrationService : IAMRegistrationService
     /// </summary>
     /// <param name="httpClientFactory">The HTTP client factory.</param>
     /// <param name="tokenProvider">The service account token provider.</param>
+    /// <param name="configuration">The application configuration.</param>
     /// <param name="logger">The logger.</param>
     public ChatbotIAMRegistrationService(
         IHttpClientFactory httpClientFactory,
         IServiceAccountTokenProvider tokenProvider,
+        Microsoft.Extensions.Configuration.IConfiguration configuration,
         ILogger<ChatbotIAMRegistrationService> logger)
-        : base(httpClientFactory, tokenProvider, logger, "chatbot")
+        : base(httpClientFactory, tokenProvider, configuration, logger, "chatbot")
     {
     }
 
