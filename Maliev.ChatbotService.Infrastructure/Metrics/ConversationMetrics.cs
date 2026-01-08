@@ -39,7 +39,7 @@ public class ConversationMetrics : IConversationMetrics
         _region = configuration["Service:Region"] ?? "unknown";
         _environment = configuration["ASPNETCORE_ENVIRONMENT"] ?? "Development";
 
-        _meter = meterFactory.Create("chatbot-service", _version);
+        _meter = meterFactory.Create("chatbot-meter", _version);
 
         // Counter: Total number of conversations/messages processed
         _conversationVolumeCounter = _meter.CreateCounter<long>(
