@@ -94,9 +94,8 @@ builder.Services.AddSingleton<ConversationMetrics>();
 builder.Services.AddHostedService<Maliev.ChatbotService.Infrastructure.BackgroundServices.SessionExpiryBackgroundService>();
 
 // IAM Registration
-// Configure IAM client with service account authentication
-builder.Services.AddIAMClient(builder.Configuration, "Chatbot");
-builder.Services.AddIAMRegistration<ChatbotIAMRegistrationService>();
+builder.AddIAMServiceClient("chatbot");
+builder.Services.AddIAMRegistration<ChatbotIAMRegistrationService>("chatbot");
 
 // Handlers
 builder.Services.AddScoped<InitiateSessionCommandHandler>();
