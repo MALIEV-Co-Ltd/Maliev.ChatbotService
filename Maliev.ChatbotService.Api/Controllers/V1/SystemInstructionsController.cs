@@ -135,14 +135,14 @@ public class SystemInstructionsController : ControllerBase
         if (request.Priority.HasValue) instruction.Priority = request.Priority.Value;
         if (request.PersonaDefinition != null) instruction.PersonaDefinition = request.PersonaDefinition;
         if (request.BusinessConstraints != null) instruction.BusinessConstraints = request.BusinessConstraints;
-        
+
         if (request.IsActive.HasValue)
         {
-             if (request.IsActive.Value && !instruction.IsActive)
-             {
-                 await _repository.DeactivateAllAsync(instruction.Category, instruction.TopicKey, cancellationToken);
-             }
-             instruction.IsActive = request.IsActive.Value;
+            if (request.IsActive.Value && !instruction.IsActive)
+            {
+                await _repository.DeactivateAllAsync(instruction.Category, instruction.TopicKey, cancellationToken);
+            }
+            instruction.IsActive = request.IsActive.Value;
         }
 
         instruction.Version++; // Increment version on update

@@ -289,7 +289,7 @@ public class GeminiClient : IGeminiClient
 
         return new GeminiResponse
         {
-            Success = true, // Return as success so the conversation continues with fallback message
+            Success = false, // Return false for fallback to avoid saving to history
             Content = message,
             IsFallback = true
         };
