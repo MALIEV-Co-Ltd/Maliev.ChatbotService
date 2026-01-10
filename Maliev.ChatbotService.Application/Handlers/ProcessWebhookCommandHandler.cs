@@ -158,31 +158,36 @@ public class ProcessWebhookCommandHandler
         if (isTimerStarter)
         {
             // Background task to wait and then process
+            // Note: In production, consider using a dedicated scheduler or queue with delayed visibility
             _ = Task.Run(async () =>
             {
                 try
                 {
-                    // Wait for the debounce window to pass without further activity
-                    // If KeyExpireAsync is called, the timer key existence is extended
-                    while (await db.KeyExistsAsync(timerKey))
+                    // Wait for the debounce window to pass
+                    // We check KeyExists repeatedly to allow other requests to 'refresh' the timer
+                    while (true)
                     {
-                        await Task.Delay(TimeSpan.FromMilliseconds(500));
+                        await Task.Delay(500);
+                        if (!await db.KeyExistsAsync(timerKey))
+                        {
+                            break;
+                        }
                     }
 
-                    // Use Lua script to fetch and clear atomically to prevent data loss 
-                    // if new messages arrive during processing
+                    // Use Lua script to fetch and clear atomically
+                    // This ensures only one 'worker' can ever process a specific set of messages
                     var result = await db.ScriptEvaluateAsync(@"
                         local msgs = redis.call('LRANGE', KEYS[1], 0, -1)
-                        redis.call('DEL', KEYS[1])
-                        redis.call('DEL', KEYS[2])
-                        return msgs",
-                        [bufferKey, timerKey]);
+                        if #msgs > 0 then
+                            redis.call('DEL', KEYS[1])
+                            return msgs
+                        end
+                        return nil",
+                        [bufferKey]);
 
                     if (result.IsNull) return;
 
                     var messages = (RedisValue[])result!;
-                    if (messages.Length == 0) return;
-
                     var combinedContent = string.Join("\n", messages.Select(m => m.ToString()));
                     _logger.LogInformation("Processing {Count} buffered messages for session {SessionId}", messages.Length, sessionId);
 
@@ -193,10 +198,7 @@ public class ProcessWebhookCommandHandler
                         Content = combinedContent
                     };
 
-                    var sendMessageResult = await _sendMessageHandler.HandleAsync(sendMessageCommand, CancellationToken.None);
-
-                    // Send response back to platform
-                    await SendResponseToPlatformAsync(command, sendMessageResult, CancellationToken.None);
+                    await _sendMessageHandler.HandleAsync(sendMessageCommand, CancellationToken.None);
                 }
                 catch (Exception ex)
                 {
@@ -206,7 +208,7 @@ public class ProcessWebhookCommandHandler
         }
         else
         {
-            // Optional: refresh timer to extend the window if messages keep coming
+            // refresh timer to extend the window if messages keep coming
             await db.KeyExpireAsync(timerKey, DebounceWindow);
             _logger.LogDebug("Extended debounce window for session {SessionId}", sessionId);
         }

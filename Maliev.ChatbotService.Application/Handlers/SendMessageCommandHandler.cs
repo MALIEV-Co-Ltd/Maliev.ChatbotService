@@ -33,6 +33,7 @@ public class SendMessageCommandHandler
     private readonly IEventPublisher _eventPublisher;
     private readonly ISearchDomainLogRepository _searchDomainLogRepository;
     private readonly IWebSearchService _webSearchService;
+    private readonly StackExchange.Redis.IConnectionMultiplexer _redis;
     private readonly ILogger<SendMessageCommandHandler> _logger;
 
     /// <summary>
@@ -56,6 +57,7 @@ public class SendMessageCommandHandler
     /// <param name="eventPublisher">The event publisher.</param>
     /// <param name="searchDomainLogRepository">The search domain log repository.</param>
     /// <param name="webSearchService">The web search service.</param>
+    /// <param name="redis">The Redis connection multiplexer.</param>
     /// <param name="logger">The logger.</param>
     public SendMessageCommandHandler(
         IConversationSessionRepository sessionRepository,
@@ -76,6 +78,7 @@ public class SendMessageCommandHandler
         IEventPublisher eventPublisher,
         ISearchDomainLogRepository searchDomainLogRepository,
         IWebSearchService webSearchService,
+        StackExchange.Redis.IConnectionMultiplexer redis,
         ILogger<SendMessageCommandHandler> logger)
     {
         _sessionRepository = sessionRepository;
@@ -96,6 +99,7 @@ public class SendMessageCommandHandler
         _eventPublisher = eventPublisher;
         _searchDomainLogRepository = searchDomainLogRepository;
         _webSearchService = webSearchService;
+        _redis = redis;
         _logger = logger;
     }
 
@@ -110,473 +114,579 @@ public class SendMessageCommandHandler
     {
         var stopwatch = Stopwatch.StartNew();
 
-        // Get session
-        var session = await _sessionRepository.GetByIdAsync(command.SessionId, cancellationToken);
-        if (session == null)
+        // 1. Ensure sequential processing per session using Redis distributed lock
+        var db = _redis.GetDatabase();
+        var lockKey = $"chatbot:lock:{command.SessionId}";
+        var lockValue = Guid.NewGuid().ToString();
+
+        // Try to acquire lock for 30 seconds (Gemini timeout max)
+        if (!await db.LockTakeAsync(lockKey, lockValue, TimeSpan.FromSeconds(35)))
         {
-            throw new InvalidOperationException($"Session {command.SessionId} not found");
+            _logger.LogWarning("Could not acquire lock for session {SessionId}. System busy.", command.SessionId);
+            throw new InvalidOperationException("System is busy processing your previous message. Please wait a moment.");
         }
 
-        // Check if session is expired
-        if (session.ExpiresAt < DateTimeOffset.UtcNow)
+        try
         {
-            throw new InvalidOperationException($"Session {command.SessionId} has expired");
-        }
+            // Get session
+            var session = await _sessionRepository.GetByIdAsync(command.SessionId, cancellationToken);
+            if (session == null)
+            {
+                throw new InvalidOperationException($"Session {command.SessionId} not found");
+            }
 
-        // Check rate limit
-        var isRateLimitExceeded = await _rateLimitService.IsRateLimitExceededAsync(session.UserProfileId, cancellationToken);
-        if (isRateLimitExceeded)
-        {
-            // Publish ChatbotRateLimitExceededEvent
+            // Check if session is expired
+            if (session.ExpiresAt < DateTimeOffset.UtcNow)
+            {
+                throw new InvalidOperationException($"Session {command.SessionId} has expired");
+            }
+
+            // 2. Atomic rate limit increment and check (100 msg/hr)
             var currentCount = await _rateLimitService.IncrementMessageCountAsync(session.UserProfileId, cancellationToken);
-            await _eventPublisher.PublishAsync(new ChatbotRateLimitExceededEvent
+            if (currentCount > 100)
             {
-                MessageId = Guid.NewGuid(),
-                Timestamp = DateTimeOffset.UtcNow,
-                Source = "ChatbotService",
-                CorrelationId = session.Id,
-                UserProfileId = session.UserProfileId,
-                SessionId = session.Id,
-                Channel = session.Channel.ToString(),
-                CurrentMessageCount = currentCount,
-                RateLimitThreshold = 100,
-                ResetAt = DateTimeOffset.UtcNow.AddHours(1)
-            }, cancellationToken);
-
-            _logger.LogWarning("Rate limit exceeded for user {UserProfileId} in session {SessionId}", session.UserProfileId, session.Id);
-            throw new InvalidOperationException("Rate limit exceeded. Please try again later.");
-        }
-
-        // Validate attachment sizes
-        if (command.Attachments != null && command.Attachments.Count > 0)
-        {
-            foreach (var attachment in command.Attachments)
-            {
-                const long maxImageSize = 10 * 1024 * 1024; // 10 MB
-                const long maxPdfSize = 20 * 1024 * 1024; // 20 MB
-                const long maxVideoSize = 50 * 1024 * 1024; // 50 MB
-
-                var maxSize = attachment.ContentType switch
+                // Publish ChatbotRateLimitExceededEvent
+                await _eventPublisher.PublishAsync(new ChatbotRateLimitExceededEvent
                 {
-                    ContentType.Image => maxImageSize,
-                    ContentType.PDF => maxPdfSize,
-                    ContentType.Video => maxVideoSize,
-                    ContentType.Audio => maxVideoSize,
-                    _ => maxImageSize
-                };
+                    MessageId = Guid.NewGuid(),
+                    Timestamp = DateTimeOffset.UtcNow,
+                    Source = "ChatbotService",
+                    CorrelationId = session.Id,
+                    UserProfileId = session.UserProfileId,
+                    SessionId = session.Id,
+                    Channel = session.Channel.ToString(),
+                    CurrentMessageCount = currentCount,
+                    RateLimitThreshold = 100,
+                    ResetAt = DateTimeOffset.UtcNow.AddHours(1)
+                }, cancellationToken);
 
-                if (attachment.SizeBytes > maxSize)
-                {
-                    var maxSizeMB = maxSize / (1024 * 1024);
-                    throw new InvalidOperationException($"Attachment size exceeds the maximum allowed size of {maxSizeMB}MB for {attachment.ContentType} files.");
-                }
+                _logger.LogWarning("Rate limit exceeded for user {UserProfileId} in session {SessionId}", session.UserProfileId, session.Id);
+                throw new InvalidOperationException("Rate limit exceeded. Please try again later.");
             }
-        }
 
-        // Detect language from user message
-        var detectedLanguage = _languageDetectionService.DetectLanguage(command.Content);
-
-        // Update session language if different
-        if (session.Language != detectedLanguage)
-        {
-            session.Language = detectedLanguage;
-            await _sessionRepository.UpdateAsync(session, cancellationToken);
-            _logger.LogInformation("Updated session {SessionId} language to {Language}", session.Id, detectedLanguage);
-        }
-
-        // Save user message
-        var userMessage = new Message
-        {
-            Id = Guid.NewGuid(),
-            SessionId = session.Id,
-            Role = MessageRole.User,
-            Content = command.Content,
-            ContentType = ContentType.Text,
-            CreatedAt = DateTimeOffset.UtcNow
-        };
-
-        await _messageRepository.CreateAsync(userMessage, cancellationToken);
-
-        // Increment rate limit counter
-        await _rateLimitService.IncrementMessageCountAsync(session.UserProfileId, cancellationToken);
-
-        // Check if user is internal agent and message contains operation intent
-        var userProfile = await _userProfileRepository.GetByIdAsync(session.UserProfileId, cancellationToken);
-        if (userProfile?.Role == UserRole.InternalAgent && _operationExecutionService != null)
-        {
-            var operationIntent = DetectOperationIntent(command.Content);
-            if (operationIntent != null)
+            // Validate attachment sizes
+            if (command.Attachments != null && command.Attachments.Count > 0)
             {
-                _logger.LogInformation("Detected operation intent {OperationType} for internal agent in session {SessionId}",
-                    operationIntent.OperationType, session.Id);
-
-                var operationResult = await _operationExecutionService.ExecuteOperationAsync(
-                    operationIntent.OperationType,
-                    operationIntent.Parameters,
-                    cancellationToken);
-
-                if (operationResult.Success)
+                foreach (var attachment in command.Attachments)
                 {
-                    // Save operation result as assistant message
-                    var operationMessage = new Message
+                    const long maxImageSize = 10 * 1024 * 1024; // 10 MB
+                    const long maxPdfSize = 20 * 1024 * 1024; // 20 MB
+                    const long maxVideoSize = 50 * 1024 * 1024; // 50 MB
+
+                    var maxSize = attachment.ContentType switch
                     {
-                        Id = Guid.NewGuid(),
-                        SessionId = session.Id,
-                        Role = MessageRole.Assistant,
-                        Content = operationResult.FormattedMessage ?? "Operation completed successfully",
-                        ContentType = ContentType.Text,
-                        CreatedAt = DateTimeOffset.UtcNow
+                        ContentType.Image => maxImageSize,
+                        ContentType.PDF => maxPdfSize,
+                        ContentType.Video => maxVideoSize,
+                        ContentType.Audio => maxVideoSize,
+                        _ => maxImageSize
                     };
 
-                    await _messageRepository.CreateAsync(operationMessage, cancellationToken);
-
-                    // Update session
-                    session.LastActivityAt = DateTimeOffset.UtcNow;
-                    session.ExpiresAt = DateTimeOffset.UtcNow.AddHours(24);
-                    await _sessionRepository.UpdateAsync(session, cancellationToken);
-
-                    stopwatch.Stop();
-                    _metrics.RecordConversation();
-                    _metrics.RecordResponseLatency(stopwatch.Elapsed.TotalMilliseconds);
-
-                    // Publish ChatbotMessageReceivedEvent for operation execution
-                    await _eventPublisher.PublishAsync(new ChatbotMessageReceivedEvent
+                    if (attachment.SizeBytes > maxSize)
                     {
-                        MessageId = Guid.NewGuid(),
-                        Timestamp = DateTimeOffset.UtcNow,
-                        Source = "ChatbotService",
-                        CorrelationId = session.Id,
-                        SessionId = session.Id,
-                        UserProfileId = session.UserProfileId,
-                        Channel = session.Channel.ToString(),
-                        Language = detectedLanguage.ToString(),
-                        UserMessageContent = command.Content,
-                        AssistantResponseContent = operationMessage.Content,
-                        ResponseLatencyMs = stopwatch.Elapsed.TotalMilliseconds,
-                        ReceivedAt = userMessage.CreatedAt
-                    }, cancellationToken);
-
-                    // Convert OperationActions to SuggestedActionDto
-                    var suggestedActionsDto = operationResult.SuggestedActions.Select(a => new SuggestedActionDto
-                    {
-                        Text = a.Label,
-                        Type = a.ActionType,
-                        Data = a.Parameters != null ? JsonSerializer.Serialize(a.Parameters) : null
-                    }).ToList();
-
-                    return new SendMessageResult
-                    {
-                        MessageId = operationMessage.Id,
-                        Content = operationMessage.Content,
-                        Role = MessageRole.Assistant,
-                        Language = detectedLanguage,
-                        SuggestedActions = suggestedActionsDto,
-                        CreatedAt = operationMessage.CreatedAt
-                    };
-                }
-            }
-        }
-
-        // Get conversation history
-        var conversationHistory = await _messageRepository.GetRecentBySessionIdAsync(session.Id, 10, cancellationToken);
-
-        // Get previous session summaries for context
-        var previousSummaries = await _summaryService.GetRecentSummariesAsync(session.UserProfileId, 2, cancellationToken);
-        var summariesContext = BuildSummariesContext(previousSummaries);
-
-        // 1. Classify Intent
-        var classification = await _intentClassificationService.ClassifyIntentAsync(command.Content, cancellationToken);
-        _metrics.RecordIntentClassification(classification.Intent, classification.Confidence);
-
-        var topicKeys = new List<string>();
-        if (classification.Intent != "General" && classification.Confidence > 0.7)
-        {
-            topicKeys.Add(classification.Intent);
-            _metrics.RecordContextInjection("Topic", classification.Intent);
-        }
-        if (classification.AdditionalTopics != null)
-        {
-            foreach (var topic in classification.AdditionalTopics)
-            {
-                topicKeys.Add(topic);
-                _metrics.RecordContextInjection("Topic", topic);
-            }
-        }
-
-        // 2. Get Merged Instructions
-        var systemInstructionText = await _systemInstructionService.GetMergedInstructionsAsync(topicKeys, cancellationToken);
-
-        // 3. Fetch Knowledge Base Facts
-        var injectedKnowledgeIds = new List<Guid>();
-        if (topicKeys.Any())
-        {
-            var facts = new List<KnowledgeBase>();
-            foreach (var topic in topicKeys)
-            {
-                var topicFacts = await _knowledgeBaseRepository.GetByTopicAsync(topic, cancellationToken);
-                foreach (var fact in topicFacts)
-                {
-                    facts.Add(fact);
-                    _metrics.RecordContextInjection("KnowledgeBase", fact.TopicKey);
-                }
-            }
-
-            if (facts.Any())
-            {
-                systemInstructionText += "\n\n## RELEVANT FACTS AND CONTEXT\n";
-                foreach (var fact in facts)
-                {
-                    systemInstructionText += $"- {fact.Content}\n";
-                    injectedKnowledgeIds.Add(fact.Id);
-                }
-            }
-        }
-
-        // Add summaries context to system instruction if available
-        if (!string.IsNullOrEmpty(summariesContext))
-        {
-            systemInstructionText += $"\n\nPrevious conversation context:\n{summariesContext}";
-        }
-
-        // Get system instruction for business constraint validation (Core only for now)
-        var coreInstruction = await _systemInstructionService.GetActiveInstructionAsync(cancellationToken);
-
-        // Check if web search should be triggered
-        string? webSearchContext = null;
-        if (coreInstruction != null &&
-            coreInstruction.EnableWebSearch &&
-            ShouldTriggerWebSearch(command.Content))
-        {
-            _logger.LogInformation("Web search triggered for query: {Query}", command.Content);
-
-            // Enforce business rules: prevent competitor pricing queries
-            var competitorKeywords = new[] { "competitor", "pricing", "cost comparison", "price comparison" };
-            var isCompetitorQuery = competitorKeywords.Any(k => command.Content.ToLowerInvariant().Contains(k));
-
-            if (!isCompetitorQuery)
-            {
-                try
-                {
-                    // Perform web search with 30s timeout
-                    using var searchCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                    searchCts.CancelAfter(TimeSpan.FromSeconds(30));
-
-                    var searchResults = await _webSearchService.SearchAsync(command.Content, searchCts.Token);
-
-                    // Log domains if enabled
-                    if (coreInstruction.LogSearchDomains && searchResults.Count > 0)
-                    {
-                        var domains = searchResults.Select(r => r.Domain).Distinct().ToList();
-
-                        foreach (var domain in domains)
-                        {
-                            await _searchDomainLogRepository.CreateAsync(new SearchDomainLog
-                            {
-                                Id = Guid.NewGuid(),
-                                SessionId = session.Id,
-                                Domain = domain,
-                                SearchQuery = command.Content,
-                                AccessedAt = DateTimeOffset.UtcNow
-                            }, cancellationToken);
-                        }
-
-                        _logger.LogInformation("Logged {Count} domains for web search query", domains.Count);
-                    }
-
-                    // Build web search context for Gemini
-                    if (searchResults.Count > 0)
-                    {
-                        webSearchContext = "Web search results:\n" +
-                            string.Join("\n", searchResults.Take(5).Select((r, i) =>
-                                $"{i + 1}. {r.Title}\n   {r.Snippet}\n   Source: {r.Url}"));
+                        var maxSizeMB = maxSize / (1024 * 1024);
+                        throw new InvalidOperationException($"Attachment size exceeds the maximum allowed size of {maxSizeMB}MB for {attachment.ContentType} files.");
                     }
                 }
-                catch (OperationCanceledException)
-                {
-                    _logger.LogWarning("Web search timed out after 30 seconds for query: {Query}", command.Content);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error performing web search for query: {Query}", command.Content);
-                }
             }
-            else
+
+            // Detect language from user message
+            var detectedLanguage = _languageDetectionService.DetectLanguage(command.Content);
+
+            // Update session language if different
+            if (session.Language != detectedLanguage)
             {
-                _logger.LogWarning("Blocked competitor pricing query: {Query}", command.Content);
+                session.Language = detectedLanguage;
+                await _sessionRepository.UpdateAsync(session, cancellationToken);
+                _logger.LogInformation("Updated session {SessionId} language to {Language}", session.Id, detectedLanguage);
             }
-        }
 
-        // Check if message is off-topic
-        if (coreInstruction != null && !_businessConstraintValidator.IsOnTopic(command.Content, coreInstruction))
-        {
-            _logger.LogWarning("Off-topic message detected for session {SessionId}: {Content}", session.Id, command.Content);
-
-            await _operationLogRepository.CreateAsync(new OperationLog
-            {
-                Id = Guid.NewGuid(),
-                UserProfileId = session.UserProfileId,
-                MessageId = userMessage.Id,
-                OperationType = "OffTopicAttempt",
-                OperationParameters = $"{{\"message\":\"{command.Content}\"}}",
-                ExecutedAt = DateTimeOffset.UtcNow,
-                Success = false
-            }, cancellationToken);
-
-            var rejectionMessage = _businessConstraintValidator.GetRejectionMessage(command.Content, coreInstruction);
-
-            var rejectionMessageEntity = new Message
+            // Save user message
+            var userMessage = new Message
             {
                 Id = Guid.NewGuid(),
                 SessionId = session.Id,
-                Role = MessageRole.Assistant,
-                Content = rejectionMessage,
+                Role = MessageRole.User,
+                Content = command.Content,
                 ContentType = ContentType.Text,
-                CreatedAt = DateTimeOffset.UtcNow,
-                MetadataJson = JsonSerializer.Serialize(new
-                {
-                    intent = classification.Intent,
-                    confidence = classification.Confidence,
-                    isOnTopic = false,
-                    injectedKnowledgeIds
-                })
+                CreatedAt = DateTimeOffset.UtcNow
             };
 
-            await _messageRepository.CreateAsync(rejectionMessageEntity, cancellationToken);
+            await _messageRepository.CreateAsync(userMessage, cancellationToken);
+
+            // Increment rate limit counter
+            await _rateLimitService.IncrementMessageCountAsync(session.UserProfileId, cancellationToken);
+
+            // Check if user is internal agent and message contains operation intent
+            var userProfile = await _userProfileRepository.GetByIdAsync(session.UserProfileId, cancellationToken);
+            if (userProfile?.Role == UserRole.InternalAgent && _operationExecutionService != null)
+            {
+                var operationIntent = DetectOperationIntent(command.Content);
+                if (operationIntent != null)
+                {
+                    _logger.LogInformation("Detected operation intent {OperationType} for internal agent in session {SessionId}",
+                        operationIntent.OperationType, session.Id);
+
+                    var operationResult = await _operationExecutionService.ExecuteOperationAsync(
+                        operationIntent.OperationType,
+                        operationIntent.Parameters,
+                        cancellationToken);
+
+                    if (operationResult.Success)
+                    {
+                        // Save operation result as assistant message
+                        var operationMessage = new Message
+                        {
+                            Id = Guid.NewGuid(),
+                            SessionId = session.Id,
+                            Role = MessageRole.Assistant,
+                            Content = operationResult.FormattedMessage ?? "Operation completed successfully",
+                            ContentType = ContentType.Text,
+                            CreatedAt = DateTimeOffset.UtcNow
+                        };
+
+                        await _messageRepository.CreateAsync(operationMessage, cancellationToken);
+
+                        // Update session
+                        session.LastActivityAt = DateTimeOffset.UtcNow;
+                        session.ExpiresAt = DateTimeOffset.UtcNow.AddHours(24);
+                        await _sessionRepository.UpdateAsync(session, cancellationToken);
+
+                        stopwatch.Stop();
+                        _metrics.RecordConversation();
+                        _metrics.RecordResponseLatency(stopwatch.Elapsed.TotalMilliseconds);
+
+                        // Publish ChatbotMessageReceivedEvent for operation execution
+                        await _eventPublisher.PublishAsync(new ChatbotMessageReceivedEvent
+                        {
+                            MessageId = Guid.NewGuid(),
+                            Timestamp = DateTimeOffset.UtcNow,
+                            Source = "ChatbotService",
+                            CorrelationId = session.Id,
+                            SessionId = session.Id,
+                            UserProfileId = session.UserProfileId,
+                            Channel = session.Channel.ToString(),
+                            Language = detectedLanguage.ToString(),
+                            UserMessageContent = command.Content,
+                            AssistantResponseContent = operationMessage.Content,
+                            ResponseLatencyMs = stopwatch.Elapsed.TotalMilliseconds,
+                            ReceivedAt = userMessage.CreatedAt
+                        }, cancellationToken);
+
+                        // Convert OperationActions to SuggestedActionDto
+                        var suggestedActionsDto = operationResult.SuggestedActions.Select(a => new SuggestedActionDto
+                        {
+                            Text = a.Label,
+                            Type = a.ActionType,
+                            Data = a.Parameters != null ? JsonSerializer.Serialize(a.Parameters) : null
+                        }).ToList();
+
+                        return new SendMessageResult
+                        {
+                            MessageId = operationMessage.Id,
+                            Content = operationMessage.Content,
+                            Role = MessageRole.Assistant,
+                            Language = detectedLanguage,
+                            SuggestedActions = suggestedActionsDto,
+                            CreatedAt = operationMessage.CreatedAt
+                        };
+                    }
+                }
+            }
+
+            // Get conversation history
+            var conversationHistory = await _messageRepository.GetRecentBySessionIdAsync(session.Id, 10, cancellationToken);
+
+            // Get previous session summaries for context
+            var previousSummaries = await _summaryService.GetRecentSummariesAsync(session.UserProfileId, 2, cancellationToken);
+            var summariesContext = BuildSummariesContext(previousSummaries);
+
+            // 1. Classify Intent
+            var classification = await _intentClassificationService.ClassifyIntentAsync(command.Content, cancellationToken);
+            _metrics.RecordIntentClassification(classification.Intent, classification.Confidence);
+
+            var topicKeys = new List<string>();
+            if (classification.Intent != "General" && classification.Confidence > 0.7)
+            {
+                topicKeys.Add(classification.Intent);
+                _metrics.RecordContextInjection("Topic", classification.Intent);
+            }
+            if (classification.AdditionalTopics != null)
+            {
+                foreach (var topic in classification.AdditionalTopics)
+                {
+                    topicKeys.Add(topic);
+                    _metrics.RecordContextInjection("Topic", topic);
+                }
+            }
+
+            // 2. Get Merged Instructions
+            var systemInstructionText = await _systemInstructionService.GetMergedInstructionsAsync(topicKeys, cancellationToken);
+
+            // 3. Fetch Knowledge Base Facts
+            var injectedKnowledgeIds = new List<Guid>();
+            if (topicKeys.Any())
+            {
+                var facts = new List<KnowledgeBase>();
+                foreach (var topic in topicKeys)
+                {
+                    var topicFacts = await _knowledgeBaseRepository.GetByTopicAsync(topic, cancellationToken);
+                    foreach (var fact in topicFacts)
+                    {
+                        facts.Add(fact);
+                        _metrics.RecordContextInjection("KnowledgeBase", fact.TopicKey);
+                    }
+                }
+
+                if (facts.Any())
+                {
+                    systemInstructionText += "\n\n## RELEVANT FACTS AND CONTEXT\n";
+                    foreach (var fact in facts)
+                    {
+                        systemInstructionText += $"- {fact.Content}\n";
+                        injectedKnowledgeIds.Add(fact.Id);
+                    }
+                }
+            }
+
+            // Add summaries context to system instruction if available
+            if (!string.IsNullOrEmpty(summariesContext))
+            {
+                systemInstructionText += $"\n\nPrevious conversation context:\n{summariesContext}";
+            }
+
+            // Get system instruction for business constraint validation (Core only for now)
+            var coreInstruction = await _systemInstructionService.GetActiveInstructionAsync(cancellationToken);
+
+            // Check if web search should be triggered
+            string? webSearchContext = null;
+            if (coreInstruction != null &&
+                coreInstruction.EnableWebSearch &&
+                ShouldTriggerWebSearch(command.Content))
+            {
+                _logger.LogInformation("Web search triggered for query: {Query}", command.Content);
+
+                // Enforce business rules: prevent competitor pricing queries
+                var competitorKeywords = new[] { "competitor", "pricing", "cost comparison", "price comparison" };
+                var isCompetitorQuery = competitorKeywords.Any(k => command.Content.ToLowerInvariant().Contains(k));
+
+                if (!isCompetitorQuery)
+                {
+                    try
+                    {
+                        // Perform web search with 30s timeout
+                        using var searchCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                        searchCts.CancelAfter(TimeSpan.FromSeconds(30));
+
+                        var searchResults = await _webSearchService.SearchAsync(command.Content, searchCts.Token);
+
+                        // Log domains if enabled
+                        if (coreInstruction.LogSearchDomains && searchResults.Count > 0)
+                        {
+                            var domains = searchResults.Select(r => r.Domain).Distinct().ToList();
+
+                            foreach (var domain in domains)
+                            {
+                                await _searchDomainLogRepository.CreateAsync(new SearchDomainLog
+                                {
+                                    Id = Guid.NewGuid(),
+                                    SessionId = session.Id,
+                                    Domain = domain,
+                                    SearchQuery = command.Content,
+                                    AccessedAt = DateTimeOffset.UtcNow
+                                }, cancellationToken);
+                            }
+
+                            _logger.LogInformation("Logged {Count} domains for web search query", domains.Count);
+                        }
+
+                        // Build web search context for Gemini
+                        if (searchResults.Count > 0)
+                        {
+                            webSearchContext = "Web search results:\n" +
+                                string.Join("\n", searchResults.Take(5).Select((r, i) =>
+                                    $"{i + 1}. {r.Title}\n   {r.Snippet}\n   Source: {r.Url}"));
+                        }
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        _logger.LogWarning("Web search timed out after 30 seconds for query: {Query}", command.Content);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error performing web search for query: {Query}", command.Content);
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning("Blocked competitor pricing query: {Query}", command.Content);
+                }
+            }
+
+            // Check if message is off-topic
+            if (coreInstruction != null && !_businessConstraintValidator.IsOnTopic(command.Content, coreInstruction))
+            {
+                _logger.LogWarning("Off-topic message detected for session {SessionId}: {Content}", session.Id, command.Content);
+
+                await _operationLogRepository.CreateAsync(new OperationLog
+                {
+                    Id = Guid.NewGuid(),
+                    UserProfileId = session.UserProfileId,
+                    MessageId = userMessage.Id,
+                    OperationType = "OffTopicAttempt",
+                    OperationParameters = $"{{\"message\":\"{command.Content}\"}}",
+                    ExecutedAt = DateTimeOffset.UtcNow,
+                    Success = false
+                }, cancellationToken);
+
+                var rejectionMessage = _businessConstraintValidator.GetRejectionMessage(command.Content, coreInstruction);
+
+                var rejectionMessageEntity = new Message
+                {
+                    Id = Guid.NewGuid(),
+                    SessionId = session.Id,
+                    Role = MessageRole.Assistant,
+                    Content = rejectionMessage,
+                    ContentType = ContentType.Text,
+                    CreatedAt = DateTimeOffset.UtcNow,
+                    MetadataJson = JsonSerializer.Serialize(new
+                    {
+                        intent = classification.Intent,
+                        confidence = classification.Confidence,
+                        isOnTopic = false,
+                        injectedKnowledgeIds
+                    })
+                };
+
+                await _messageRepository.CreateAsync(rejectionMessageEntity, cancellationToken);
+
+                session.LastActivityAt = DateTimeOffset.UtcNow;
+                session.ExpiresAt = DateTimeOffset.UtcNow.AddHours(24);
+                await _sessionRepository.UpdateAsync(session, cancellationToken);
+
+                stopwatch.Stop();
+
+                _metrics.RecordConversation();
+                _metrics.RecordResponseLatency(stopwatch.Elapsed.TotalMilliseconds);
+
+                // Publish ChatbotMessageReceivedEvent for rejection
+                await _eventPublisher.PublishAsync(new ChatbotMessageReceivedEvent
+                {
+                    MessageId = Guid.NewGuid(),
+                    Timestamp = DateTimeOffset.UtcNow,
+                    Source = "ChatbotService",
+                    CorrelationId = session.Id,
+                    SessionId = session.Id,
+                    UserProfileId = session.UserProfileId,
+                    Channel = session.Channel.ToString(),
+                    Language = detectedLanguage.ToString(),
+                    UserMessageContent = command.Content,
+                    AssistantResponseContent = rejectionMessage,
+                    ResponseLatencyMs = stopwatch.Elapsed.TotalMilliseconds,
+                    ReceivedAt = userMessage.CreatedAt
+                }, cancellationToken);
+
+                _logger.LogInformation("Returned rejection message for off-topic request in session {SessionId}", session.Id);
+
+                return new SendMessageResult
+                {
+                    MessageId = rejectionMessageEntity.Id,
+                    Content = rejectionMessage,
+                    Role = MessageRole.Assistant,
+                    Language = detectedLanguage,
+                    SuggestedActions = new List<SuggestedActionDto>(),
+                    CreatedAt = rejectionMessageEntity.CreatedAt
+                };
+            }
+
+            // Build Gemini request with web search context if available
+            var enhancedSystemInstruction = systemInstructionText;
+            if (!string.IsNullOrEmpty(webSearchContext))
+            {
+                enhancedSystemInstruction += $"\n\n{webSearchContext}\n\nPlease use the web search results above to provide accurate, sourced information.";
+            }
+
+            var geminiRequest = new GeminiRequest
+            {
+                SystemInstruction = enhancedSystemInstruction,
+                Messages = conversationHistory
+                    .OrderBy(m => m.CreatedAt)
+                    .Select(m => new GeminiMessage
+                    {
+                        Role = m.Role == MessageRole.User ? "user" : "assistant",
+                        Content = m.Content
+                    })
+                    .ToList(),
+                TimeoutSeconds = !string.IsNullOrEmpty(webSearchContext) ? 30 : 10 // Extended timeout for web search
+            };
+
+            // Call Gemini API
+
+            var geminiResponse = await _geminiClient.SendMessageAsync(geminiRequest, cancellationToken);
+
+
+
+            if (!geminiResponse.Success && !geminiResponse.IsFallback)
+
+            {
+
+                _logger.LogError("Gemini API call failed: {ErrorMessage}", geminiResponse.ErrorMessage);
+
+                throw new InvalidOperationException("Failed to generate response from AI service");
+
+            }
+
+
+
+            // Format response with suggested actions
+
+            var (formattedContent, suggestedActions) = _responseFormatterService.FormatResponse(geminiResponse.Content, detectedLanguage);
+
+
+
+            Guid messageId = Guid.NewGuid();
+
+            DateTimeOffset createdAt = DateTimeOffset.UtcNow;
+
+
+
+            if (geminiResponse.Success)
+
+            {
+
+                // Save assistant message ONLY if it was a successful AI response
+
+                var assistantMessage = new Message
+
+                {
+
+                    Id = Guid.NewGuid(),
+
+                    SessionId = session.Id,
+
+                    Role = MessageRole.Assistant,
+
+                    Content = formattedContent,
+
+                    ContentType = ContentType.Text,
+
+                    CreatedAt = DateTimeOffset.UtcNow,
+
+                    MetadataJson = JsonSerializer.Serialize(new
+
+                    {
+
+                        intent = classification.Intent,
+
+                        confidence = classification.Confidence,
+
+                        injectedTopicKeys = topicKeys,
+
+                        injectedKnowledgeIds = injectedKnowledgeIds
+
+                    })
+
+                };
+
+
+
+                await _messageRepository.CreateAsync(assistantMessage, cancellationToken);
+
+                messageId = assistantMessage.Id;
+
+                createdAt = assistantMessage.CreatedAt;
+
+            }
+
+
+
+            // Update session last activity
 
             session.LastActivityAt = DateTimeOffset.UtcNow;
+
             session.ExpiresAt = DateTimeOffset.UtcNow.AddHours(24);
+
             await _sessionRepository.UpdateAsync(session, cancellationToken);
+
+
 
             stopwatch.Stop();
 
+
+
+            // Record metrics
+
             _metrics.RecordConversation();
+
             _metrics.RecordResponseLatency(stopwatch.Elapsed.TotalMilliseconds);
 
-            // Publish ChatbotMessageReceivedEvent for rejection
+
+
+            // Publish ChatbotMessageReceivedEvent
+
             await _eventPublisher.PublishAsync(new ChatbotMessageReceivedEvent
+
             {
+
                 MessageId = Guid.NewGuid(),
+
                 Timestamp = DateTimeOffset.UtcNow,
+
                 Source = "ChatbotService",
+
                 CorrelationId = session.Id,
+
                 SessionId = session.Id,
+
                 UserProfileId = session.UserProfileId,
+
                 Channel = session.Channel.ToString(),
+
                 Language = detectedLanguage.ToString(),
+
                 UserMessageContent = command.Content,
-                AssistantResponseContent = rejectionMessage,
+
+                AssistantResponseContent = formattedContent,
+
                 ResponseLatencyMs = stopwatch.Elapsed.TotalMilliseconds,
+
                 ReceivedAt = userMessage.CreatedAt
+
             }, cancellationToken);
 
-            _logger.LogInformation("Returned rejection message for off-topic request in session {SessionId}", session.Id);
+
+
+            _logger.LogInformation("Processed message in session {SessionId} with language {Language} in {ElapsedMs}ms",
+
+                session.Id, detectedLanguage, stopwatch.Elapsed.TotalMilliseconds);
+
+
 
             return new SendMessageResult
+
             {
-                MessageId = rejectionMessageEntity.Id,
-                Content = rejectionMessage,
+
+                MessageId = messageId,
+
+                Content = formattedContent,
+
                 Role = MessageRole.Assistant,
+
                 Language = detectedLanguage,
-                SuggestedActions = new List<SuggestedActionDto>(),
-                CreatedAt = rejectionMessageEntity.CreatedAt
+
+                SuggestedActions = suggestedActions,
+
+                CreatedAt = createdAt
+
             };
+
+
         }
-
-        // Build Gemini request with web search context if available
-        var enhancedSystemInstruction = systemInstructionText;
-        if (!string.IsNullOrEmpty(webSearchContext))
+        finally
         {
-            enhancedSystemInstruction += $"\n\n{webSearchContext}\n\nPlease use the web search results above to provide accurate, sourced information.";
+            await db.LockReleaseAsync(lockKey, lockValue);
         }
-
-        var geminiRequest = new GeminiRequest
-        {
-            SystemInstruction = enhancedSystemInstruction,
-            Messages = conversationHistory
-                .OrderBy(m => m.CreatedAt)
-                .Select(m => new GeminiMessage
-                {
-                    Role = m.Role == MessageRole.User ? "user" : "assistant",
-                    Content = m.Content
-                })
-                .ToList(),
-            TimeoutSeconds = !string.IsNullOrEmpty(webSearchContext) ? 30 : 10 // Extended timeout for web search
-        };
-
-        // Call Gemini API
-        var geminiResponse = await _geminiClient.SendMessageAsync(geminiRequest, cancellationToken);
-
-        if (!geminiResponse.Success)
-        {
-            _logger.LogError("Gemini API call failed: {ErrorMessage}", geminiResponse.ErrorMessage);
-            throw new InvalidOperationException("Failed to generate response from AI service");
-        }
-
-        // Format response with suggested actions
-        var (formattedContent, suggestedActions) = _responseFormatterService.FormatResponse(geminiResponse.Content, detectedLanguage);
-
-        // Save assistant message
-        var assistantMessage = new Message
-        {
-            Id = Guid.NewGuid(),
-            SessionId = session.Id,
-            Role = MessageRole.Assistant,
-            Content = formattedContent,
-            ContentType = ContentType.Text,
-            CreatedAt = DateTimeOffset.UtcNow,
-            MetadataJson = JsonSerializer.Serialize(new
-            {
-                intent = classification.Intent,
-                confidence = classification.Confidence,
-                injectedTopicKeys = topicKeys,
-                injectedKnowledgeIds = injectedKnowledgeIds
-            })
-        };
-
-        await _messageRepository.CreateAsync(assistantMessage, cancellationToken);
-
-        // Update session last activity
-        session.LastActivityAt = DateTimeOffset.UtcNow;
-        session.ExpiresAt = DateTimeOffset.UtcNow.AddHours(24);
-        await _sessionRepository.UpdateAsync(session, cancellationToken);
-
-        stopwatch.Stop();
-
-        // Record metrics
-        _metrics.RecordConversation();
-        _metrics.RecordResponseLatency(stopwatch.Elapsed.TotalMilliseconds);
-
-        // Publish ChatbotMessageReceivedEvent
-        await _eventPublisher.PublishAsync(new ChatbotMessageReceivedEvent
-        {
-            MessageId = Guid.NewGuid(),
-            Timestamp = DateTimeOffset.UtcNow,
-            Source = "ChatbotService",
-            CorrelationId = session.Id,
-            SessionId = session.Id,
-            UserProfileId = session.UserProfileId,
-            Channel = session.Channel.ToString(),
-            Language = detectedLanguage.ToString(),
-            UserMessageContent = command.Content,
-            AssistantResponseContent = formattedContent,
-            ResponseLatencyMs = stopwatch.Elapsed.TotalMilliseconds,
-            ReceivedAt = userMessage.CreatedAt
-        }, cancellationToken);
-
-        _logger.LogInformation("Processed message in session {SessionId} with language {Language} in {ElapsedMs}ms",
-            session.Id, detectedLanguage, stopwatch.Elapsed.TotalMilliseconds);
-
-        return new SendMessageResult
-        {
-            MessageId = assistantMessage.Id,
-            Content = formattedContent,
-            Role = MessageRole.Assistant,
-            Language = detectedLanguage,
-            SuggestedActions = suggestedActions,
-            CreatedAt = assistantMessage.CreatedAt
-        };
     }
-
     private static string GetDefaultSystemInstruction(Language language)
     {
         if (language == Language.Thai)
