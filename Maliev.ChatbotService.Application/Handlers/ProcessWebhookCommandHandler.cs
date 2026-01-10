@@ -198,7 +198,10 @@ public class ProcessWebhookCommandHandler
                         Content = combinedContent
                     };
 
-                    await _sendMessageHandler.HandleAsync(sendMessageCommand, CancellationToken.None);
+                    var sendMessageResult = await _sendMessageHandler.HandleAsync(sendMessageCommand, CancellationToken.None);
+
+                    // Send response back to platform
+                    await SendResponseToPlatformAsync(command, sendMessageResult, CancellationToken.None);
                 }
                 catch (Exception ex)
                 {
