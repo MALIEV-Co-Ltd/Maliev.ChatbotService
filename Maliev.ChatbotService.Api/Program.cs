@@ -23,12 +23,12 @@ builder.AddStandardMiddleware(options =>
 {
     options.EnableRequestLogging = true;
 });
-builder.AddServiceMeters("chatbot-service");
+builder.AddServiceMeters("chatbot-meter");
 
 // --- Data & Cache ---
 builder.AddPostgresDbContext<ChatbotDbContext>("ChatbotDbContext", enableDynamicJson: true);
 builder.AddRedisDistributedCache("redis");
-builder.Services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(sp => 
+builder.Services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(sp =>
     StackExchange.Redis.ConnectionMultiplexer.Connect(builder.Configuration.GetConnectionString("redis") ?? "localhost"));
 
 // --- Messaging ---
@@ -94,7 +94,8 @@ builder.Services.AddSingleton<ConversationMetrics>();
 builder.Services.AddHostedService<Maliev.ChatbotService.Infrastructure.BackgroundServices.SessionExpiryBackgroundService>();
 
 // IAM Registration
-builder.Services.AddIAMRegistration<ChatbotIAMRegistrationService>();
+builder.AddIAMServiceClient("chatbot");
+builder.Services.AddIAMRegistration<ChatbotIAMRegistrationService>("chatbot");
 
 // Handlers
 builder.Services.AddScoped<InitiateSessionCommandHandler>();
@@ -139,21 +140,28 @@ builder.Services.AddHttpClient<IMetaClient, MetaClient>(client =>
 .AddStandardResilienceHandler();
 
 // Named HttpClients for OperationExecutionService
+// ENFORCED PATTERN: Services:{ServiceName}:BaseUrl (no fallbacks)
 builder.Services.AddHttpClient("QuotationService", client =>
 {
-    var baseUrl = builder.Configuration["ExternalServices:QuotationService:BaseUrl"] ?? "http://maliev-quotationservice-api:8080";
+    var baseUrl = builder.Configuration["Services:QuotationService:BaseUrl"]
+        ?? throw new InvalidOperationException(
+            "Required configuration 'Services:QuotationService:BaseUrl' is missing. Check appsettings.json or environment variables.");
     client.BaseAddress = new Uri(baseUrl);
 }).AddStandardResilienceHandler();
 
 builder.Services.AddHttpClient("OrderService", client =>
 {
-    var baseUrl = builder.Configuration["ExternalServices:OrderService:BaseUrl"] ?? "http://maliev-orderservice-api:8080";
+    var baseUrl = builder.Configuration["Services:OrderService:BaseUrl"]
+        ?? throw new InvalidOperationException(
+            "Required configuration 'Services:OrderService:BaseUrl' is missing. Check appsettings.json or environment variables.");
     client.BaseAddress = new Uri(baseUrl);
 }).AddStandardResilienceHandler();
 
 builder.Services.AddHttpClient("CustomerService", client =>
 {
-    var baseUrl = builder.Configuration["ExternalServices:CustomerService:BaseUrl"] ?? "http://maliev-customerservice-api:8080";
+    var baseUrl = builder.Configuration["Services:CustomerService:BaseUrl"]
+        ?? throw new InvalidOperationException(
+            "Required configuration 'Services:CustomerService:BaseUrl' is missing. Check appsettings.json or environment variables.");
     client.BaseAddress = new Uri(baseUrl);
 }).AddStandardResilienceHandler();
 

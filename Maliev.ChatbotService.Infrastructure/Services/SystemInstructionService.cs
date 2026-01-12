@@ -17,8 +17,9 @@ public class SystemInstructionService : ISystemInstructionService
     private readonly IConversationMetrics _metrics;
     private readonly ILogger<SystemInstructionService> _logger;
     private const string CacheKey = "chatbot:system_instruction:active";
-    private const string MergedCacheKeyPrefix = "chatbot:system_instruction:merged:";
-    private const int MaxPromptCharacters = 8000; // Character-based proxy for token limit
+    private const string MergedCacheKeyPrefix = "chatbot:system_instruction:merged:v";
+    private const string CacheVersionKey = "chatbot:system_instruction:version";
+    private const int MaxPromptCharacters = 8000;
     private readonly TimeSpan _cacheExpiration = TimeSpan.FromHours(1);
     private static DateTimeOffset _nextRedisCheck = DateTimeOffset.MinValue;
 
@@ -120,7 +121,10 @@ public class SystemInstructionService : ISystemInstructionService
     public async Task<string> GetMergedInstructionsAsync(IEnumerable<string> topicKeys, CancellationToken cancellationToken = default)
     {
         var topics = topicKeys.Distinct().OrderBy(t => t).ToList();
-        var mergedCacheKey = $"{MergedCacheKeyPrefix}{string.Join(",", topics)}";
+
+        // 0. Get current cache version to allow atomic invalidation of all merged prompts
+        var version = await _cache.GetAsync<string>(CacheVersionKey, cancellationToken) ?? "1";
+        var mergedCacheKey = $"{MergedCacheKeyPrefix}{version}:{string.Join(",", topics)}";
 
         try
         {
@@ -161,9 +165,13 @@ public class SystemInstructionService : ISystemInstructionService
                 var currentTotalLength = promptParts.Sum(p => p.Length);
 
                 foreach (var topic in topicInstructions)
+
                 {
+
                     var topicText = $"### Topic: {topic.TopicKey}\n{topic.PersonaDefinition}\n\n{topic.BusinessConstraints}";
-                    
+
+
+
                     if (currentTotalLength + topicText.Length > MaxPromptCharacters)
                     {
                         _logger.LogWarning("System instruction truncation: Topic {TopicKey} omitted due to character limit", topic.TopicKey);
@@ -172,7 +180,9 @@ public class SystemInstructionService : ISystemInstructionService
 
                     if (!topicHeaderAdded)
                     {
-                        promptParts.Add("\n## SPECIALIZED DOMAIN KNOWLEDGE");
+                        var header = "\n## SPECIALIZED DOMAIN KNOWLEDGE";
+                        promptParts.Add(header);
+                        currentTotalLength += header.Length;
                         topicHeaderAdded = true;
                     }
 
@@ -209,7 +219,15 @@ Professional, warm, and courteous in your communication style.";
         try
         {
             await _cache.RemoveAsync(CacheKey, cancellationToken);
-            _logger.LogInformation("Invalidated system instruction cache");
+
+            // Increment version to invalidate all merged prompt combinations
+            var versionString = await _cache.GetAsync<string>(CacheVersionKey, cancellationToken) ?? "1";
+            if (int.TryParse(versionString, out var version))
+            {
+                await _cache.SetAsync(CacheVersionKey, (version + 1).ToString(), TimeSpan.FromDays(7), cancellationToken);
+            }
+
+            _logger.LogInformation("Invalidated system instruction cache and incremented version");
         }
         catch (Exception ex)
         {

@@ -188,6 +188,8 @@ public class BaseIntegrationTestFactory<TProgram, TDbContext> : WebApplicationFa
                 // IAM Integration MUST be enabled per Constitution
                 // Tests use AllowAllAuthorizationHandler to bypass permission checks
                 ["Features:WebSearchEnabled"] = "false",
+                // JWT configuration for ServiceAccountTokenProvider in tests
+                ["Jwt:SecurityKey"] = "test-secret-key-at-least-32-characters-long",
                 // Connection strings for Testcontainers
                 [$"ConnectionStrings:{DbConnectionStringName}"] = _postgresContainer.GetConnectionString(),
                 ["ConnectionStrings:redis"] = _redisContainer.GetConnectionString(),

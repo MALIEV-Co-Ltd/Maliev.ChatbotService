@@ -45,7 +45,7 @@ public class InputValidationServiceTests : IAsyncLifetime
 
         // Assert
         Assert.False(result);
-        
+
     }
 
     /// <summary>
@@ -64,7 +64,7 @@ public class InputValidationServiceTests : IAsyncLifetime
 
         // Assert
         Assert.False(result);
-        
+
     }
 
     /// <summary>
@@ -83,7 +83,7 @@ public class InputValidationServiceTests : IAsyncLifetime
 
         // Assert
         Assert.False(result);
-        
+
     }
 
     /// <summary>
@@ -138,7 +138,7 @@ public class InputValidationServiceTests : IAsyncLifetime
 
         // Assert
         Assert.False(result);
-        
+
     }
 }
 
