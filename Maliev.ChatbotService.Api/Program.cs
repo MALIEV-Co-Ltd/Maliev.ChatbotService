@@ -19,7 +19,7 @@ var bootstrapLogger = loggerFactory.CreateLogger("Program");
 
 try
 {
-    Log.StartingHost(bootstrapLogger, "Chatbot Service");
+    Program.Log.StartingHost(bootstrapLogger, "Chatbot Service");
 
     var builder = WebApplication.CreateBuilder(args);
 
@@ -197,12 +197,12 @@ try
     app.MapDefaultEndpoints("chatbot");
     app.MapApiDocumentation("chatbot");
 
-    Log.ServiceStarted(logger, "Chatbot Service");
+    Program.Log.ServiceStarted(logger, "Chatbot Service");
     await app.RunAsync();
 }
 catch (Exception ex)
 {
-    Log.HostTerminated(bootstrapLogger, ex, "Chatbot Service");
+    Program.Log.HostTerminated(bootstrapLogger, ex, "Chatbot Service");
     throw;
 }
 finally
