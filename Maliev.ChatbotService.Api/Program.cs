@@ -1,4 +1,3 @@
-#pragma warning disable CA1848 // For improved performance, use the LoggerMessage delegates
 using Maliev.Aspire.ServiceDefaults;
 using Maliev.ChatbotService.Application.Handlers;
 using Maliev.ChatbotService.Application.Interfaces;
@@ -20,7 +19,7 @@ var bootstrapLogger = loggerFactory.CreateLogger("Program");
 
 try
 {
-    bootstrapLogger.LogInformation("Starting Chatbot Service host");
+    Log.StartingHost(bootstrapLogger, "Chatbot Service");
 
     var builder = WebApplication.CreateBuilder(args);
 
@@ -176,6 +175,7 @@ try
     }).AddStandardResilienceHandler();
 
     var app = builder.Build();
+    var logger = app.Services.GetRequiredService<ILogger<Program>>();
 
     // --- Database Migrations ---
     await app.MigrateDatabaseAsync<ChatbotDbContext>();
@@ -197,11 +197,12 @@ try
     app.MapDefaultEndpoints("chatbot");
     app.MapApiDocumentation("chatbot");
 
+    Log.ServiceStarted(logger, "Chatbot Service");
     await app.RunAsync();
 }
 catch (Exception ex)
 {
-    bootstrapLogger.LogCritical(ex, "Chatbot Service host terminated unexpectedly during startup");
+    Log.HostTerminated(bootstrapLogger, ex, "Chatbot Service");
     throw;
 }
 finally
@@ -212,4 +213,17 @@ finally
 /// <summary>
 /// Program class for integration testing.
 /// </summary>
-public partial class Program { }
+public partial class Program
+{
+    internal static partial class Log
+    {
+        [LoggerMessage(Level = LogLevel.Information, Message = "Starting {ServiceName} host")]
+        public static partial void StartingHost(ILogger logger, string serviceName);
+
+        [LoggerMessage(Level = LogLevel.Critical, Message = "{ServiceName} host terminated unexpectedly during startup")]
+        public static partial void HostTerminated(ILogger logger, Exception ex, string serviceName);
+
+        [LoggerMessage(Level = LogLevel.Information, Message = "{ServiceName} started successfully")]
+        public static partial void ServiceStarted(ILogger logger, string serviceName);
+    }
+}
