@@ -212,13 +212,13 @@ public class SendMessageCommandHandler
                 CreatedAt = DateTimeOffset.UtcNow
             };
 
-                    await _messageRepository.CreateAsync(userMessage, cancellationToken);
+            await _messageRepository.CreateAsync(userMessage, cancellationToken);
 
-            
 
-                    // Check if user is internal agent and message contains operation intent
 
-            
+            // Check if user is internal agent and message contains operation intent
+
+
             var userProfile = await _userProfileRepository.GetByIdAsync(session.UserProfileId, cancellationToken);
             if (userProfile?.Role == UserRole.InternalAgent && _operationExecutionService != null)
             {
