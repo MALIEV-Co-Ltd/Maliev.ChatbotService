@@ -1,6 +1,6 @@
-using System.Text.Json;
 using Maliev.ChatbotService.Domain.Entities;
 using Microsoft.Extensions.Logging;
+using System.Text.Json;
 
 namespace Maliev.ChatbotService.Application.Validators;
 

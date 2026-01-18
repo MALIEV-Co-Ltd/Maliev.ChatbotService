@@ -1,5 +1,5 @@
-using System.Diagnostics.Metrics;
 using Maliev.ChatbotService.Application.Interfaces;
+using System.Diagnostics.Metrics;
 
 namespace Maliev.ChatbotService.Infrastructure.Metrics;
 

@@ -1,5 +1,5 @@
-using System.ComponentModel.DataAnnotations;
 using Maliev.ChatbotService.Domain.Enums;
+using System.ComponentModel.DataAnnotations;
 
 namespace Maliev.ChatbotService.Api.Models.Requests;
 

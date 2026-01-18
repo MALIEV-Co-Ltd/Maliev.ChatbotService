@@ -1,6 +1,5 @@
 using Maliev.Aspire.ServiceDefaults.IAM;
 using Microsoft.Extensions.Logging;
-using System.Collections.Generic;
 
 namespace Maliev.ChatbotService.Infrastructure.Services;
 

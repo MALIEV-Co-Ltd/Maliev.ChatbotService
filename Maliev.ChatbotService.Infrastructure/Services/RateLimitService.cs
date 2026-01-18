@@ -1,5 +1,5 @@
-using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.Aspire.ServiceDefaults.Caching;
+using Maliev.ChatbotService.Application.Interfaces;
 using Microsoft.Extensions.Logging;
 
 namespace Maliev.ChatbotService.Infrastructure.Services;

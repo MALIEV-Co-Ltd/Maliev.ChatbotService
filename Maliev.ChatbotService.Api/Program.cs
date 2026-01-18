@@ -1,9 +1,7 @@
-using Maliev.Aspire.ServiceDefaults;
 using Maliev.ChatbotService.Application.Handlers;
 using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Application.Validators;
 using Maliev.ChatbotService.Infrastructure.AI;
-using Maliev.ChatbotService.Infrastructure.BackgroundServices;
 using Maliev.ChatbotService.Infrastructure.Data;
 using Maliev.ChatbotService.Infrastructure.ExternalServices;
 using Maliev.ChatbotService.Infrastructure.Messaging;
@@ -11,7 +9,6 @@ using Maliev.ChatbotService.Infrastructure.Metrics;
 using Maliev.ChatbotService.Infrastructure.Repositories;
 using Maliev.ChatbotService.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 
 // Initialize bootstrap logging
 using var loggerFactory = LoggerFactory.Create(logBuilder => logBuilder.AddConsole());

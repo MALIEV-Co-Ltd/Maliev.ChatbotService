@@ -1,5 +1,3 @@
-using System.Diagnostics;
-using System.Text.Json;
 using Maliev.ChatbotService.Application.Commands;
 using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Application.Validators;
@@ -7,6 +5,8 @@ using Maliev.ChatbotService.Domain.Entities;
 using Maliev.ChatbotService.Domain.Enums;
 using Maliev.ChatbotService.Domain.Events;
 using Microsoft.Extensions.Logging;
+using System.Diagnostics;
+using System.Text.Json;
 
 namespace Maliev.ChatbotService.Application.Handlers;
 
