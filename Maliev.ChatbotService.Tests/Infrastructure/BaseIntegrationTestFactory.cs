@@ -24,6 +24,10 @@ using StackExchange.Redis;
 using Testcontainers.PostgreSql;
 using Testcontainers.RabbitMq;
 using Testcontainers.Redis;
+using Xunit;
+
+// Disable parallel execution to prevent race conditions on the shared singleton database
+[assembly: CollectionBehavior(DisableTestParallelization = true)]
 
 namespace Maliev.ChatbotService.Tests.Infrastructure;
 
@@ -37,11 +41,13 @@ public class BaseIntegrationTestFactory<TProgram, TDbContext> : WebApplicationFa
     where TProgram : class
     where TDbContext : DbContext
 {
-    private readonly PostgreSqlContainer _postgresContainer;
-    private readonly RedisContainer _redisContainer;
-    private readonly RabbitMqContainer _rabbitmqContainer;
+    private static PostgreSqlContainer? _postgresContainer;
+    private static RedisContainer? _redisContainer;
+    private static RabbitMqContainer? _rabbitmqContainer;
+    private static bool _containersStarted;
+    private static readonly SemaphoreSlim _initLock = new(1, 1);
+    
     private readonly RSA _testRsa;
-    private bool _containersStarted;
 
     /// <summary>
     /// Override this property if your DbContext connection string has a different name.
@@ -54,22 +60,6 @@ public class BaseIntegrationTestFactory<TProgram, TDbContext> : WebApplicationFa
     /// </summary>
     public BaseIntegrationTestFactory()
     {
-        _postgresContainer = new PostgreSqlBuilder()
-            .WithImage("postgres:18-alpine")
-            .WithCommand("-c", "max_connections=1000")
-            .Build();
-
-        _redisContainer = new RedisBuilder()
-            .WithImage("redis:8.4-alpine")
-            .WithCommand("redis-server", "--requirepass", "", "--protected-mode", "no")
-            .Build();
-
-        _rabbitmqContainer = new RabbitMqBuilder()
-            .WithImage("rabbitmq:4.2-alpine")
-            .WithUsername("guest")
-            .WithPassword("guest")
-            .Build();
-
         _testRsa = RSA.Create(2048);
 
         // Set environment variable EARLY so Program.cs picks it up during WebApplication.CreateBuilder
@@ -82,57 +72,87 @@ public class BaseIntegrationTestFactory<TProgram, TDbContext> : WebApplicationFa
     /// <returns>A task representing the asynchronous operation.</returns>
     public async Task InitializeAsync()
     {
-        if (_containersStarted)
-            return;
+        await _initLock.WaitAsync();
+        try 
+        {
+            if (!_containersStarted)
+            {
+                _postgresContainer = new PostgreSqlBuilder()
+                    .WithImage("postgres:18-alpine")
+                    .WithCommand("-c", "max_connections=1000")
+                    .Build();
 
-        // Start all containers in parallel
-        await Task.WhenAll(
-            _postgresContainer.StartAsync(),
-            _redisContainer.StartAsync(),
-            _rabbitmqContainer.StartAsync()
-        );
+                _redisContainer = new RedisBuilder()
+                    .WithImage("redis:8.4-alpine")
+                    .WithCommand("redis-server", "--requirepass", "", "--protected-mode", "no")
+                    .Build();
 
-        var postgresConnectionString = _postgresContainer.GetConnectionString();
-        var redisConnectionString = _redisContainer.GetConnectionString();
-        var rabbitMqConnectionString = _rabbitmqContainer.GetConnectionString();
+                _rabbitmqContainer = new RabbitMqBuilder()
+                    .WithImage("rabbitmq:4.2-alpine")
+                    .WithUsername("guest")
+                    .WithPassword("guest")
+                    .Build();
+
+                // Start all containers in parallel
+                await Task.WhenAll(
+                    _postgresContainer.StartAsync(),
+                    _redisContainer.StartAsync(),
+                    _rabbitmqContainer.StartAsync()
+                );
+                
+                // Ensure PostgreSQL is fully ready and accepting connections
+                var postgresReady = false;
+                var retryCount = 0;
+                const int maxRetries = 60; 
+                while (!postgresReady && retryCount < maxRetries)
+                {
+                    try
+                    {
+                        await using var conn = new Npgsql.NpgsqlConnection(_postgresContainer.GetConnectionString());
+                        await conn.OpenAsync();
+                        await using var cmd = conn.CreateCommand();
+                        cmd.CommandText = "SELECT 1";
+                        await cmd.ExecuteScalarAsync();
+                        postgresReady = true;
+                    }
+                    catch
+                    {
+                        retryCount++;
+                        await Task.Delay(1000);
+                    }
+                }
+
+                if (!postgresReady)
+                {
+                    throw new InvalidOperationException("PostgreSQL Testcontainer failed to become ready (Ping failed) after 60 seconds.");
+                }
+
+                // Wait for Redis to be ready
+                using (var connection = await StackExchange.Redis.ConnectionMultiplexer.ConnectAsync(_redisContainer.GetConnectionString()))
+                {
+                    await connection.GetDatabase().PingAsync();
+                }
+
+                // Apply database migrations
+                await ApplyMigrationsAsync();
+
+                _containersStarted = true;
+            }
+        }
+        finally
+        {
+            _initLock.Release();
+        }
+
+        var postgresConnectionString = _postgresContainer!.GetConnectionString();
+        var redisConnectionString = _redisContainer!.GetConnectionString();
+        var rabbitMqConnectionString = _rabbitmqContainer!.GetConnectionString();
 
         // Set environment variables immediately after containers start
         Environment.SetEnvironmentVariable($"ConnectionStrings__{DbConnectionStringName}", postgresConnectionString);
         Environment.SetEnvironmentVariable("ConnectionStrings__redis", redisConnectionString);
         Environment.SetEnvironmentVariable("ConnectionStrings__rabbitmq", rabbitMqConnectionString);
         Environment.SetEnvironmentVariable("ConnectionStrings__messaging", rabbitMqConnectionString);
-
-        // Wait for PostgreSQL to be ready to accept connections
-        var maxAttempts = 30;
-        var attempt = 0;
-        while (attempt < maxAttempts)
-        {
-            try
-            {
-                await using var testConnection = new Npgsql.NpgsqlConnection(postgresConnectionString);
-                await testConnection.OpenAsync();
-                await testConnection.CloseAsync();
-                break; // Success - PostgreSQL is ready
-            }
-            catch
-            {
-                attempt++;
-                if (attempt >= maxAttempts)
-                    throw new InvalidOperationException($"PostgreSQL container failed to become ready after {maxAttempts} attempts (30 seconds)");
-                await Task.Delay(1000); // Wait 1 second between attempts
-            }
-        }
-
-        // Wait for Redis to be ready
-        using (var connection = await StackExchange.Redis.ConnectionMultiplexer.ConnectAsync(redisConnectionString))
-        {
-            await connection.GetDatabase().PingAsync();
-        }
-
-        // Apply database migrations
-        await ApplyMigrationsAsync();
-
-        _containersStarted = true;
     }
 
     /// <summary>
@@ -141,12 +161,10 @@ public class BaseIntegrationTestFactory<TProgram, TDbContext> : WebApplicationFa
     /// <returns>A task representing the asynchronous operation.</returns>
     public new async Task DisposeAsync()
     {
-        await _postgresContainer.DisposeAsync();
-        await _redisContainer.DisposeAsync();
-        await _rabbitmqContainer.DisposeAsync();
+        await base.DisposeAsync(); // Stop the Host
+        // Static containers are NOT disposed here to allow reuse across tests
         _testRsa.Dispose();
         Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", null); // Cleanup
-        await base.DisposeAsync();
     }
 
     /// <summary>
@@ -191,9 +209,9 @@ public class BaseIntegrationTestFactory<TProgram, TDbContext> : WebApplicationFa
                 // JWT configuration for ServiceAccountTokenProvider in tests
                 ["Jwt:SecurityKey"] = "test-secret-key-at-least-32-characters-long",
                 // Connection strings for Testcontainers
-                [$"ConnectionStrings:{DbConnectionStringName}"] = _postgresContainer.GetConnectionString(),
-                ["ConnectionStrings:redis"] = _redisContainer.GetConnectionString(),
-                ["ConnectionStrings:messaging"] = _rabbitmqContainer.GetConnectionString()
+                [$"ConnectionStrings:{DbConnectionStringName}"] = _postgresContainer!.GetConnectionString(),
+                ["ConnectionStrings:redis"] = _redisContainer!.GetConnectionString(),
+                ["ConnectionStrings:messaging"] = _rabbitmqContainer!.GetConnectionString()
             });
         });
 
@@ -282,7 +300,7 @@ public class BaseIntegrationTestFactory<TProgram, TDbContext> : WebApplicationFa
     /// </summary>
     public TDbContext CreateDbContext()
     {
-        var connectionString = _postgresContainer.GetConnectionString();
+        var connectionString = _postgresContainer!.GetConnectionString();
         var optionsBuilder = new DbContextOptionsBuilder<TDbContext>();
         optionsBuilder.UseNpgsql(connectionString);
         return (TDbContext)Activator.CreateInstance(typeof(TDbContext), optionsBuilder.Options)!;
@@ -371,7 +389,7 @@ public class BaseIntegrationTestFactory<TProgram, TDbContext> : WebApplicationFa
             // Get all keys from Redis and delete them
             // Since IDistributedCache doesn't have a Clear method, we need to flush the Redis database
             // We'll connect directly to Redis using the connection string
-            var redisConnectionString = _redisContainer.GetConnectionString();
+            var redisConnectionString = _redisContainer!.GetConnectionString();
 
             await using var connection = await StackExchange.Redis.ConnectionMultiplexer.ConnectAsync(redisConnectionString);
             var server = connection.GetServer(connection.GetEndPoints().First());
@@ -898,4 +916,3 @@ internal class MockOperationExecutionService : IOperationExecutionService
         }
     }
 }
-

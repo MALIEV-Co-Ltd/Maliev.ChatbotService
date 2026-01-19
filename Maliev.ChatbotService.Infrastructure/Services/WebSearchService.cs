@@ -1,7 +1,7 @@
-using System.Text.Json;
 using Maliev.ChatbotService.Application.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using System.Text.Json;
 
 namespace Maliev.ChatbotService.Infrastructure.Services;
 
