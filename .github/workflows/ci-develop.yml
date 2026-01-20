@@ -6,30 +6,19 @@ on:
       - develop
 
 jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest
+  build-and-test:
+    uses: ./.github/workflows/_build-and-test.yml
+    with:
+      solution_file: Maliev.ChatbotService.slnx
+    secrets:
+      gitops_pat: ${{ secrets.GITOPS_PAT }}
 
+  deploy:
+    needs: build-and-test
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
-
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: "10.x"
-
-      - name: Restore dependencies
-        run: dotnet restore Maliev.ChatbotService.slnxx
-        env:
-          NUGET_USERNAME: ${{ github.actor }}
-          NUGET_PASSWORD: ${{ secrets.GITOPS_PAT }}
-
-      - name: Build
-        run: dotnet build Maliev.ChatbotService.slnxx --no-restore
-
-      - name: Test
-        run: dotnet test Maliev.ChatbotService.slnxx --no-build --verbosity normal
-        working-directory: ${{ github.workspace }}
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v3
