@@ -27,14 +27,8 @@ jobs:
         env:
           NUGET_AUTH_TOKEN: ${{ secrets.GITOPS_PAT }}
 
-      - name: Switch to PackageReference for CI
-        run: |
-          for file in $(find . -name "*.csproj"); do
-            sed -i 's|<ProjectReference Include=".*Maliev.Aspire.ServiceDefaults.*.csproj" />|<PackageReference Include="Maliev.Aspire.ServiceDefaults" Version="1.0.*" />|g' "$file"
-          done
-
       - name: Restore dependencies
-        run: dotnet restore Maliev.ChatbotService.sln
+        run: dotnet restore Maliev.ChatbotService.slnx
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           NUGET_AUTH_TOKEN: ${{ secrets.GITOPS_PAT }}
