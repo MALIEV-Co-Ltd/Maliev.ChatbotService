@@ -424,8 +424,9 @@ public class SendMessageCommandHandler
                 }
             }
 
-            // Check if message is off-topic
-            if (coreInstruction != null && !_businessConstraintValidator.IsOnTopic(command.Content, coreInstruction))
+            // Check if message is off-topic (skip for intranet channel - internal authenticated users)
+            if (session.Channel != Channel.Intranet &&
+                coreInstruction != null && !_businessConstraintValidator.IsOnTopic(command.Content, coreInstruction))
             {
                 _logger.LogWarning("Off-topic message detected for session {SessionId}: {Content}", session.Id, command.Content);
 
@@ -435,9 +436,10 @@ public class SendMessageCommandHandler
                     UserProfileId = session.UserProfileId,
                     MessageId = userMessage.Id,
                     OperationType = "OffTopicAttempt",
-                    OperationParameters = $"{{\"message\":\"{command.Content}\"}}",
+                    OperationParameters = JsonSerializer.Serialize(new { message = command.Content }),
                     ExecutedAt = DateTimeOffset.UtcNow,
-                    Success = false
+                    Success = false,
+                    ActionSource = "ai-assistant"
                 }, cancellationToken);
 
                 var rejectionMessage = _businessConstraintValidator.GetRejectionMessage(command.Content, coreInstruction);
@@ -518,7 +520,9 @@ public class SendMessageCommandHandler
                         Content = m.Content
                     })
                     .ToList(),
-                TimeoutSeconds = !string.IsNullOrEmpty(webSearchContext) ? 30 : 10 // Extended timeout for web search
+                TimeoutSeconds = !string.IsNullOrEmpty(webSearchContext) ? 30 : 10, // Extended timeout for web search
+                ResponseMimeType = command.ResponseMimeType,
+                ResponseSchema = command.ResponseSchema
             };
 
             // Call Gemini API

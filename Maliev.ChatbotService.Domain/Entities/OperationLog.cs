@@ -46,6 +46,11 @@ public class OperationLog
     public bool Success { get; set; }
 
     /// <summary>
+    /// Gets or sets the source of the action. Values: "user" (direct), "ai-assistant" (chatbot-initiated).
+    /// </summary>
+    public string ActionSource { get; set; } = "user";
+
+    /// <summary>
     /// Gets or sets the user profile navigation property.
     /// </summary>
     public UserProfile? UserProfile { get; set; }

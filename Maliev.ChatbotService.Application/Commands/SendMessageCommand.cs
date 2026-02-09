@@ -21,6 +21,16 @@ public class SendMessageCommand
     /// Gets or sets the list of attachments for multimodal messages.
     /// </summary>
     public List<AttachmentDto>? Attachments { get; set; }
+
+    /// <summary>
+    /// Gets or sets the response MIME type for structured output (e.g., "application/json").
+    /// </summary>
+    public string? ResponseMimeType { get; set; }
+
+    /// <summary>
+    /// Gets or sets the JSON Schema for structured output.
+    /// </summary>
+    public object? ResponseSchema { get; set; }
 }
 
 /// <summary>

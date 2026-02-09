@@ -65,7 +65,9 @@ public class MessagesController : ControllerBase
                     Data = a.Url,
                     MimeType = a.MimeType ?? string.Empty,
                     SizeBytes = a.SizeBytes ?? 0
-                }).ToList()
+                }).ToList(),
+                ResponseMimeType = request.ResponseMimeType,
+                ResponseSchema = request.ResponseSchema
             };
 
             var result = await _handler.HandleAsync(command, cancellationToken);

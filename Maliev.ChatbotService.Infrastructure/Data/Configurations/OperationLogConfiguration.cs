@@ -33,6 +33,11 @@ public class OperationLogConfiguration : IEntityTypeConfiguration<OperationLog>
         builder.Property(x => x.Success)
             .IsRequired();
 
+        builder.Property(x => x.ActionSource)
+            .IsRequired()
+            .HasMaxLength(50)
+            .HasDefaultValue("user");
+
         // Indexes
         builder.HasIndex(x => x.UserProfileId);
 

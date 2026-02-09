@@ -33,9 +33,7 @@ try
 
     // --- Data & Cache ---
     builder.AddPostgresDbContext<ChatbotDbContext>("ChatbotDbContext", enableDynamicJson: true);
-    builder.AddRedisDistributedCache("redis");
-    builder.Services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(sp =>
-        StackExchange.Redis.ConnectionMultiplexer.Connect(builder.Configuration.GetConnectionString("redis") ?? "localhost"));
+    builder.AddStandardCache("chatbot:"); // Redis + in-memory fallback, memory-optimized (includes IConnectionMultiplexer)
 
     // --- Messaging ---
     builder.AddMassTransitWithRabbitMq(cfg =>
@@ -48,7 +46,7 @@ try
     builder.AddJwtAuthentication();
 
     // --- API Configuration ---
-    builder.AddDefaultCors();
+    builder.AddStandardCors(); // CORS with fail-fast validation
     builder.AddDefaultApiVersioning();
 
     if (!builder.Environment.IsProduction())
@@ -98,6 +96,7 @@ try
 
     // Background Services
     builder.Services.AddHostedService<Maliev.ChatbotService.Infrastructure.BackgroundServices.SessionExpiryBackgroundService>();
+    builder.Services.AddHostedService<Maliev.ChatbotService.Infrastructure.Services.PromptFileLoaderService>();
 
     // IAM Registration
     builder.AddIAMServiceClient("chatbot");
@@ -113,6 +112,7 @@ try
     builder.Services.AddScoped<UpdateSystemInstructionCommandHandler>();
     builder.Services.AddScoped<GetSystemInstructionsQueryHandler>();
     builder.Services.AddScoped<ProcessWebhookCommandHandler>();
+    builder.Services.AddScoped<ExtractCustomerCommandHandler>();
 
     // Service Clients
     builder.AddServiceClient<IIAMServiceClient, IAMServiceClient>("IAM");
@@ -146,30 +146,9 @@ try
     .AddStandardResilienceHandler();
 
     // Named HttpClients for OperationExecutionService
-    // ENFORCED PATTERN: Services:{ServiceName}:BaseUrl (no fallbacks)
-    builder.Services.AddHttpClient("QuotationService", client =>
-    {
-        var baseUrl = builder.Configuration["Services:QuotationService:BaseUrl"]
-            ?? throw new InvalidOperationException(
-                "Required configuration 'Services:QuotationService:BaseUrl' is missing. Check appsettings.json or environment variables.");
-        client.BaseAddress = new Uri(baseUrl);
-    }).AddStandardResilienceHandler();
-
-    builder.Services.AddHttpClient("OrderService", client =>
-    {
-        var baseUrl = builder.Configuration["Services:OrderService:BaseUrl"]
-            ?? throw new InvalidOperationException(
-                "Required configuration 'Services:OrderService:BaseUrl' is missing. Check appsettings.json or environment variables.");
-        client.BaseAddress = new Uri(baseUrl);
-    }).AddStandardResilienceHandler();
-
-    builder.Services.AddHttpClient("CustomerService", client =>
-    {
-        var baseUrl = builder.Configuration["Services:CustomerService:BaseUrl"]
-            ?? throw new InvalidOperationException(
-                "Required configuration 'Services:CustomerService:BaseUrl' is missing. Check appsettings.json or environment variables.");
-        client.BaseAddress = new Uri(baseUrl);
-    }).AddStandardResilienceHandler();
+    builder.AddServiceClient("QuotationService");
+    builder.AddServiceClient("OrderService");
+    builder.AddServiceClient("CustomerService");
 
     var app = builder.Build();
     var logger = app.Services.GetRequiredService<ILogger<Program>>();

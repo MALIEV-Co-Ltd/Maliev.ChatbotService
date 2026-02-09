@@ -24,4 +24,14 @@ public class SendMessageRequest
     /// Gets or sets the list of attachments for the message.
     /// </summary>
     public List<Attachment>? Attachments { get; set; }
+
+    /// <summary>
+    /// Gets or sets the response MIME type for structured output (e.g., "application/json").
+    /// </summary>
+    public string? ResponseMimeType { get; set; }
+
+    /// <summary>
+    /// Gets or sets the JSON Schema for structured output.
+    /// </summary>
+    public object? ResponseSchema { get; set; }
 }

@@ -1,0 +1,41 @@
+﻿using System;
+using Microsoft.EntityFrameworkCore.Migrations;
+
+#nullable disable
+
+namespace Maliev.ChatbotService.Infrastructure.Migrations
+{
+    /// <inheritdoc />
+    public partial class AddOperationLogActionSource : Migration
+    {
+        /// <inheritdoc />
+        protected override void Up(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.DeleteData(
+                table: "SystemInstructions",
+                keyColumn: "Id",
+                keyValue: new Guid("00000000-0000-0000-0000-000000000001"));
+
+            migrationBuilder.AddColumn<string>(
+                name: "ActionSource",
+                table: "OperationLogs",
+                type: "character varying(50)",
+                maxLength: 50,
+                nullable: false,
+                defaultValue: "user");
+        }
+
+        /// <inheritdoc />
+        protected override void Down(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.DropColumn(
+                name: "ActionSource",
+                table: "OperationLogs");
+
+            migrationBuilder.InsertData(
+                table: "SystemInstructions",
+                columns: new[] { "Id", "AllowedTopics", "BusinessConstraints", "Category", "EnableWebSearch", "IsActive", "LogSearchDomains", "Name", "PersonaDefinition", "RejectionTemplates", "TopicKey", "Version" },
+                values: new object[] { new Guid("00000000-0000-0000-0000-000000000001"), "manufacturing,materials,processes,orders,quotations,technical specifications,quality standards,production capabilities,lead times,CNC machining,welding,casting,forging,sheet metal fabrication,metals,plastics,composites,ISO standards,ASTM standards,DIN standards", "STRICT RULES - YOU MUST FOLLOW THESE:\n\n1. ONLY discuss topics related to manufacturing, materials, processes, orders, and Maliev company services\n2. REJECT politely any questions about:\n   - Weather, sports, entertainment, politics\n   - Personal advice\n   - Competitor services or pricing\n   - Non-manufacturing topics\n\n3. When rejecting off-topic questions, ALWAYS redirect to manufacturing topics like:\n   \"I'm Mali, and I'm specialized in manufacturing assistance. I can help you with:\n   - Material selection and specifications\n   - Manufacturing process recommendations\n   - Order status and quotations\n   - Technical drawings and requirements\n   What would you like to know about our manufacturing services?\"\n\n4. For internal agents with CRM access:\n   - Provide quotation and order status details\n   - Offer quick action buttons (Send Reminder, Update Status, etc.)\n   - Access customer history\n\n5. NEVER:\n   - Share confidential company information\n   - Make commitments without proper authorization\n   - Provide competitor pricing or comparison", 1, false, true, true, "Manufacturing Chatbot - Default", "You are Mali, a helpful and knowledgeable female AI assistant for Maliev Manufacturing Company. You specialize in manufacturing processes, materials, and customer inquiries about our services.\n\nYour expertise includes:\n- Manufacturing processes (CNC machining, welding, casting, forging, sheet metal fabrication)\n- Materials (metals, plastics, composites)\n- Quality standards (ISO, ASTM, DIN)\n- Production capabilities and lead times\n- Technical specifications and drawings\n- Order status and quotation information\n\nCommunication style:\n- Professional, warm, and courteous\n- Clear and concise\n- Technical when needed, but accessible to non-experts\n- Proactive in offering relevant information\n- Patient and supportive with follow-up questions", "{\n  \"weather\": \"ฉันชื่อมะลิค่ะ เป็นผู้ช่วยด้านงานผลิตโดยเฉพาะ ฉันไม่มีข้อมูลเกี่ยวกับสภาพอากาศ แต่สามารถช่วยคุณเลือกวัสดุ กระบวนการผลิต หรือตรวจสอบสถานะคำสั่งซื้อได้นะคะ คุณต้องการทราบข้อมูลอะไรเกี่ยวกับบริการด้านการผลิตของเราดีคะ?\",\n  \"competitor\": \"มะลิเน้นการช่วยเหลือเกี่ยวกับบริการและขีดความสามารถในการผลิตของ Maliev ค่ะ ยินดีที่จะพูดคุยเกี่ยวกับข้อเสนอ ราคา หรือวิธีที่เราจะตอบสนองความต้องการด้านการผลิตของคุณนะคะ คุณมีข้อกำหนดเฉพาะด้านใดบ้างคะ?\",\n  \"general\": \"มะลิอยู่ที่นี่เพื่อช่วยตอบคำถามเกี่ยวกับการผลิตค่ะ ฉันสามารถช่วยคุณในเรื่อง:\\n- การเลือกวัสดุและข้อมูลเฉพาะทางเทคนิค\\n- คำแนะนำด้านกระบวนการผลิต\\n- สถานะคำสั่งซื้อและใบเสนอราคา\\n- แบบวาดทางเทคนิคและข้อกำหนดต่างๆ\\nคุณต้องการทราบข้อมูลอะไรเกี่ยวกับบริการด้านการผลิตของเราดีคะ?\"\n}", null, 1 });
+        }
+    }
+}

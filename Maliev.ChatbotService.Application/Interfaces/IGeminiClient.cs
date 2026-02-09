@@ -73,6 +73,17 @@ public class GeminiRequest
     /// Gets or sets attachments for multimodal requests.
     /// </summary>
     public List<GeminiAttachment>? Attachments { get; set; }
+
+    /// <summary>
+    /// Gets or sets the response MIME type for structured output (e.g., "application/json").
+    /// </summary>
+    public string? ResponseMimeType { get; set; }
+
+    /// <summary>
+    /// Gets or sets the JSON Schema object for structured output.
+    /// When set alongside ResponseMimeType, Gemini guarantees the response matches this schema.
+    /// </summary>
+    public object? ResponseSchema { get; set; }
 }
 
 /// <summary>
@@ -115,6 +126,11 @@ public class GeminiResponse
     /// Gets or sets the token usage metadata.
     /// </summary>
     public GeminiTokenUsage? TokenUsage { get; set; }
+
+    /// <summary>
+    /// Gets or sets the error type if unsuccessful.
+    /// </summary>
+    public string? ErrorType { get; set; }
 
     /// <summary>
     /// Gets or sets whether this response is a fallback response due to error.
