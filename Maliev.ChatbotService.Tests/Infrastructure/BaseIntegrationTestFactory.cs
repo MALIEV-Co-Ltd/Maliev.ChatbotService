@@ -3,6 +3,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text.Json;
+using Maliev.Aspire.ServiceDefaults.Caching;
 using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Infrastructure.Data;
 using MassTransit;
@@ -77,15 +78,15 @@ public class BaseIntegrationTestFactory<TProgram, TDbContext> : WebApplicationFa
         {
             if (!_containersStarted)
             {
-                _postgresContainer = new PostgreSqlBuilder("postgres:18-alpine")
+                _postgresContainer = new PostgreSqlBuilder().WithName("postgres:18-alpine")
                     .WithCommand("-c", "max_connections=1000")
                     .Build();
 
-                _redisContainer = new RedisBuilder("redis:8.4-alpine")
+                _redisContainer = new RedisBuilder().WithName("redis:8.4-alpine")
                     .WithCommand("redis-server", "--requirepass", "", "--protected-mode", "no")
                     .Build();
 
-                _rabbitmqContainer = new RabbitMqBuilder("rabbitmq:4.2-alpine")
+                _rabbitmqContainer = new RabbitMqBuilder().WithName("rabbitmq:4.2-alpine")
                     .WithUsername("guest")
                     .WithPassword("guest")
                     .Build();
@@ -181,6 +182,8 @@ public class BaseIntegrationTestFactory<TProgram, TDbContext> : WebApplicationFa
         var rsaParams = _testRsa.ExportParameters(false);
         Environment.SetEnvironmentVariable("JWT_PUBLIC_KEY_MODULUS", Convert.ToBase64String(rsaParams.Modulus!));
         Environment.SetEnvironmentVariable("JWT_PUBLIC_KEY_EXPONENT", Convert.ToBase64String(rsaParams.Exponent!));
+        Environment.SetEnvironmentVariable("CORS__AllowedOrigins__0", "http://localhost:3000");
+        Environment.SetEnvironmentVariable("CORS__AllowedOrigins__1", "http://localhost:5173");
 
         // Allow derived classes to set additional environment variables
         ConfigureEnvironmentVariables();
@@ -208,7 +211,11 @@ public class BaseIntegrationTestFactory<TProgram, TDbContext> : WebApplicationFa
                 // Connection strings for Testcontainers
                 [$"ConnectionStrings:{DbConnectionStringName}"] = _postgresContainer!.GetConnectionString(),
                 ["ConnectionStrings:redis"] = _redisContainer!.GetConnectionString(),
-                ["ConnectionStrings:messaging"] = _rabbitmqContainer!.GetConnectionString()
+                ["ConnectionStrings:messaging"] = _rabbitmqContainer!.GetConnectionString(),
+                ["CORS:AllowedOrigins:0"] = "http://localhost:3000",
+                ["CORS:AllowedOrigins:1"] = "http://localhost:5173",
+                ["CORS_ALLOWED_ORIGINS"] = "http://localhost:3000,http://localhost:5173",
+                ["ASPNETCORE_ENVIRONMENT"] = "Development"
             });
         });
 
@@ -280,7 +287,21 @@ public class BaseIntegrationTestFactory<TProgram, TDbContext> : WebApplicationFa
     /// </summary>
     protected virtual void ConfigureAdditionalServices(IServiceCollection services)
     {
-        // Override in derived class if needed
+        var redisConnectionString = _redisContainer!.GetConnectionString();
+        
+        // Explicitly register Redis for tests because AddStandardCache defaults to In-Memory in Testing env
+        services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(sp =>
+        {
+            return StackExchange.Redis.ConnectionMultiplexer.Connect(redisConnectionString);
+        });
+
+        services.AddStackExchangeRedisCache(options =>
+        {
+            options.Configuration = redisConnectionString;
+            options.InstanceName = "chatbot:";
+        });
+
+        services.AddScoped<ICacheService, RedisCacheService>();
     }
 
     /// <summary>
