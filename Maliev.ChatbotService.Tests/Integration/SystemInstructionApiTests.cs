@@ -98,4 +98,46 @@ public class SystemInstructionApiTests : IClassFixture<BaseIntegrationTestFactor
         Assert.Equal("Updated Name", updated!.Name);
         Assert.False(updated.IsActive);
     }
+
+    /// <summary>
+    /// Tests getting the active instruction.
+    /// </summary>
+    [Fact]
+    public async Task GetActiveInstruction_ShouldReturnOne()
+    {
+        // Act
+        var response = await _adminClient.GetAsync("/chatbot/v1/admin/instructions?activeOnly=true&category=Core");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var instructions = await response.Content.ReadFromJsonAsync<IEnumerable<SystemInstructionDto>>(_factory.JsonSerializerOptions);
+        Assert.NotNull(instructions);
+        Assert.True(instructions.Count() <= 1);
+    }
+
+    /// <summary>
+    /// Tests deleting a system instruction.
+    /// </summary>
+    [Fact]
+    public async Task DeleteInstruction_ShouldReturnNoContent()
+    {
+        // Arrange - Create first
+        var createRequest = new CreateSystemInstructionRequest
+        {
+            Name = "Delete Me",
+            Category = SystemInstructionCategory.Topic,
+            TopicKey = "delete-test",
+            PersonaDefinition = "Test Persona Definition Long Enough",
+            BusinessConstraints = "Test Constraints Definition Long Enough",
+            IsActive = false
+        };
+        var createResponse = await _adminClient.PostAsJsonAsync("/chatbot/v1/admin/instructions", createRequest, _factory.JsonSerializerOptions);
+        var created = await createResponse.Content.ReadFromJsonAsync<SystemInstructionDto>(_factory.JsonSerializerOptions);
+
+        // Act - Delete
+        var response = await _adminClient.DeleteAsync($"/chatbot/v1/admin/instructions/{created!.Id}");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+    }
 }

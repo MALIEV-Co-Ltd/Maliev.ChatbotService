@@ -78,15 +78,15 @@ public class BaseIntegrationTestFactory<TProgram, TDbContext> : WebApplicationFa
         {
             if (!_containersStarted)
             {
-                _postgresContainer = new PostgreSqlBuilder().WithName("postgres:18-alpine")
+                _postgresContainer = new PostgreSqlBuilder("postgres:18-alpine")
                     .WithCommand("-c", "max_connections=1000")
                     .Build();
 
-                _redisContainer = new RedisBuilder().WithName("redis:8.4-alpine")
+                _redisContainer = new RedisBuilder("redis:7.4-alpine")
                     .WithCommand("redis-server", "--requirepass", "", "--protected-mode", "no")
                     .Build();
 
-                _rabbitmqContainer = new RabbitMqBuilder().WithName("rabbitmq:4.2-alpine")
+                _rabbitmqContainer = new RabbitMqBuilder("rabbitmq:4.0-alpine")
                     .WithUsername("guest")
                     .WithPassword("guest")
                     .Build();
@@ -241,10 +241,6 @@ public class BaseIntegrationTestFactory<TProgram, TDbContext> : WebApplicationFa
 
             // Mock Operation Execution Service for internal agent tests
             services.AddScoped<IOperationExecutionService, MockOperationExecutionService>();
-
-            // Add authorization handler that bypasses all permission checks for tests
-            // This is useful when we want to test logic without worrying about IAM policies
-            services.AddSingleton<IAuthorizationHandler, AllowAllAuthorizationHandler>();
 
             // Configure JWT Bearer authentication with test RSA key
             services.PostConfigureAll<JwtBearerOptions>(options =>
@@ -690,6 +686,32 @@ internal class MockGeminiClient : IGeminiClient
                 intent = intent,
                 confidence = 0.99,
                 additionalTopics = new List<string>()
+            });
+        }
+        // Handle Customer Extraction requests
+        else if (systemPrompt.Contains("extract customer") || (request.ResponseMimeType == "application/json" && request.SystemInstruction.Contains("Extract customer information")))
+        {
+            content = JsonSerializer.Serialize(new
+            {
+                first_name = "John",
+                last_name = "Doe",
+                email = "john@example.com",
+                company_name = "Acme Corp",
+                segment = "Enterprise",
+                addresses = new[]
+                {
+                    new { type = "Shipping", address_line_1 = "123 Main St", city = "Bangkok", postal_code = "10110" }
+                }
+            });
+        }
+        // Handle Customer Intent Extraction requests
+        else if (systemPrompt.Contains("needs_customer_data") || request.SystemInstruction.Contains("determine if they need customer data"))
+        {
+            content = JsonSerializer.Serialize(new
+            {
+                needs_customer_data = true,
+                customer_search_term = "Acme Corp",
+                needs_history = false
             });
         }
         // Off-topic questions should redirect to manufacturing topics

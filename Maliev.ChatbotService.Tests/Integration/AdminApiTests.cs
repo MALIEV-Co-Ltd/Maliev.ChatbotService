@@ -245,8 +245,8 @@ public class AdminApiTests : IAsyncLifetime
         var request = new CreateSystemInstructionRequest
         {
             Name = "Unauthorized",
-            PersonaDefinition = "Test",
-            BusinessConstraints = "Test",
+            PersonaDefinition = "This is a long enough persona definition",
+            BusinessConstraints = "This is a long enough business constraint",
             IsActive = false
         };
 

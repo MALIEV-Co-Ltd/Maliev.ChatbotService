@@ -1,0 +1,101 @@
+using Maliev.ChatbotService.Infrastructure.Data;
+using System.Net;
+using System.Net.Http.Json;
+using Maliev.ChatbotService.Api.Models.Requests;
+using Maliev.ChatbotService.Api.Models.Responses;
+using Maliev.ChatbotService.Tests.Infrastructure;
+
+namespace Maliev.ChatbotService.Tests.Integration;
+
+/// <summary>
+/// Integration tests for Extraction API endpoints.
+/// </summary>
+[Collection("Database")]
+public class ExtractionApiTests : IAsyncLifetime
+{
+    private readonly BaseIntegrationTestFactory<Program, ChatbotDbContext> _factory;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ExtractionApiTests"/> class.
+    /// </summary>
+    /// <param name="factory">The test factory.</param>
+    public ExtractionApiTests(BaseIntegrationTestFactory<Program, ChatbotDbContext> factory)
+    {
+        _factory = factory;
+    }
+
+    /// <summary>
+    /// Initializes the test.
+    /// </summary>
+    public Task InitializeAsync() => _factory.ResetDatabaseAsync();
+
+    /// <summary>
+    /// Cleans up test resources.
+    /// </summary>
+    public Task DisposeAsync() => Task.CompletedTask;
+
+    private HttpClient CreateAuthenticatedClient() => _factory.CreateAuthenticatedClient();
+
+    /// <summary>
+    /// Tests that ExtractCustomer with raw text returns extracted data.
+    /// </summary>
+    [Fact]
+    public async Task ExtractCustomer_WithText_ReturnsExtractedData()
+    {
+        // Arrange
+        var client = CreateAuthenticatedClient();
+        var request = new ExtractCustomerRequest
+        {
+            RawText = "John Doe from Acme Corp, email john@example.com"
+        };
+
+        // Act
+        var response = await client.PostAsJsonAsync("/chatbot/v1/extraction/customer", request, _factory.JsonSerializerOptions);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<ExtractCustomerResponse>(_factory.JsonSerializerOptions);
+        Assert.NotNull(result);
+        Assert.Equal("John", result?.FirstName);
+    }
+
+    /// <summary>
+    /// Tests that ExtractCustomerIntent returns detected intent.
+    /// </summary>
+    [Fact]
+    public async Task ExtractCustomerIntent_ReturnsIntent()
+    {
+        // Arrange
+        var client = CreateAuthenticatedClient();
+        var request = new ExtractCustomerIntentRequest
+        {
+            UserMessage = "Find Acme Corp contact info"
+        };
+
+        // Act
+        var response = await client.PostAsJsonAsync("/chatbot/v1/extraction/customer-intent", request, _factory.JsonSerializerOptions);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<ExtractCustomerIntentResponse>(_factory.JsonSerializerOptions);
+        Assert.NotNull(result);
+        Assert.True(result?.NeedsCustomerData);
+    }
+
+    /// <summary>
+    /// Tests that ExtractCustomer with no input returns 400.
+    /// </summary>
+    [Fact]
+    public async Task ExtractCustomer_NoInput_Returns400()
+    {
+        // Arrange
+        var client = CreateAuthenticatedClient();
+        var request = new ExtractCustomerRequest();
+
+        // Act
+        var response = await client.PostAsJsonAsync("/chatbot/v1/extraction/customer", request, _factory.JsonSerializerOptions);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+}

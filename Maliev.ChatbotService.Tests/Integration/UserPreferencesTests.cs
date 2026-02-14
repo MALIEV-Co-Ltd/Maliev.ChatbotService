@@ -306,5 +306,112 @@ public class UserPreferencesTests : IAsyncLifetime
         var memories = await memoryRepo.GetMemoriesByUserIdAsync(userProfile.Id);
         Assert.Empty(memories);
     }
+
+    /// <summary>
+    /// Tests that DELETE /v1/users/me/data with scope=history deletes messages.
+    /// </summary>
+    [Fact]
+    public async Task DeleteUserData_HistoryScope_DeletesMessages()
+    {
+        // Arrange
+        using var scope = _factory.Services.CreateScope();
+        var userRepo = scope.ServiceProvider.GetRequiredService<IUserProfileRepository>();
+        var sessionRepo = scope.ServiceProvider.GetRequiredService<IConversationSessionRepository>();
+        var messageRepo = scope.ServiceProvider.GetRequiredService<IMessageRepository>();
+
+        var userProfile = new UserProfile
+        {
+            Id = Guid.NewGuid(),
+            Role = UserRole.Customer,
+            CreatedAt = DateTimeOffset.UtcNow,
+            LastActiveAt = DateTimeOffset.UtcNow
+        };
+        await userRepo.CreateAsync(userProfile);
+
+        var session = new ConversationSession
+        {
+            Id = Guid.NewGuid(),
+            UserProfileId = userProfile.Id,
+            Channel = Channel.Website,
+            StartTime = DateTimeOffset.UtcNow,
+            LastActivityAt = DateTimeOffset.UtcNow,
+            ExpiresAt = DateTimeOffset.UtcNow.AddHours(24),
+            Status = SessionStatus.Active
+        };
+        await sessionRepo.CreateAsync(session);
+
+        await messageRepo.CreateAsync(new Message { Id = Guid.NewGuid(), SessionId = session.Id, Role = MessageRole.User, Content = "Msg 1" });
+
+        var client = _factory.CreateAuthenticatedClient(userProfile.Id.ToString());
+
+        // Act
+        var response = await client.DeleteAsync("/chatbot/v1/users/me/data?scope=history&confirm=true");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        var messages = await messageRepo.GetMessagesBySessionIdAsync(session.Id);
+        Assert.Empty(messages);
+    }
+
+    /// <summary>
+    /// Tests that DELETE /v1/users/me/data with scope=all deletes everything.
+    /// </summary>
+    [Fact]
+    public async Task DeleteUserData_AllScope_DeletesEverything()
+    {
+        // Arrange
+        using var scope = _factory.Services.CreateScope();
+        var memoryRepo = scope.ServiceProvider.GetRequiredService<IUserMemoryRepository>();
+        var userRepo = scope.ServiceProvider.GetRequiredService<IUserProfileRepository>();
+        var sessionRepo = scope.ServiceProvider.GetRequiredService<IConversationSessionRepository>();
+        var messageRepo = scope.ServiceProvider.GetRequiredService<IMessageRepository>();
+
+        var userProfile = new UserProfile
+        {
+            Id = Guid.NewGuid(),
+            Role = UserRole.Customer,
+            CreatedAt = DateTimeOffset.UtcNow,
+            LastActiveAt = DateTimeOffset.UtcNow
+        };
+        await userRepo.CreateAsync(userProfile);
+
+        var session = new ConversationSession
+        {
+            Id = Guid.NewGuid(),
+            UserProfileId = userProfile.Id,
+            Channel = Channel.Website,
+            StartTime = DateTimeOffset.UtcNow,
+            LastActivityAt = DateTimeOffset.UtcNow,
+            ExpiresAt = DateTimeOffset.UtcNow.AddHours(24),
+            Status = SessionStatus.Active
+        };
+        await sessionRepo.CreateAsync(session);
+
+        var message = new Message { Id = Guid.NewGuid(), SessionId = session.Id, Role = MessageRole.User, Content = "Msg 1" };
+        await messageRepo.CreateAsync(message);
+
+        await memoryRepo.CreateAsync(new UserMemory
+        {
+            Id = Guid.NewGuid(),
+            UserProfileId = userProfile.Id,
+            Key = "Test",
+            Value = "{}",
+            Confidence = 0.9,
+            SourceMessageId = message.Id,
+            LastUpdatedAt = DateTimeOffset.UtcNow
+        });
+
+        var client = _factory.CreateAuthenticatedClient(userProfile.Id.ToString());
+
+        // Act
+        var response = await client.DeleteAsync("/chatbot/v1/users/me/data?scope=all&confirm=true");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        var messages = await messageRepo.GetMessagesBySessionIdAsync(session.Id);
+        Assert.Empty(messages);
+        var memories = await memoryRepo.GetMemoriesByUserIdAsync(userProfile.Id);
+        Assert.Empty(memories);
+    }
 }
 
