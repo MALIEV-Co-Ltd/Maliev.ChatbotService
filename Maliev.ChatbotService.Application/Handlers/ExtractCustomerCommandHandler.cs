@@ -44,8 +44,8 @@ public class ExtractCustomerCommandHandler
                     {
                         type = new { type = "string", description = "Address type", @enum = new[] { "Billing", "Shipping" } },
                         address_line_1 = new { type = "string", description = "Street-level address: house number, moo/หมู่, village/หมู่บ้าน, soi/ซอย, road/ถนน. Everything BEFORE the sub-district. e.g. '36/1 หมู่ 3'" },
-                        address_line_2 = new { type = "string", description = "Building name, floor, unit number. Do NOT include 'Head Office' or 'Branch' here." },
-                        address_line_3 = new { type = "string", description = "Additional address details if any." },
+                        address_line_2 = new { type = "string", description = "Building name, floor, unit number. NEVER include 'Head Office', 'สำนักงานใหญ่', or 'Branch' here." },
+                        address_line_3 = new { type = "string", description = "Additional address details. NEVER include 'Head Office', 'สำนักงานใหญ่', or 'Branch' here." },
                         district = new { type = "string", description = "Sub-district only (ตำบล/แขวง). e.g. 'คลองสวนพลู'" },
 
                         city = new { type = "string", description = "District only (อำเภอ/เขต). e.g. 'อยุธยา'" },

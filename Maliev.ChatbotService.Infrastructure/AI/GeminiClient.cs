@@ -54,69 +54,57 @@ public class GeminiClient : IGeminiClient
 
             foreach (var message in request.Messages)
             {
-                contentsParts.Add(new
+                var messageParts = new List<object>
                 {
-                    role = message.Role == "assistant" ? "model" : "user",
-                    parts = new object[] { new { text = message.Content } }
-                });
-            }
+                    new { text = message.Content }
+                };
 
-            // Add attachments to the last user message if present
-            if (request.Attachments != null && request.Attachments.Count > 0)
-            {
-                var attachmentParts = new List<object>();
-
-                foreach (var attachment in request.Attachments)
+                if (message.Attachments != null)
                 {
-                    if (attachment.Data.StartsWith("http", StringComparison.OrdinalIgnoreCase) ||
-                        attachment.Data.StartsWith("gs://", StringComparison.OrdinalIgnoreCase))
+                    foreach (var attachment in message.Attachments)
                     {
-                        // URL-based or Cloud Storage file reference
-                        attachmentParts.Add(new
-                        {
-                            fileData = new
-                            {
-                                fileUri = attachment.Data,
-                                mimeType = attachment.MimeType
-                            }
-                        });
-                    }
-                    else
-                    {
-                        // Base64-encoded data (images, PDFs, videos, audio)
-                        var base64Data = attachment.Data.Contains(',')
-                            ? attachment.Data.Split(',')[1]
-                            : attachment.Data;
-
-                        attachmentParts.Add(new
-                        {
-                            inlineData = new
-                            {
-                                data = base64Data,
-                                mimeType = attachment.MimeType
-                            }
-                        });
+                        messageParts.Add(GetAttachmentPart(attachment));
                     }
                 }
 
-                // Replace last user message with one that includes attachments
-                if (attachmentParts.Count > 0 && contentsParts.Count > 0)
+                contentsParts.Add(new
                 {
-                    var combinedParts = new List<object>
+                    role = message.Role == "assistant" ? "model" : "user",
+                    parts = messageParts.ToArray()
+                });
+            }
+
+            // Add top-level request attachments to the last user message if present (legacy support)
+            if (request.Attachments != null && request.Attachments.Count > 0 && contentsParts.Count > 0)
+            {
+                var lastPart = contentsParts.Last();
+                // This is a bit complex due to anonymous types, so we'll just handle it by ensuring 
+                // we don't duplicate if possible. For simplicity in this refactor, we prefer message-level attachments.
+                // But to maintain compatibility:
+                var lastMessage = request.Messages.Last();
+                if (lastMessage.Role != "assistant")
+                {
+                    var attachmentParts = request.Attachments.Select(GetAttachmentPart).ToList();
+                    
+                    // Re-create the last entry with merged parts
+                    var existingParts = new List<object> { new { text = lastMessage.Content } };
+                    if (lastMessage.Attachments != null)
                     {
-                        new { text = request.Messages.Last().Content }
-                    };
-                    combinedParts.AddRange(attachmentParts);
+                        existingParts.AddRange(lastMessage.Attachments.Select(GetAttachmentPart));
+                    }
+                    existingParts.AddRange(attachmentParts);
 
                     contentsParts[contentsParts.Count - 1] = new
                     {
                         role = "user",
-                        parts = combinedParts.ToArray()
+                        parts = existingParts.ToArray()
                     };
                 }
             }
 
             object geminiPayload;
+            var hasTools = request.Tools != null && request.Tools.Count > 0;
+
             if (!string.IsNullOrEmpty(request.ResponseMimeType))
             {
                 geminiPayload = new
@@ -133,6 +121,33 @@ public class GeminiClient : IGeminiClient
                     {
                         responseMimeType = request.ResponseMimeType,
                         responseSchema = request.ResponseSchema
+                    }
+                };
+            }
+            else if (hasTools)
+            {
+                geminiPayload = new
+                {
+                    systemInstruction = new
+                    {
+                        parts = new[]
+                        {
+                            new { text = request.SystemInstruction }
+                        }
+                    },
+                    contents = contentsParts.ToArray(),
+                    tools = request.Tools!.Select(t => new
+                    {
+                        functionDeclarations = t.FunctionDeclarations.Select(f => new
+                        {
+                            name = f.Name,
+                            description = f.Description,
+                            parameters = f.Parameters
+                        })
+                    }),
+                    toolConfig = new
+                    {
+                        functionCallingConfig = new { mode = request.ToolConfig?.Mode ?? "AUTO" }
                     }
                 };
             }
@@ -195,8 +210,43 @@ public class GeminiClient : IGeminiClient
 
             var contentProp = firstCandidate.GetProperty("content");
             var parts = contentProp.GetProperty("parts");
-            var firstPart = parts.EnumerateArray().FirstOrDefault();
-            var text = firstPart.GetProperty("text").GetString() ?? string.Empty;
+
+            // Parse all parts — may contain text and/or function calls
+            var textParts = new List<string>();
+            var functionCalls = new List<GeminiFunctionCall>();
+
+            foreach (var part in parts.EnumerateArray())
+            {
+                if (part.TryGetProperty("text", out var textProp))
+                {
+                    textParts.Add(textProp.GetString() ?? string.Empty);
+                }
+                else if (part.TryGetProperty("functionCall", out var fcProp))
+                {
+                    var fc = new GeminiFunctionCall
+                    {
+                        Name = fcProp.GetProperty("name").GetString() ?? string.Empty,
+                        Args = new Dictionary<string, object>()
+                    };
+                    if (fcProp.TryGetProperty("args", out var argsProp))
+                    {
+                        foreach (var arg in argsProp.EnumerateObject())
+                        {
+                            fc.Args[arg.Name] = arg.Value.ValueKind switch
+                            {
+                                JsonValueKind.String => arg.Value.GetString()!,
+                                JsonValueKind.Number => arg.Value.GetDouble(),
+                                JsonValueKind.True => true,
+                                JsonValueKind.False => false,
+                                _ => arg.Value.GetRawText()
+                            };
+                        }
+                    }
+                    functionCalls.Add(fc);
+                }
+            }
+
+            var text = string.Join("", textParts);
 
             // Extract token usage if available
             GeminiTokenUsage? tokenUsage = null;
@@ -217,7 +267,8 @@ public class GeminiClient : IGeminiClient
             {
                 Success = true,
                 Content = text,
-                TokenUsage = tokenUsage
+                TokenUsage = tokenUsage,
+                FunctionCalls = functionCalls
             };
         }
         catch (OperationCanceledException)
@@ -231,6 +282,38 @@ public class GeminiClient : IGeminiClient
             _logger.LogError(ex, "Error calling Gemini API");
             UpdateSuccessRate();
             return GetFallbackResponse("UnexpectedError");
+        }
+    }
+
+    private static object GetAttachmentPart(GeminiAttachment attachment)
+    {
+        if (attachment.Data.StartsWith("http", StringComparison.OrdinalIgnoreCase) ||
+            attachment.Data.StartsWith("gs://", StringComparison.OrdinalIgnoreCase))
+        {
+            return new
+            {
+                fileData = new
+                {
+                    fileUri = attachment.Data,
+                    mimeType = attachment.MimeType
+                }
+            };
+        }
+        else
+        {
+            // Base64-encoded data (images, PDFs, videos, audio)
+            var base64Data = attachment.Data.Contains(',')
+                ? attachment.Data.Split(',')[1]
+                : attachment.Data;
+
+            return new
+            {
+                inlineData = new
+                {
+                    data = base64Data,
+                    mimeType = attachment.MimeType
+                }
+            };
         }
     }
 

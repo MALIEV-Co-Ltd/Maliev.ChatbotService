@@ -33,6 +33,8 @@ public class SendMessageCommandHandler
     private readonly IEventPublisher _eventPublisher;
     private readonly ISearchDomainLogRepository _searchDomainLogRepository;
     private readonly IWebSearchService _webSearchService;
+    private readonly AgentChatHandler _agentChatHandler;
+    private readonly IToolExecutorService _toolExecutor;
     private readonly StackExchange.Redis.IConnectionMultiplexer _redis;
     private readonly ILogger<SendMessageCommandHandler> _logger;
 
@@ -57,6 +59,8 @@ public class SendMessageCommandHandler
     /// <param name="eventPublisher">The event publisher.</param>
     /// <param name="searchDomainLogRepository">The search domain log repository.</param>
     /// <param name="webSearchService">The web search service.</param>
+    /// <param name="agentChatHandler">The agent chat handler for function calling.</param>
+    /// <param name="toolExecutor">The tool executor service.</param>
     /// <param name="redis">The Redis connection multiplexer.</param>
     /// <param name="logger">The logger.</param>
     public SendMessageCommandHandler(
@@ -78,6 +82,8 @@ public class SendMessageCommandHandler
         IEventPublisher eventPublisher,
         ISearchDomainLogRepository searchDomainLogRepository,
         IWebSearchService webSearchService,
+        AgentChatHandler agentChatHandler,
+        IToolExecutorService toolExecutor,
         StackExchange.Redis.IConnectionMultiplexer redis,
         ILogger<SendMessageCommandHandler> logger)
     {
@@ -99,6 +105,8 @@ public class SendMessageCommandHandler
         _eventPublisher = eventPublisher;
         _searchDomainLogRepository = searchDomainLogRepository;
         _webSearchService = webSearchService;
+        _agentChatHandler = agentChatHandler;
+        _toolExecutor = toolExecutor;
         _redis = redis;
         _logger = logger;
     }
@@ -520,25 +528,50 @@ public class SendMessageCommandHandler
                         Content = m.Content
                     })
                     .ToList(),
-                TimeoutSeconds = !string.IsNullOrEmpty(webSearchContext) ? 30 : 10, // Extended timeout for web search
+                TimeoutSeconds = !string.IsNullOrEmpty(webSearchContext) ? 30 : 10,
                 ResponseMimeType = command.ResponseMimeType,
                 ResponseSchema = command.ResponseSchema
             };
 
-            // Call Gemini API
+            // For Intranet channel, use agent loop with function calling (RAG)
+            GeminiResponse geminiResponse;
+            var thinkingSteps = new List<Models.ThinkingStep>();
 
-            var geminiResponse = await _geminiClient.SendMessageAsync(geminiRequest, cancellationToken);
+            if (session.Channel == Channel.Intranet && string.IsNullOrEmpty(command.ResponseMimeType))
+            {
+                var tools = _toolExecutor.GetToolDeclarations();
+                if (tools.Count > 0)
+                {
+                    geminiRequest.Tools = tools;
+                    geminiRequest.ToolConfig = new GeminiFunctionCallingConfig { Mode = "AUTO" };
+                    geminiRequest.TimeoutSeconds = 30;
 
+                    var agentResult = await _agentChatHandler.ExecuteAsync(
+                        geminiRequest, command.ThinkingStepCallback, cancellationToken);
 
+                    thinkingSteps = agentResult.ThinkingSteps;
+                    geminiResponse = new GeminiResponse
+                    {
+                        Success = agentResult.Success,
+                        Content = agentResult.Content,
+                        ErrorMessage = agentResult.ErrorMessage,
+                        TokenUsage = agentResult.TokenUsage
+                    };
+                }
+                else
+                {
+                    geminiResponse = await _geminiClient.SendMessageAsync(geminiRequest, cancellationToken);
+                }
+            }
+            else
+            {
+                geminiResponse = await _geminiClient.SendMessageAsync(geminiRequest, cancellationToken);
+            }
 
             if (!geminiResponse.Success && !geminiResponse.IsFallback)
-
             {
-
                 _logger.LogError("Gemini API call failed: {ErrorMessage}", geminiResponse.ErrorMessage);
-
                 throw new InvalidOperationException("Failed to generate response from AI service");
-
             }
 
 
@@ -668,21 +701,15 @@ public class SendMessageCommandHandler
 
 
             return new SendMessageResult
-
             {
-
                 MessageId = messageId,
-
                 Content = formattedContent,
-
                 Role = MessageRole.Assistant,
-
                 Language = detectedLanguage,
-
                 SuggestedActions = suggestedActions,
-
-                CreatedAt = createdAt
-
+                CreatedAt = createdAt,
+                ThinkingSteps = thinkingSteps,
+                SessionId = session.Id
             };
 
 
@@ -692,42 +719,6 @@ public class SendMessageCommandHandler
             await db.LockReleaseAsync(lockKey, lockValue);
         }
     }
-    private static string GetDefaultSystemInstruction(Language language)
-    {
-        if (language == Language.Thai)
-        {
-            return @"คุณเป็นผู้ช่วยเสมือนสำหรับ Maliev Manufacturing Services บริษัทผู้ผลิตชิ้นส่วนที่มีความเชี่ยวชาญ
-
-บริการของเรา:
-- CNC Machining (การกัดโลหะด้วยคอมพิวเตอร์)
-- Sheet Metal Fabrication (การประดิษฐ์โลหะแผ่น)
-- Welding & Assembly (การเชื่อมและประกอบชิ้นส่วน)
-- Quality Inspection (การตรวจสอบคุณภาพ)
-- Custom Manufacturing (การผลิตตามสั่ง)
-
-กฎสำคัญ:
-1. ตอบเฉพาะคำถามเกี่ยวกับบริการผลิตของเราเท่านั้น
-2. ถ้าถามเรื่องที่ไม่เกี่ยวข้อง (เช่น อากาศ การเมือง) ให้บอกอย่างสุภาพว่าคุณสามารถช่วยเกี่ยวกับบริการผลิตเท่านั้น
-3. ถ้าถามเรื่องคู่แข่ง ให้บอกว่าคุณสามารถช่วยเกี่ยวกับบริการของเราเท่านั้น
-4. ตอบอย่างกระชับ เป็นมืออาชีพ และเป็นมิตร";
-        }
-
-        return @"You are a virtual assistant for Maliev Manufacturing Services, a precision parts manufacturing company.
-
-Our services:
-- CNC Machining
-- Sheet Metal Fabrication
-- Welding & Assembly
-- Quality Inspection
-- Custom Manufacturing
-
-Important rules:
-1. Only answer questions about our manufacturing services
-2. If asked about unrelated topics (weather, politics, etc.), politely redirect to manufacturing services
-3. If asked about competitors, politely say you can only help with our services
-4. Keep responses concise, professional, and friendly";
-    }
-
     private static string BuildSummariesContext(IEnumerable<ConversationSummary> summaries)
     {
         var contextParts = new List<string>();
@@ -940,4 +931,14 @@ public class SendMessageResult
     /// Gets or sets the creation timestamp.
     /// </summary>
     public DateTimeOffset CreatedAt { get; set; }
+
+    /// <summary>
+    /// Gets or sets the thinking steps from agent processing.
+    /// </summary>
+    public List<Models.ThinkingStep> ThinkingSteps { get; set; } = new();
+
+    /// <summary>
+    /// Gets or sets the session ID for SignalR correlation.
+    /// </summary>
+    public Guid? SessionId { get; set; }
 }

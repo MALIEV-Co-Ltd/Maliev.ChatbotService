@@ -16,14 +16,17 @@ namespace Maliev.ChatbotService.Api.Controllers.V1;
 public class ExtractionController : ControllerBase
 {
     private readonly ExtractCustomerCommandHandler _handler;
+    private readonly ExtractCustomerIntentCommandHandler _intentHandler;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ExtractionController"/> class.
     /// </summary>
     /// <param name="handler">The extract customer command handler.</param>
-    public ExtractionController(ExtractCustomerCommandHandler handler)
+    /// <param name="intentHandler">The extract customer intent command handler.</param>
+    public ExtractionController(ExtractCustomerCommandHandler handler, ExtractCustomerIntentCommandHandler intentHandler)
     {
         _handler = handler;
+        _intentHandler = intentHandler;
     }
 
     /// <summary>
@@ -70,6 +73,40 @@ public class ExtractionController : ControllerBase
 
         var response = MapToResponse(result.Data!);
         return Ok(response);
+    }
+
+    /// <summary>
+    /// Extracts customer intent (need for customer data, search terms) from a user message using AI.
+    /// </summary>
+    /// <param name="request">The intent extraction request.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Extracted customer intent.</returns>
+    [HttpPost("customer-intent")]
+    [ProducesResponseType(typeof(ExtractCustomerIntentResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<ExtractCustomerIntentResponse>> ExtractCustomerIntent(
+        [FromBody] ExtractCustomerIntentRequest request,
+        CancellationToken ct)
+    {
+        var command = new Application.Commands.ExtractCustomerIntentCommand
+        {
+            UserMessage = request.UserMessage
+        };
+
+        var result = await _intentHandler.HandleAsync(command, ct);
+
+        if (!result.Success)
+        {
+            return StatusCode(500, result.ErrorMessage);
+        }
+
+        return Ok(new ExtractCustomerIntentResponse
+        {
+            NeedsCustomerData = result.NeedsCustomerData,
+            CustomerSearchTerm = result.CustomerSearchTerm,
+            NeedsHistory = result.NeedsHistory
+        });
     }
 
     private static ExtractCustomerResponse MapToResponse(ExtractedCustomerData data)

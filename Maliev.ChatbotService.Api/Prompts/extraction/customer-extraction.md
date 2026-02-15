@@ -22,15 +22,15 @@ Return all fields you can identify. Extract values as-is in their original langu
 - **segment**: customer segment if mentioned (must be one of: Retail, Wholesale, Enterprise, Government)
 - **company_name**: company/business name (ชื่อบริษัท, บริษัท, หจก., ห้างหุ้นส่วน). Look for "บริษัท", "Co., Ltd.", "จำกัด", etc.
 - **vat_number**: tax ID / VAT number / เลขประจำตัวผู้เสียภาษี (typically 13 digits for Thai companies). Extract ONLY the numeric digits.
-- **branch_number**: branch number (สาขาที่). When the tax ID line contains "สาขาที่" or "Branch" followed by a number, extract the value EXACTLY as written preserving leading zeros (e.g., "สาขาที่ 00012" → branch_number = "00012", NOT "12"). If the text says "สำนักงานใหญ่" (head office) or no branch is mentioned, leave empty.
+- **branch_number**: branch number (สาขาที่). When the tax ID line contains "สาขาที่" or "Branch" followed by a number, extract the value EXACTLY as written preserving leading zeros (e.g., "สาขาที่ 00012" → branch_number = "00012", NOT "12"). If the text says "สำนักงานใหญ่" (head office), use "00000". If no branch or head office is mentioned, leave empty.
 
 ## Address Parsing Rules
 
 For addresses, parse into structured fields. IMPORTANT: You MUST extract ALL fields.
 
 - **address_line_1** (CRITICAL — DO NOT SKIP): This is the street-level address. It includes EVERYTHING before the sub-district: house number (เลขที่), moo/หมู่ (ม.), village/หมู่บ้าน (มบ./หมู่บ้าน), soi/ซอย, road/ถนน. This field should NEVER be empty if the input contains address details.
-- **address_line_2**: Building name, floor, unit number (if available).
-- **address_line_3**: Any additional address info.
+- **address_line_2**: Building name, floor, unit number (if available). DO NOT include "Head Office", "สำนักงานใหญ่", or branch information here.
+- **address_line_3**: Any additional address info. DO NOT include "Head Office", "สำนักงานใหญ่", or branch information here.
 - **district**: ONLY the sub-district name (ตำบล/แขวง/tambon). Strip prefix like ต. or ตำบล. e.g. "บางมด" or "ทุ่งสองห้อง".
 - **city**: ONLY the district name (อำเภอ/เขต/amphoe). Strip prefix like อ. or อำเภอ. e.g. "จอมทอง" or "หลักสี่".
 - **state_province**: ONLY the province name (จังหวัด). Strip prefix like จ. or จังหวัด. e.g. "กรุงเทพมหานคร" or "สมุทรปราการ".

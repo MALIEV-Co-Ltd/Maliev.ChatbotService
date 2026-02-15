@@ -2,9 +2,11 @@ using Maliev.ChatbotService.Api.Models.Requests;
 using Maliev.ChatbotService.Api.Models.Responses;
 using Maliev.ChatbotService.Application.Commands;
 using Maliev.ChatbotService.Application.Handlers;
+using Maliev.ChatbotService.Application.Models;
 using Maliev.ChatbotService.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Text.Json;
 
 namespace Maliev.ChatbotService.Api.Controllers.V1;
 
@@ -16,18 +18,31 @@ namespace Maliev.ChatbotService.Api.Controllers.V1;
 public class MessagesController : ControllerBase
 {
     private readonly SendMessageCommandHandler _handler;
+    private readonly AgentChatHandler _agentHandler;
+    private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<MessagesController> _logger;
 
+    private static readonly JsonSerializerOptions CamelCaseOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+
     /// <summary>
-    /// Initializes a new instance of the <see cref="MessagesController"/> class.
+    /// Initializes a new instance of the MessagesController class.
     /// </summary>
-    /// <param name="handler">The send message handler.</param>
-    /// <param name="logger">The logger.</param>
+    /// <param name="handler">Command handler for sending messages.</param>
+    /// <param name="agentHandler">Agent chat handler.</param>
+    /// <param name="httpClientFactory">HTTP client factory.</param>
+    /// <param name="logger">Logger instance.</param>
     public MessagesController(
         SendMessageCommandHandler handler,
+        AgentChatHandler agentHandler,
+        IHttpClientFactory httpClientFactory,
         ILogger<MessagesController> logger)
     {
         _handler = handler;
+        _agentHandler = agentHandler;
+        _httpClientFactory = httpClientFactory;
         _logger = logger;
     }
 
@@ -70,6 +85,27 @@ public class MessagesController : ControllerBase
                 ResponseSchema = request.ResponseSchema
             };
 
+            // Build callback for streaming thinking steps
+            Func<ThinkingStep, Task>? thinkingCallback = null;
+            if (!string.IsNullOrEmpty(request.CallbackUrl))
+            {
+                var callbackUrl = request.CallbackUrl;
+                var client = _httpClientFactory.CreateClient("ThinkingCallback");
+                thinkingCallback = async step =>
+                {
+                    try
+                    {
+                        await client.PostAsJsonAsync(callbackUrl, step, CamelCaseOptions, cancellationToken);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to send thinking step callback to {Url}", callbackUrl);
+                    }
+                };
+            }
+
+            command.ThinkingStepCallback = thinkingCallback;
+
             var result = await _handler.HandleAsync(command, cancellationToken);
 
             var response = new MessageResponse
@@ -85,7 +121,16 @@ public class MessagesController : ControllerBase
                     Action = sa.Type,
                     Data = sa.Data
                 }).ToList(),
-                CreatedAt = result.CreatedAt
+                CreatedAt = result.CreatedAt,
+                ThinkingSteps = result.ThinkingSteps.Select(ts => new ThinkingStepResponse
+                {
+                    StepNumber = ts.StepNumber,
+                    Type = ts.Type,
+                    Title = ts.Title,
+                    Detail = ts.Detail,
+                    Timestamp = ts.Timestamp,
+                    DurationMs = ts.DurationMs
+                }).ToList()
             };
 
             return Ok(response);

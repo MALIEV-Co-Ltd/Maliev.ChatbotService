@@ -1,3 +1,4 @@
+using Maliev.ChatbotService.Application.Models;
 using Maliev.ChatbotService.Domain.Enums;
 
 namespace Maliev.ChatbotService.Application.Commands;
@@ -31,6 +32,11 @@ public class SendMessageCommand
     /// Gets or sets the JSON Schema for structured output.
     /// </summary>
     public object? ResponseSchema { get; set; }
+
+    /// <summary>
+    /// Optional callback for streaming thinking steps to the caller.
+    /// </summary>
+    public Func<ThinkingStep, Task>? ThinkingStepCallback { get; set; }
 }
 
 /// <summary>

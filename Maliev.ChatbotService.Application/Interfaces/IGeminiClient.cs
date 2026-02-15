@@ -84,6 +84,16 @@ public class GeminiRequest
     /// When set alongside ResponseMimeType, Gemini guarantees the response matches this schema.
     /// </summary>
     public object? ResponseSchema { get; set; }
+
+    /// <summary>
+    /// Gets or sets the tool declarations for function calling.
+    /// </summary>
+    public List<GeminiToolDeclaration>? Tools { get; set; }
+
+    /// <summary>
+    /// Gets or sets the function calling configuration.
+    /// </summary>
+    public GeminiFunctionCallingConfig? ToolConfig { get; set; }
 }
 
 /// <summary>
@@ -100,6 +110,11 @@ public class GeminiMessage
     /// Gets or sets the content of the message.
     /// </summary>
     public string Content { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets attachments for this specific message.
+    /// </summary>
+    public List<GeminiAttachment>? Attachments { get; set; }
 }
 
 /// <summary>
@@ -136,6 +151,16 @@ public class GeminiResponse
     /// Gets or sets whether this response is a fallback response due to error.
     /// </summary>
     public bool IsFallback { get; set; }
+
+    /// <summary>
+    /// Gets or sets the function calls from the response.
+    /// </summary>
+    public List<GeminiFunctionCall> FunctionCalls { get; set; } = new();
+
+    /// <summary>
+    /// Gets whether the response contains function calls.
+    /// </summary>
+    public bool HasFunctionCalls => FunctionCalls.Count > 0;
 }
 
 /// <summary>
@@ -178,4 +203,63 @@ public class GeminiAttachment
     /// Gets or sets the MIME type.
     /// </summary>
     public string MimeType { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Tool declaration for Gemini function calling.
+/// </summary>
+public class GeminiToolDeclaration
+{
+    /// <summary>
+    /// Gets or sets the function declarations in this tool.
+    /// </summary>
+    public List<GeminiFunctionDeclaration> FunctionDeclarations { get; set; } = new();
+}
+
+/// <summary>
+/// Individual function declaration for Gemini tools.
+/// </summary>
+public class GeminiFunctionDeclaration
+{
+    /// <summary>
+    /// Gets or sets the function name.
+    /// </summary>
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the function description.
+    /// </summary>
+    public string Description { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the parameters schema (JSON Schema object).
+    /// </summary>
+    public object? Parameters { get; set; }
+}
+
+/// <summary>
+/// Function calling configuration for Gemini.
+/// </summary>
+public class GeminiFunctionCallingConfig
+{
+    /// <summary>
+    /// Gets or sets the function calling mode (AUTO, ANY, NONE).
+    /// </summary>
+    public string Mode { get; set; } = "AUTO";
+}
+
+/// <summary>
+/// Represents a function call from Gemini response.
+/// </summary>
+public class GeminiFunctionCall
+{
+    /// <summary>
+    /// Gets or sets the function name.
+    /// </summary>
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the function arguments.
+    /// </summary>
+    public Dictionary<string, object> Args { get; set; } = new();
 }

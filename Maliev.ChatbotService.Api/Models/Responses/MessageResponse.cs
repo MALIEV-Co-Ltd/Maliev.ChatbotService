@@ -34,4 +34,28 @@ public class MessageResponse
     /// Gets or sets the timestamp when the message was created.
     /// </summary>
     public DateTimeOffset CreatedAt { get; set; }
+
+    /// <summary>
+    /// Gets or sets the thinking steps from AI agent processing.
+    /// </summary>
+    public List<ThinkingStepResponse> ThinkingSteps { get; set; } = new();
+}
+
+/// <summary>
+/// A step in the AI's thinking chain.
+/// </summary>
+public class ThinkingStepResponse
+{
+    /// <summary>The order of this thinking step.</summary>
+    public int StepNumber { get; set; }
+    /// <summary>The category of thinking (e.g., Search, Analysis, Action).</summary>
+    public string Type { get; set; } = string.Empty;
+    /// <summary>Short summary title of the step.</summary>
+    public string Title { get; set; } = string.Empty;
+    /// <summary>Detailed description or content of the step.</summary>
+    public string Detail { get; set; } = string.Empty;
+    /// <summary>When the step started.</summary>
+    public DateTimeOffset Timestamp { get; set; }
+    /// <summary>How long the step took in milliseconds.</summary>
+    public long? DurationMs { get; set; }
 }

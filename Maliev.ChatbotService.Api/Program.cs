@@ -8,6 +8,7 @@ using Maliev.ChatbotService.Infrastructure.Messaging;
 using Maliev.ChatbotService.Infrastructure.Metrics;
 using Maliev.ChatbotService.Infrastructure.Repositories;
 using Maliev.ChatbotService.Infrastructure.Services;
+using Maliev.ChatbotService.Infrastructure.Tools;
 using Microsoft.EntityFrameworkCore;
 
 // Initialize bootstrap logging
@@ -113,6 +114,8 @@ try
     builder.Services.AddScoped<GetSystemInstructionsQueryHandler>();
     builder.Services.AddScoped<ProcessWebhookCommandHandler>();
     builder.Services.AddScoped<ExtractCustomerCommandHandler>();
+    builder.Services.AddScoped<ExtractCustomerIntentCommandHandler>();
+    builder.Services.AddScoped<AgentChatHandler>();
 
     // Service Clients
     builder.AddServiceClient<IIAMServiceClient, IAMServiceClient>("IAM");
@@ -145,10 +148,26 @@ try
     })
     .AddStandardResilienceHandler();
 
-    // Named HttpClients for OperationExecutionService
+    // Tool Executor for AI agent function calling
+    builder.Services.AddSingleton<IToolExecutorService, ToolExecutorService>();
+
+    // Named HttpClients for microservice integration
     builder.AddServiceClient("QuotationService");
     builder.AddServiceClient("OrderService");
     builder.AddServiceClient("CustomerService");
+    builder.AddServiceClient("InvoiceService");
+    builder.AddServiceClient("PaymentService");
+    builder.AddServiceClient("EmployeeService");
+    builder.AddServiceClient("MaterialService");
+    builder.AddServiceClient("SupplierService");
+    builder.AddServiceClient("ReceiptService");
+    builder.AddServiceClient("UploadService");
+    builder.AddServiceClient("CareerService");
+
+    // HttpClient for thinking step callbacks to BFF
+    builder.Services.AddHttpClient("ThinkingCallback")
+        .AddServiceDiscovery()
+        .AddStandardResilienceHandler();
 
     var app = builder.Build();
     var logger = app.Services.GetRequiredService<ILogger<Program>>();

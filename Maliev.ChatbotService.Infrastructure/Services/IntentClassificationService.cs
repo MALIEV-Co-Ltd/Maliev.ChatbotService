@@ -11,6 +11,7 @@ namespace Maliev.ChatbotService.Infrastructure.Services;
 public class IntentClassificationService : IIntentClassificationService
 {
     private readonly IGeminiClient _geminiClient;
+    private readonly ISystemInstructionRepository _repository;
     private readonly IConfiguration _configuration;
     private readonly ILogger<IntentClassificationService> _logger;
     private readonly string _modelName;
@@ -20,10 +21,12 @@ public class IntentClassificationService : IIntentClassificationService
     /// </summary>
     public IntentClassificationService(
         IGeminiClient geminiClient,
+        ISystemInstructionRepository repository,
         IConfiguration configuration,
         ILogger<IntentClassificationService> logger)
     {
         _geminiClient = geminiClient;
+        _repository = repository;
         _configuration = configuration;
         _logger = logger;
         _modelName = _configuration["IntentClassification:ModelName"] ?? "gemini-2.5-flash-lite";
@@ -34,27 +37,9 @@ public class IntentClassificationService : IIntentClassificationService
     {
         _logger.LogInformation("Classifying intent for message: {Message}", message);
 
-        var systemInstruction = @"You are an intent classifier for Maliev Manufacturing Chatbot.
-Your task is to identify the specialized topic of the user's message.
-
-Available Topics:
-- '3D-Scanning': Questions about 3D scanning services, on-site or in-house.
-- 'Pricing': Questions about costs, pricing tiers, or service fees.
-- 'CNC-Machining': Questions about computer numerical control machining.
-- 'General': Greeting, small talk, or general manufacturing questions.
-
-Response Format:
-Return ONLY a JSON object with the following fields:
-{
-  ""intent"": ""Primary topic key"",
-  ""confidence"": 0.95,
-  ""additionalTopics"": [""Any other relevant topic keys""]
-}
-
-Rules:
-1. If no specific topic matches, use 'General'.
-2. Be precise with confidence scores.
-3. Return ONLY valid JSON.";
+        var instructions = await _repository.GetActiveByTopicsAsync(["intent-classification"], cancellationToken);
+        var systemInstruction = instructions.FirstOrDefault()?.PersonaDefinition
+            ?? "You are an intent classifier. Return JSON with intent, confidence, and additionalTopics.";
 
         var request = new GeminiRequest
         {

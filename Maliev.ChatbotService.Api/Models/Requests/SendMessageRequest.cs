@@ -34,4 +34,10 @@ public class SendMessageRequest
     /// Gets or sets the JSON Schema for structured output.
     /// </summary>
     public object? ResponseSchema { get; set; }
+
+    /// <summary>
+    /// Gets or sets the callback URL for streaming thinking steps.
+    /// When provided, thinking steps are POSTed to this URL as they happen.
+    /// </summary>
+    public string? CallbackUrl { get; set; }
 }
