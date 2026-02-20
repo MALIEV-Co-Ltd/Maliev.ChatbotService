@@ -7,6 +7,9 @@ on:
       - staging
       - main
 
+permissions:
+  contents: read
+
 jobs:
   prep:
     runs-on: ubuntu-latest
