@@ -85,6 +85,11 @@ public class MessagesController : ControllerBase
                 ResponseSchema = request.ResponseSchema
             };
 
+            // Forward the authenticated user's Bearer token for downstream tool calls
+            var authHeader = Request.Headers.Authorization.ToString();
+            if (authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+                command.UserToken = authHeader["Bearer ".Length..];
+
             // Build callback for streaming thinking steps
             Func<ThinkingStep, Task>? thinkingCallback = null;
             if (!string.IsNullOrEmpty(request.CallbackUrl))

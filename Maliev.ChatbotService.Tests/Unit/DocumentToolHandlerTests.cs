@@ -66,7 +66,7 @@ public class DocumentToolHandlerTests
             .ReturnsAsync(downloadResponse);
 
         // Act
-        var resultJson = await _handler.ExecuteAsync("get_document_content", args, CancellationToken.None);
+        var resultJson = await _handler.ExecuteAsync("get_document_content", args, null, CancellationToken.None);
         var result = JsonSerializer.Deserialize<JsonElement>(resultJson);
 
         // Assert

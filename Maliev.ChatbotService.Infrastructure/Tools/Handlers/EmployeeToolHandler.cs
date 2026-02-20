@@ -9,12 +9,12 @@ public class EmployeeToolHandler(IHttpClientFactory httpClientFactory) : BaseToo
     protected override string ServiceName => "EmployeeService";
 
     /// <inheritdoc/>
-    public override async Task<string> ExecuteAsync(string toolName, Dictionary<string, object> args, CancellationToken cancellationToken)
+    public override async Task<string> ExecuteAsync(string toolName, Dictionary<string, object> args, string? userToken, CancellationToken cancellationToken)
     {
         return toolName switch
         {
-            "search_employees" => await GetAsync($"/employee/v1/employees?query={Uri.EscapeDataString(GetStringArg(args, "query"))}&page={GetIntArg(args, "page")}&pageSize=10", cancellationToken),
-            "get_employee" => await GetAsync($"/employee/v1/employees/{GetStringArg(args, "employee_id")}", cancellationToken),
+            "search_employees" => await GetAsync($"/employee/v1/employees?query={Uri.EscapeDataString(GetStringArg(args, "query"))}&page={GetIntArg(args, "page")}&pageSize=10", userToken, cancellationToken),
+            "get_employee" => await GetAsync($"/employee/v1/employees/{GetStringArg(args, "employee_id")}", userToken, cancellationToken),
             _ => """{"error": "Unknown employee tool"}"""
         };
     }

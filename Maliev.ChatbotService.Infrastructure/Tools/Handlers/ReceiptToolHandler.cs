@@ -9,12 +9,12 @@ public class ReceiptToolHandler(IHttpClientFactory httpClientFactory) : BaseTool
     protected override string ServiceName => "ReceiptService";
 
     /// <inheritdoc/>
-    public override async Task<string> ExecuteAsync(string toolName, Dictionary<string, object> args, CancellationToken cancellationToken)
+    public override async Task<string> ExecuteAsync(string toolName, Dictionary<string, object> args, string? userToken, CancellationToken cancellationToken)
     {
         return toolName switch
         {
-            "search_receipts" => await GetAsync($"/receipt/v1/receipts?page={GetIntArg(args, "page")}&pageSize=10", cancellationToken),
-            "get_receipt" => await GetAsync($"/receipt/v1/receipts/{GetStringArg(args, "receipt_id")}", cancellationToken),
+            "search_receipts" => await GetAsync($"/receipt/v1/receipts?page={GetIntArg(args, "page")}&pageSize=10", userToken, cancellationToken),
+            "get_receipt" => await GetAsync($"/receipt/v1/receipts/{GetStringArg(args, "receipt_id")}", userToken, cancellationToken),
             _ => """{"error": "Unknown receipt tool"}"""
         };
     }

@@ -11,24 +11,24 @@ public class CustomerToolHandler(IHttpClientFactory httpClientFactory) : BaseToo
     protected override string ServiceName => "CustomerService";
 
     /// <inheritdoc/>
-    public override async Task<string> ExecuteAsync(string toolName, Dictionary<string, object> args, CancellationToken cancellationToken)
+    public override async Task<string> ExecuteAsync(string toolName, Dictionary<string, object> args, string? userToken, CancellationToken cancellationToken)
     {
         return toolName switch
         {
-            "search_customers" => await GetAsync($"/customer/v1/customers?query={Uri.EscapeDataString(GetStringArg(args, "query"))}&page={GetIntArg(args, "page")}&pageSize=10", cancellationToken),
-            "get_customer" => await GetAsync($"/customer/v1/customers/{GetStringArg(args, "customer_id")}", cancellationToken),
-            "get_customer_metrics" => await GetCustomerMetricsAsync(cancellationToken),
-            "add_customer_address" => await AddCustomerAddressAsync(args, cancellationToken),
+            "search_customers" => await GetAsync($"/customer/v1/customers?query={Uri.EscapeDataString(GetStringArg(args, "query"))}&page={GetIntArg(args, "page")}&pageSize=10", userToken, cancellationToken),
+            "get_customer" => await GetAsync($"/customer/v1/customers/{GetStringArg(args, "customer_id")}", userToken, cancellationToken),
+            "get_customer_metrics" => await GetCustomerMetricsAsync(userToken, cancellationToken),
+            "add_customer_address" => await AddCustomerAddressAsync(args, userToken, cancellationToken),
             _ => """{"error": "Unknown customer tool"}"""
         };
     }
 
-    private async Task<string> GetCustomerMetricsAsync(CancellationToken cancellationToken)
+    private async Task<string> GetCustomerMetricsAsync(string? userToken, CancellationToken cancellationToken)
     {
         // Get 1 item to minimize data transfer, we only need the totalCount from metadata
-        var response = await GetAsync("/customer/v1/customers?pageSize=1", cancellationToken);
-        
-        try 
+        var response = await GetAsync("/customer/v1/customers?pageSize=1", userToken, cancellationToken);
+
+        try
         {
             using var doc = JsonDocument.Parse(response);
             if (doc.RootElement.TryGetProperty("totalCount", out var totalCount))
@@ -40,11 +40,11 @@ public class CustomerToolHandler(IHttpClientFactory httpClientFactory) : BaseToo
         {
             // If parsing fails or property doesn't exist, return original response or error
         }
-        
+
         return response;
     }
 
-    private async Task<string> AddCustomerAddressAsync(Dictionary<string, object> args, CancellationToken cancellationToken)
+    private async Task<string> AddCustomerAddressAsync(Dictionary<string, object> args, string? userToken, CancellationToken cancellationToken)
     {
         var payload = new
         {
@@ -59,8 +59,8 @@ public class CustomerToolHandler(IHttpClientFactory httpClientFactory) : BaseToo
             isDefaultBilling = GetBoolArg(args, "is_default_billing", false),
             isDefaultShipping = GetBoolArg(args, "is_default_shipping", true)
         };
-        
-        return await PostAsync("/customer/v1/addresses", payload, cancellationToken);
+
+        return await PostAsync("/customer/v1/addresses", payload, userToken, cancellationToken);
     }
 
     private static Guid? GetGuidArg(Dictionary<string, object> args, string key)

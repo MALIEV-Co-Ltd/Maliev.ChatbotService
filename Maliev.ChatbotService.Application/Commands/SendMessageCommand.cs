@@ -37,6 +37,11 @@ public class SendMessageCommand
     /// Optional callback for streaming thinking steps to the caller.
     /// </summary>
     public Func<ThinkingStep, Task>? ThinkingStepCallback { get; set; }
+
+    /// <summary>
+    /// The Bearer token of the authenticated user, forwarded to downstream tool calls.
+    /// </summary>
+    public string? UserToken { get; set; }
 }
 
 /// <summary>

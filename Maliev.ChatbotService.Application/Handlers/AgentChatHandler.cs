@@ -34,11 +34,13 @@ public class AgentChatHandler
     /// </summary>
     /// <param name="request">The initial Gemini request with tools.</param>
     /// <param name="onThinkingStep">Callback for each thinking step (for real-time streaming).</param>
+    /// <param name="userToken">The Bearer token to forward to downstream tool calls, or null if unavailable.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The final response with accumulated thinking steps.</returns>
     public async Task<AgentChatResult> ExecuteAsync(
         GeminiRequest request,
         Func<ThinkingStep, Task>? onThinkingStep = null,
+        string? userToken = null,
         CancellationToken cancellationToken = default)
     {
         var thinkingSteps = new List<ThinkingStep>();
@@ -110,7 +112,7 @@ public class AgentChatHandler
                 string toolResult;
                 try
                 {
-                    toolResult = await _toolExecutor.ExecuteAsync(functionCall.Name, functionCall.Args, cancellationToken);
+                    toolResult = await _toolExecutor.ExecuteAsync(functionCall.Name, functionCall.Args, userToken, cancellationToken);
                 }
                 catch (Exception ex)
                 {

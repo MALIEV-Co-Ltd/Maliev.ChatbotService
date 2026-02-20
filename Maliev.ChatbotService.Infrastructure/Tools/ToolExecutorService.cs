@@ -64,7 +64,7 @@ public class ToolExecutorService : IToolExecutorService
     }
 
     /// <inheritdoc/>
-    public async Task<string> ExecuteAsync(string toolName, Dictionary<string, object> args, CancellationToken cancellationToken = default)
+    public async Task<string> ExecuteAsync(string toolName, Dictionary<string, object> args, string? userToken = null, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Executing tool: {ToolName} with args: {Args}", toolName, JsonSerializer.Serialize(args));
 
@@ -75,7 +75,7 @@ public class ToolExecutorService : IToolExecutorService
 
         try
         {
-            return await handler.ExecuteAsync(toolName, args, cancellationToken);
+            return await handler.ExecuteAsync(toolName, args, userToken, cancellationToken);
         }
         catch (Exception ex)
         {

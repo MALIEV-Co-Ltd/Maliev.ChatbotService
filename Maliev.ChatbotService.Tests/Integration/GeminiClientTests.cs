@@ -32,7 +32,7 @@ public class GeminiClientTests : IAsyncLifetime
     /// <summary>
     /// Tests that Gemini API call succeeds with valid request.
     /// </summary>
-    [Fact]
+    [Fact(Skip = "Requires live Gemini API key (GEMINI_API_KEY env var)")]
     public async Task SendMessageAsync_ValidRequest_ReturnsResponse()
     {
         // Arrange
@@ -58,7 +58,7 @@ public class GeminiClientTests : IAsyncLifetime
     /// <summary>
     /// Tests that API timeout is handled correctly.
     /// </summary>
-    [Fact]
+    [Fact(Skip = "Requires live Gemini API key (GEMINI_API_KEY env var)")]
     public async Task SendMessageAsync_Timeout_ThrowsTimeoutException()
     {
         // Arrange
@@ -79,7 +79,7 @@ public class GeminiClientTests : IAsyncLifetime
     /// <summary>
     /// Tests that transient failures are retried.
     /// </summary>
-    [Fact]
+    [Fact(Skip = "Requires live Gemini API key (GEMINI_API_KEY env var)")]
     public async Task SendMessageAsync_TransientFailure_Retries()
     {
         // Arrange
@@ -103,7 +103,7 @@ public class GeminiClientTests : IAsyncLifetime
     /// <summary>
     /// Tests that multimodal request with image is handled.
     /// </summary>
-    [Fact]
+    [Fact(Skip = "Requires live Gemini API key (GEMINI_API_KEY env var)")]
     public async Task SendMessageAsync_WithImage_ProcessesSuccessfully()
     {
         // Arrange
@@ -129,7 +129,7 @@ public class GeminiClientTests : IAsyncLifetime
     /// <summary>
     /// Tests that default timeout is 10 seconds.
     /// </summary>
-    [Fact]
+    [Fact(Skip = "Requires live Gemini API key (GEMINI_API_KEY env var)")]
     public async Task SendMessageAsync_NoTimeoutSpecified_UsesDefault10Seconds()
     {
         // Arrange
@@ -152,7 +152,7 @@ public class GeminiClientTests : IAsyncLifetime
     /// <summary>
     /// Tests that web search timeout is 30 seconds.
     /// </summary>
-    [Fact]
+    [Fact(Skip = "Requires live Gemini API key (GEMINI_API_KEY env var)")]
     public async Task SendMessageAsync_WithWebSearch_Uses30SecondTimeout()
     {
         // Arrange

@@ -28,18 +28,22 @@ public abstract class BaseToolHandler : IToolHandler
     }
 
     /// <inheritdoc/>
-    public abstract Task<string> ExecuteAsync(string toolName, Dictionary<string, object> args, CancellationToken cancellationToken);
+    public abstract Task<string> ExecuteAsync(string toolName, Dictionary<string, object> args, string? userToken, CancellationToken cancellationToken);
 
     /// <summary>
     /// Sends a GET request to the microservice and returns the response body.
     /// </summary>
     /// <param name="path">The relative request path.</param>
+    /// <param name="userToken">The Bearer token to forward, or null for unauthenticated requests.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>The response content as a string.</returns>
-    protected async Task<string> GetAsync(string path, CancellationToken cancellationToken)
+    protected async Task<string> GetAsync(string path, string? userToken, CancellationToken cancellationToken)
     {
         var client = _httpClientFactory.CreateClient(ServiceName);
-        var response = await client.GetAsync(path, cancellationToken);
+        var request = new HttpRequestMessage(HttpMethod.Get, path);
+        if (!string.IsNullOrEmpty(userToken))
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", userToken);
+        var response = await client.SendAsync(request, cancellationToken);
         var content = await response.Content.ReadAsStringAsync(cancellationToken);
 
         if (!response.IsSuccessStatusCode)
@@ -55,12 +59,17 @@ public abstract class BaseToolHandler : IToolHandler
     /// </summary>
     /// <param name="path">The relative request path.</param>
     /// <param name="payload">The payload object to serialize as JSON.</param>
+    /// <param name="userToken">The Bearer token to forward, or null for unauthenticated requests.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>The response content as a string.</returns>
-    protected async Task<string> PostAsync<T>(string path, T payload, CancellationToken cancellationToken)
+    protected async Task<string> PostAsync<T>(string path, T payload, string? userToken, CancellationToken cancellationToken)
     {
         var client = _httpClientFactory.CreateClient(ServiceName);
-        var response = await client.PostAsJsonAsync(path, payload, cancellationToken);
+        var request = new HttpRequestMessage(HttpMethod.Post, path);
+        request.Content = JsonContent.Create(payload);
+        if (!string.IsNullOrEmpty(userToken))
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", userToken);
+        var response = await client.SendAsync(request, cancellationToken);
         var content = await response.Content.ReadAsStringAsync(cancellationToken);
 
         if (!response.IsSuccessStatusCode)

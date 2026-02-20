@@ -547,7 +547,7 @@ public class SendMessageCommandHandler
                     geminiRequest.TimeoutSeconds = 30;
 
                     var agentResult = await _agentChatHandler.ExecuteAsync(
-                        geminiRequest, command.ThinkingStepCallback, cancellationToken);
+                        geminiRequest, command.ThinkingStepCallback, command.UserToken, cancellationToken);
 
                     thinkingSteps = agentResult.ThinkingSteps;
                     geminiResponse = new GeminiResponse

@@ -8,5 +8,5 @@ public interface IToolHandler
     /// <summary>
     /// Executes the specified tool function.
     /// </summary>
-    Task<string> ExecuteAsync(string toolName, Dictionary<string, object> args, CancellationToken cancellationToken);
+    Task<string> ExecuteAsync(string toolName, Dictionary<string, object> args, string? userToken, CancellationToken cancellationToken);
 }

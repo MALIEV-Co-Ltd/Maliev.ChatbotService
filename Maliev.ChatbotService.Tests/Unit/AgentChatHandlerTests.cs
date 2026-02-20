@@ -77,7 +77,7 @@ public class AgentChatHandlerTests
                 };
             });
 
-        _toolExecutorMock.Setup(x => x.ExecuteAsync("get_document_content", It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>()))
+        _toolExecutorMock.Setup(x => x.ExecuteAsync("get_document_content", It.IsAny<Dictionary<string, object>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(toolResult);
 
         // Act
@@ -137,7 +137,7 @@ public class AgentChatHandlerTests
                 };
             });
 
-        _toolExecutorMock.Setup(x => x.ExecuteAsync("get_customer", It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>()))
+        _toolExecutorMock.Setup(x => x.ExecuteAsync("get_customer", It.IsAny<Dictionary<string, object>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(toolResult);
 
         // Act

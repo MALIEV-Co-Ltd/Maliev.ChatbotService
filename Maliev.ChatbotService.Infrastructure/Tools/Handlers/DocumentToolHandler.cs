@@ -12,27 +12,27 @@ public class DocumentToolHandler(IHttpClientFactory httpClientFactory) : BaseToo
     protected override string ServiceName => "CustomerService"; // Default service
 
     /// <inheritdoc/>
-    public override async Task<string> ExecuteAsync(string toolName, Dictionary<string, object> args, CancellationToken cancellationToken)
+    public override async Task<string> ExecuteAsync(string toolName, Dictionary<string, object> args, string? userToken, CancellationToken cancellationToken)
     {
         return toolName switch
         {
-            "list_customer_ndas" => await ListCustomerNDAsAsync(args, cancellationToken),
-            "get_document_content" => await GetDocumentContentAsync(args, cancellationToken),
+            "list_customer_ndas" => await ListCustomerNDAsAsync(args, userToken, cancellationToken),
+            "get_document_content" => await GetDocumentContentAsync(args, userToken, cancellationToken),
             _ => """{"error": "Unknown document tool"}"""
         };
     }
 
-    private async Task<string> ListCustomerNDAsAsync(Dictionary<string, object> args, CancellationToken cancellationToken)
+    private async Task<string> ListCustomerNDAsAsync(Dictionary<string, object> args, string? userToken, CancellationToken cancellationToken)
     {
         var customerId = GetStringArg(args, "customer_id");
         if (string.IsNullOrWhiteSpace(customerId))
         {
             return """{"error": "customer_id is required"}""";
         }
-        return await GetAsync($"/customer/v1/ndas/customer/{customerId}", cancellationToken);
+        return await GetAsync($"/customer/v1/ndas/customer/{customerId}", userToken, cancellationToken);
     }
 
-    private async Task<string> GetDocumentContentAsync(Dictionary<string, object> args, CancellationToken cancellationToken)
+    private async Task<string> GetDocumentContentAsync(Dictionary<string, object> args, string? userToken, CancellationToken cancellationToken)
     {
         string fileReference = GetStringArg(args, "file_reference");
         string documentId = GetStringArg(args, "document_id");
@@ -45,7 +45,7 @@ public class DocumentToolHandler(IHttpClientFactory httpClientFactory) : BaseToo
         // If we only have document_id, resolve it to file_reference first
         if (string.IsNullOrWhiteSpace(fileReference))
         {
-            var docResponse = await GetAsync($"/customer/v1/documents/{documentId}", cancellationToken);
+            var docResponse = await GetAsync($"/customer/v1/documents/{documentId}", userToken, cancellationToken);
             try
             {
                 using var doc = JsonDocument.Parse(docResponse);
@@ -67,7 +67,10 @@ public class DocumentToolHandler(IHttpClientFactory httpClientFactory) : BaseToo
 
         // Now we have fileReference, get signed URL from UploadService
         var uploadClient = _httpClientFactory.CreateClient("UploadService");
-        var signedUrlResponse = await uploadClient.PostAsync($"/upload/v1/files/{fileReference}/signed-url", null, cancellationToken);
+        var signedUrlRequest = new HttpRequestMessage(HttpMethod.Post, $"/upload/v1/files/{fileReference}/signed-url");
+        if (!string.IsNullOrEmpty(userToken))
+            signedUrlRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", userToken);
+        var signedUrlResponse = await uploadClient.SendAsync(signedUrlRequest, cancellationToken);
         
         if (!signedUrlResponse.IsSuccessStatusCode)
         {
