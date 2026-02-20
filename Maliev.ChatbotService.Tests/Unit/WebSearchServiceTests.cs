@@ -24,7 +24,7 @@ public class WebSearchServiceTests
     {
         _configurationMock = new Mock<IConfiguration>();
         _loggerMock = new Mock<ILogger<WebSearchService>>();
-        
+
         _configurationMock.Setup(c => c["GoogleCustomSearch:ApiKey"]).Returns("test-key");
         _configurationMock.Setup(c => c["GoogleCustomSearch:SearchEngineId"]).Returns("test-cx");
     }

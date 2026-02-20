@@ -40,7 +40,7 @@ public class AgentChatHandlerTests
             Messages = new List<GeminiMessage> { new GeminiMessage { Role = "user", Content = "Read this NDA" } }
         };
 
-        var pdfData = "JVBERi0xLjQKJ..." ; // Mock base64
+        var pdfData = "JVBERi0xLjQKJ..."; // Mock base64
         var toolResult = JsonSerializer.Serialize(new
         {
             _metadata = new
@@ -57,7 +57,7 @@ public class AgentChatHandlerTests
         var capturedRequests = new List<GeminiRequest>();
         _geminiClientMock.Setup(x => x.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()))
             .Callback<GeminiRequest, CancellationToken>((r, c) => capturedRequests.Add(new GeminiRequest { Messages = new List<GeminiMessage>(r.Messages) }))
-            .ReturnsAsync((GeminiRequest r, CancellationToken c) => 
+            .ReturnsAsync((GeminiRequest r, CancellationToken c) =>
             {
                 if (capturedRequests.Count == 1)
                 {
@@ -117,7 +117,7 @@ public class AgentChatHandlerTests
         var capturedRequests = new List<GeminiRequest>();
         _geminiClientMock.Setup(x => x.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()))
             .Callback<GeminiRequest, CancellationToken>((r, c) => capturedRequests.Add(new GeminiRequest { Messages = new List<GeminiMessage>(r.Messages) }))
-            .ReturnsAsync((GeminiRequest r, CancellationToken c) => 
+            .ReturnsAsync((GeminiRequest r, CancellationToken c) =>
             {
                 if (capturedRequests.Count == 1)
                 {
@@ -146,7 +146,7 @@ public class AgentChatHandlerTests
         // Assert
         Assert.True(result.Success);
         Assert.Equal(2, capturedRequests.Count);
-        
+
         // Verify that no attachments were added in either call
         Assert.All(capturedRequests, r => Assert.All(r.Messages, m => Assert.Null(m.Attachments)));
     }

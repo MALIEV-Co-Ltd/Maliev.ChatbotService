@@ -30,7 +30,7 @@ public class ResponseTimeoutServiceTests
     {
         // Arrange
         var expected = "success";
-        
+
         // Act
         var result = await _service.ExecuteWithTimeoutAsync(
             async (ct) => { await Task.Delay(10, ct); return expected; },

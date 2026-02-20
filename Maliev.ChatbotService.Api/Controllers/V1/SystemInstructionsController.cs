@@ -32,7 +32,7 @@ public class SystemInstructionsController : ControllerBase
     /// Initializes a new instance of the <see cref="SystemInstructionsController"/> class.
     /// </summary>
     public SystemInstructionsController(
-        ISystemInstructionRepository repository, 
+        ISystemInstructionRepository repository,
         ISystemInstructionService service,
         CreateSystemInstructionCommandHandler createHandler,
         UpdateSystemInstructionCommandHandler updateHandler,
@@ -67,7 +67,7 @@ public class SystemInstructionsController : ControllerBase
         };
 
         var instructions = await _getQueryHandler.HandleAsync(query, cancellationToken);
-        
+
         // Manual pagination if needed, but QueryHandler currently returns all
         var pagedInstructions = instructions
             .Skip((page - 1) * pageSize)

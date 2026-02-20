@@ -68,7 +68,7 @@ public class LinkIdentityCommandHandlerTests : IClassFixture<BaseIntegrationTest
 
         var updatedProfile = await userRepo.GetByIdAsync(userProfile.Id);
         Assert.Equal("U_TEST_123", updatedProfile!.LineUserId);
-        
+
         var links = await linkRepo.GetByUserIdAsync(userProfile.Id);
         Assert.Contains(links, l => l.ExternalPlatformId == "U_TEST_123" && l.PlatformName == PlatformName.Line);
     }

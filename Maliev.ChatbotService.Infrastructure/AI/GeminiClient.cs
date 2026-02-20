@@ -85,7 +85,7 @@ public class GeminiClient : IGeminiClient
                 if (lastMessage.Role != "assistant")
                 {
                     var attachmentParts = request.Attachments.Select(GetAttachmentPart).ToList();
-                    
+
                     // Re-create the last entry with merged parts
                     var existingParts = new List<object> { new { text = lastMessage.Content } };
                     if (lastMessage.Attachments != null)
@@ -198,9 +198,9 @@ public class GeminiClient : IGeminiClient
             var geminiResponse = JsonSerializer.Deserialize<JsonElement>(responseContent);
             var candidates = geminiResponse.GetProperty("candidates");
             var firstCandidate = candidates.EnumerateArray().FirstOrDefault();
-            
+
             // Check if generation was blocked
-            if (firstCandidate.TryGetProperty("finishReason", out var finishReason) && 
+            if (firstCandidate.TryGetProperty("finishReason", out var finishReason) &&
                 finishReason.GetString() == "SAFETY")
             {
                 _logger.LogWarning("Gemini API blocked response due to safety filters");

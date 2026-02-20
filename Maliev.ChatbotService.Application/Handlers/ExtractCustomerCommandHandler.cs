@@ -175,13 +175,13 @@ public class ExtractCustomerCommandHandler
 
         if (!geminiResponse.Success)
         {
-            _logger.LogError("Gemini extraction call failed: {Error} (Type: {ErrorType})", 
+            _logger.LogError("Gemini extraction call failed: {Error} (Type: {ErrorType})",
                 geminiResponse.ErrorMessage, geminiResponse.ErrorType);
-            
-            return new ExtractCustomerResult 
-            { 
-                Success = false, 
-                ErrorMessage = geminiResponse.ErrorMessage ?? "AI extraction failed." 
+
+            return new ExtractCustomerResult
+            {
+                Success = false,
+                ErrorMessage = geminiResponse.ErrorMessage ?? "AI extraction failed."
             };
         }
 

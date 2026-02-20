@@ -22,7 +22,7 @@ public class DocumentToolHandlerTests
     {
         _httpClientFactoryMock = new Mock<IHttpClientFactory>();
         _httpMessageHandlerMock = new Mock<HttpMessageHandler>();
-        
+
         var client = new HttpClient(_httpMessageHandlerMock.Object)
         {
             BaseAddress = new Uri("http://test.com")

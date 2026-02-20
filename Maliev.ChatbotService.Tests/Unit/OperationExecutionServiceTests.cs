@@ -30,7 +30,7 @@ public class OperationExecutionServiceTests
         _configurationMock = new Mock<IConfiguration>();
         _operationLogRepositoryMock = new Mock<IOperationLogRepository>();
         _loggerMock = new Mock<ILogger<OperationExecutionService>>();
-        
+
         // Setup default configuration values
         _configurationMock.Setup(c => c["ExternalServices:QuotationService:BaseUrl"]).Returns("http://quotationservice");
         _configurationMock.Setup(c => c["ExternalServices:OrderService:BaseUrl"]).Returns("http://orderservice");
@@ -41,7 +41,7 @@ public class OperationExecutionServiceTests
         _httpClientFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(mockHttpClient);
 
         _service = new OperationExecutionService(
-            _httpClientFactoryMock.Object, 
+            _httpClientFactoryMock.Object,
             _configurationMock.Object,
             _loggerMock.Object,
             _operationLogRepositoryMock.Object);
@@ -56,7 +56,7 @@ public class OperationExecutionServiceTests
         // Arrange
         var quotationId = "Q-2025-001";
         var parameters = new Dictionary<string, object> { { "quotationId", quotationId } };
-        
+
         var handlerMock = new Mock<HttpMessageHandler>();
         handlerMock.Protected()
             .Setup<Task<HttpResponseMessage>>(
@@ -97,7 +97,7 @@ public class OperationExecutionServiceTests
         // Arrange
         var orderId = "O-2025-001";
         var parameters = new Dictionary<string, object> { { "orderId", orderId } };
-        
+
         var handlerMock = new Mock<HttpMessageHandler>();
         handlerMock.Protected()
             .Setup<Task<HttpResponseMessage>>(

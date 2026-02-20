@@ -48,7 +48,7 @@ public class SystemInstructionApiTests : IClassFixture<BaseIntegrationTestFactor
         // Act - Create
         var createResponse = await _adminClient.PostAsJsonAsync("/chatbot/v1/admin/instructions", request, _factory.JsonSerializerOptions);
         Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
-        
+
         var created = await createResponse.Content.ReadFromJsonAsync<SystemInstructionDto>(_factory.JsonSerializerOptions);
         Assert.NotNull(created);
         Assert.NotEqual(Guid.Empty, created.Id);

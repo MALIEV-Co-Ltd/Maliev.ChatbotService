@@ -71,11 +71,11 @@ public class CustomerToolHandler(IHttpClientFactory httpClientFactory) : BaseToo
 
     private static bool GetBoolArg(Dictionary<string, object> args, string key, bool defaultValue)
     {
-         if (args.TryGetValue(key, out var value))
-         {
-             if (value is bool b) return b;
-             if (bool.TryParse(value?.ToString(), out var parsed)) return parsed;
-         }
-         return defaultValue;
+        if (args.TryGetValue(key, out var value))
+        {
+            if (value is bool b) return b;
+            if (bool.TryParse(value?.ToString(), out var parsed)) return parsed;
+        }
+        return defaultValue;
     }
 }

@@ -71,29 +71,31 @@ public class DocumentToolHandler(IHttpClientFactory httpClientFactory) : BaseToo
         if (!string.IsNullOrEmpty(userToken))
             signedUrlRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", userToken);
         var signedUrlResponse = await uploadClient.SendAsync(signedUrlRequest, cancellationToken);
-        
+
         if (!signedUrlResponse.IsSuccessStatusCode)
         {
-             return $$"""{"error": "Failed to get signed URL: {{signedUrlResponse.StatusCode}}"}""";
+            return $$"""{"error": "Failed to get signed URL: {{signedUrlResponse.StatusCode}}"}""";
         }
 
         var signedUrlJson = await signedUrlResponse.Content.ReadAsStringAsync(cancellationToken);
         string downloadUrl = "";
-        try {
+        try
+        {
             using var doc = JsonDocument.Parse(signedUrlJson);
             if (doc.RootElement.TryGetProperty("url", out var urlProp))
             {
                 downloadUrl = urlProp.GetString() ?? "";
             }
-        } catch { }
+        }
+        catch { }
 
         if (string.IsNullOrWhiteSpace(downloadUrl))
         {
-             return """{"error": "Failed to parse signed URL response"}""";
+            return """{"error": "Failed to parse signed URL response"}""";
         }
 
         // Download the file content
-        var httpClient = _httpClientFactory.CreateClient(); 
+        var httpClient = _httpClientFactory.CreateClient();
         var fileBytes = await httpClient.GetByteArrayAsync(downloadUrl, cancellationToken);
 
         // Return base64 so Gemini can parse it directly

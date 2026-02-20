@@ -47,7 +47,7 @@ public class BaseIntegrationTestFactory<TProgram, TDbContext> : WebApplicationFa
     private static RabbitMqContainer? _rabbitmqContainer;
     private static bool _containersStarted;
     private static readonly SemaphoreSlim _initLock = new(1, 1);
-    
+
     private readonly RSA _testRsa;
 
     /// <summary>
@@ -74,7 +74,7 @@ public class BaseIntegrationTestFactory<TProgram, TDbContext> : WebApplicationFa
     public async Task InitializeAsync()
     {
         await _initLock.WaitAsync();
-        try 
+        try
         {
             if (!_containersStarted)
             {
@@ -97,11 +97,11 @@ public class BaseIntegrationTestFactory<TProgram, TDbContext> : WebApplicationFa
                     _redisContainer.StartAsync(),
                     _rabbitmqContainer.StartAsync()
                 );
-                
+
                 // Ensure PostgreSQL is fully ready and accepting connections
                 var postgresReady = false;
                 var retryCount = 0;
-                const int maxRetries = 60; 
+                const int maxRetries = 60;
                 while (!postgresReady && retryCount < maxRetries)
                 {
                     try
@@ -284,7 +284,7 @@ public class BaseIntegrationTestFactory<TProgram, TDbContext> : WebApplicationFa
     protected virtual void ConfigureAdditionalServices(IServiceCollection services)
     {
         var redisConnectionString = _redisContainer!.GetConnectionString();
-        
+
         // Explicitly register Redis for tests because AddStandardCache defaults to In-Memory in Testing env
         services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(sp =>
         {
