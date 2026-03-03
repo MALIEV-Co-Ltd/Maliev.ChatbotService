@@ -317,6 +317,12 @@ public class BaseIntegrationTestFactory<TProgram, TDbContext> : WebApplicationFa
         var connectionString = _postgresContainer!.GetConnectionString();
         var optionsBuilder = new DbContextOptionsBuilder<TDbContext>();
         optionsBuilder.UseNpgsql(connectionString);
+        
+        // Suppress pending model changes warning during tests
+        // This warning is thrown when the model in code differs from the migration history,
+        // which can happen in test scenarios where we're testing against a fresh database
+        optionsBuilder.ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
+        
         return (TDbContext)Activator.CreateInstance(typeof(TDbContext), optionsBuilder.Options)!;
     }
 
