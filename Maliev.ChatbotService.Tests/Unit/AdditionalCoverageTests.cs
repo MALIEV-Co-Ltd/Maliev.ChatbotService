@@ -41,7 +41,10 @@ public class AdditionalCoverageExtractPrefsTests
         
         var result = await service.ExtractPreferencesAsync("I prefer อลูมิเนียม material");
         
-        Assert.NotNull(result);
+        Assert.NotEmpty(result);
+        var materialPref = result.FirstOrDefault(r => r.Key == "MaterialPreference");
+        Assert.NotNull(materialPref);
+        Assert.Contains("อลูมิเนียม", materialPref.Value, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -51,7 +54,9 @@ public class AdditionalCoverageExtractPrefsTests
         
         var result = await service.ExtractPreferencesAsync("My preference is 3D printing process");
         
-        Assert.NotNull(result);
+        Assert.NotEmpty(result);
+        var processPref = result.FirstOrDefault(r => r.Key == "ProcessPreference");
+        Assert.NotNull(processPref);
     }
 
     [Fact]
@@ -61,7 +66,9 @@ public class AdditionalCoverageExtractPrefsTests
         
         var result = await service.ExtractPreferencesAsync("We require DIN standard");
         
-        Assert.NotNull(result);
+        Assert.NotEmpty(result);
+        var qualityPref = result.FirstOrDefault(r => r.Key == "QualityStandard");
+        Assert.NotNull(qualityPref);
     }
 
     [Fact]
@@ -71,7 +78,9 @@ public class AdditionalCoverageExtractPrefsTests
         
         var result = await service.ExtractPreferencesAsync("I need it delivered in 2 weeks");
         
-        Assert.NotNull(result);
+        Assert.NotEmpty(result);
+        var deliveryPref = result.FirstOrDefault(r => r.Key == "DeliveryPreference");
+        Assert.NotNull(deliveryPref);
     }
 }
 

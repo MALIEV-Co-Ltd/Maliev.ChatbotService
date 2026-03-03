@@ -4,6 +4,21 @@ using Xunit;
 
 namespace Maliev.ChatbotService.Tests.Unit;
 
+public sealed class CapturingFakeResponseHandler : HttpMessageHandler
+{
+    public HttpRequestMessage? SentRequest { get; private set; }
+
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        SentRequest = request;
+        return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+        {
+            Content = new StringContent("{}")
+        });
+    }
+}
+
 public class OrderToolHandlerTests
 {
     [Fact]
@@ -24,9 +39,10 @@ public class OrderToolHandlerTests
     [Fact]
     public async Task ExecuteAsync_WithSearchOrdersAndCustomerId_IncludesCustomerId()
     {
+        var capturingHandler = new CapturingFakeResponseHandler();
         var mockFactory = new Mock<IHttpClientFactory>();
         mockFactory.Setup(f => f.CreateClient(It.IsAny<string>()))
-            .Returns(new HttpClient(new FakeOkResponseHandler()) { BaseAddress = new Uri("http://localhost") });
+            .Returns(new HttpClient(capturingHandler) { BaseAddress = new Uri("http://localhost") });
         
         var handler = new OrderToolHandler(mockFactory.Object);
         
@@ -34,14 +50,17 @@ public class OrderToolHandlerTests
             new Dictionary<string, object> { ["page"] = 1, ["customer_id"] = "cust-123" }, null, default);
         
         Assert.NotNull(result);
+        Assert.NotNull(capturingHandler.SentRequest);
+        Assert.Contains("customerId=cust-123", capturingHandler.SentRequest.RequestUri?.Query);
     }
 
     [Fact]
     public async Task ExecuteAsync_WithSearchOrdersAndStatus_IncludesStatus()
     {
+        var capturingHandler = new CapturingFakeResponseHandler();
         var mockFactory = new Mock<IHttpClientFactory>();
         mockFactory.Setup(f => f.CreateClient(It.IsAny<string>()))
-            .Returns(new HttpClient(new FakeOkResponseHandler()) { BaseAddress = new Uri("http://localhost") });
+            .Returns(new HttpClient(capturingHandler) { BaseAddress = new Uri("http://localhost") });
         
         var handler = new OrderToolHandler(mockFactory.Object);
         
@@ -49,14 +68,17 @@ public class OrderToolHandlerTests
             new Dictionary<string, object> { ["page"] = 1, ["status"] = "Completed" }, null, default);
         
         Assert.NotNull(result);
+        Assert.NotNull(capturingHandler.SentRequest);
+        Assert.Contains("status=Completed", capturingHandler.SentRequest.RequestUri?.Query);
     }
 
     [Fact]
     public async Task ExecuteAsync_WithGetOrder_ReturnsOrder()
     {
+        var capturingHandler = new CapturingFakeResponseHandler();
         var mockFactory = new Mock<IHttpClientFactory>();
         mockFactory.Setup(f => f.CreateClient(It.IsAny<string>()))
-            .Returns(new HttpClient(new FakeOkResponseHandler()) { BaseAddress = new Uri("http://localhost") });
+            .Returns(new HttpClient(capturingHandler) { BaseAddress = new Uri("http://localhost") });
         
         var handler = new OrderToolHandler(mockFactory.Object);
         
@@ -64,6 +86,8 @@ public class OrderToolHandlerTests
             new Dictionary<string, object> { ["order_id"] = "ORD-001" }, null, default);
         
         Assert.NotNull(result);
+        Assert.NotNull(capturingHandler.SentRequest);
+        Assert.Contains("ORD-001", capturingHandler.SentRequest.RequestUri?.ToString() ?? "");
     }
 
     [Fact]
