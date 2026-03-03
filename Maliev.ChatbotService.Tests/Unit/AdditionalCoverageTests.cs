@@ -1,4 +1,5 @@
 #pragma warning disable CS1591
+using System.Text.Json;
 using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Domain.Entities;
 using Maliev.ChatbotService.Domain.Enums;
@@ -44,7 +45,9 @@ public class AdditionalCoverageExtractPrefsTests
         Assert.NotEmpty(result);
         var materialPref = result.FirstOrDefault(r => r.Key == "MaterialPreference");
         Assert.NotNull(materialPref);
-        Assert.Contains("อลูมิเนียม", materialPref.Value, StringComparison.OrdinalIgnoreCase);
+        var deserialized = JsonSerializer.Deserialize<Dictionary<string, string>>(materialPref.Value);
+        Assert.NotNull(deserialized);
+        Assert.Contains("อลูมิเนียม", deserialized.GetValueOrDefault("material") ?? "", StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

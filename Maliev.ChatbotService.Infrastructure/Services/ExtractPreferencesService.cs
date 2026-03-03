@@ -163,27 +163,27 @@ public partial class ExtractPreferencesService : IExtractPreferencesService
         return preferences;
     }
 
-    [GeneratedRegex(@"(?:i\s+prefer|my\s+preference\s+is|i\s+want)\s+(?:to\s+use\s+)?([a-z0-9\s-]+?)\s+(?:material|metal|steel|aluminum|plastic)")]
+    [GeneratedRegex(@"(?:i\s+prefer|my\s+preference\s+is|i\s+want)\s+(?:to\s+use\s+)?(\S+)\s+(?:material|metal|steel|aluminum|plastic)", RegexOptions.IgnoreCase)]
     private static partial Regex MaterialPreferenceRegex();
 
-    [GeneratedRegex(@"(?:i\s+like|i\s+love)\s+(?:using\s+)?([a-z0-9\s-]+?)\s+(?:material|metal|steel|aluminum|plastic)")]
+    [GeneratedRegex(@"(?:i\s+like|i\s+love)\s+(?:using\s+)?(\S+)\s+(?:material|metal|steel|aluminum|plastic)", RegexOptions.IgnoreCase)]
     private static partial Regex MaterialLikeRegex();
 
-    [GeneratedRegex(@"(?:i\s+always\s+use|always\s+go\s+with)\s+([a-z0-9\s-]+?)\s+(?:for|material)")]
+    [GeneratedRegex(@"(?:i\s+always\s+use|always\s+go\s+with)\s+(\S+)\s+(?:for|material)", RegexOptions.IgnoreCase)]
     private static partial Regex MaterialAlwaysRegex();
 
-    [GeneratedRegex(@"(?:i\s+usually\s+use|typically\s+use)\s+([a-z0-9\s-]+?)\s+(?:for|material)")]
+    [GeneratedRegex(@"(?:i\s+usually\s+use|typically\s+use)\s+(\S+)\s+(?:for|material)", RegexOptions.IgnoreCase)]
     private static partial Regex MaterialUsuallyRegex();
 
-    [GeneratedRegex(@"(?:i\s+prefer|my\s+preference\s+is)\s+([a-z\s-]+?)\s+(?:process|machining|manufacturing)")]
+    [GeneratedRegex(@"(?:i\s+prefer|my\s+preference\s+is)\s+(\S+(?:\s+\S+)*?)\s+(?:process|machining|manufacturing)", RegexOptions.IgnoreCase)]
     private static partial Regex ProcessPreferenceRegex();
 
-    [GeneratedRegex(@"(?:require|need|must\s+meet)\s+(iso|astm|din)\s*[\d-]*")]
+    [GeneratedRegex(@"(?:require|need|must\s+meet)\s+(iso|astm|din)\s*[\d-]*", RegexOptions.IgnoreCase)]
     private static partial Regex QualityStandardRegex();
 
-    [GeneratedRegex(@"(?:i\s+need\s+it|delivery)\s+(?:in|within)\s+([0-9]+\s+(?:days?|weeks?|months?))")]
+    [GeneratedRegex(@"(?:i\s+need|need|delivery)\s+(?:it\s+)?(?:delivered\s+)?(?:in|within|by)\s+([0-9]+\s+(?:days?|weeks?|months?))", RegexOptions.IgnoreCase)]
     private static partial Regex DeliveryPreferenceRegex();
 
-    [GeneratedRegex(@"(?:typically|usually|normally)\s+(?:order|need)\s+(?:about|around)?\s*([0-9,]+)\s+(?:pieces|units|parts)")]
+    [GeneratedRegex(@"(?:typically|usually|normally)\s+(?:order|need)\s+(?:about|around)?\s*([0-9,]+)\s+(?:pieces|units|parts)", RegexOptions.IgnoreCase)]
     private static partial Regex QuantityPreferenceRegex();
 }
