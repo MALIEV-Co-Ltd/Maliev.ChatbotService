@@ -7,7 +7,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <SharedLibraryVersion Condition="'$(SharedLibraryVersion)' == ''">1.0.*-*</SharedLibraryVersion>
-    <UserSecretsId>62dc14a1-4328-4c71-ac01-557f5371d860</UserSecretsId>
+    <UserSecretsId>maliev-chatbotservice-api</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
@@ -25,13 +25,6 @@
   <ItemGroup>
     <ProjectReference Include="..\Maliev.ChatbotService.Application\Maliev.ChatbotService.Application.csproj" />
     <ProjectReference Include="..\Maliev.ChatbotService.Infrastructure\Maliev.ChatbotService.Infrastructure.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.2">
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
   </ItemGroup>
 
 </Project>

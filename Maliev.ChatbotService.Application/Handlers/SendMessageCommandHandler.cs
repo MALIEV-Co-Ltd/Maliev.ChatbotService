@@ -367,159 +367,26 @@ public class SendMessageCommandHandler
             // Get system instruction for business constraint validation (Core only for now)
             var coreInstruction = await _systemInstructionService.GetActiveInstructionAsync(cancellationToken);
 
-            // Check if web search should be triggered
-            string? webSearchContext = null;
+            // Check if Gemini built-in search should be triggered
+            bool enableGeminiSearch = false;
             if (coreInstruction != null &&
                 coreInstruction.EnableWebSearch &&
                 ShouldTriggerWebSearch(command.Content))
             {
-                _logger.LogInformation("Web search triggered for query: {Query}", command.Content);
-
-                // Enforce business rules: prevent competitor pricing queries
                 var competitorKeywords = new[] { "competitor", "pricing", "cost comparison", "price comparison" };
                 var isCompetitorQuery = competitorKeywords.Any(k => command.Content.ToLowerInvariant().Contains(k));
 
                 if (!isCompetitorQuery)
                 {
-                    try
-                    {
-                        // Perform web search with 30s timeout
-                        using var searchCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                        searchCts.CancelAfter(TimeSpan.FromSeconds(30));
-
-                        var searchResults = await _webSearchService.SearchAsync(command.Content, searchCts.Token);
-
-                        // Log domains if enabled
-                        if (coreInstruction.LogSearchDomains && searchResults.Count > 0)
-                        {
-                            var domains = searchResults.Select(r => r.Domain).Distinct().ToList();
-
-                            foreach (var domain in domains)
-                            {
-                                await _searchDomainLogRepository.CreateAsync(new SearchDomainLog
-                                {
-                                    Id = Guid.NewGuid(),
-                                    SessionId = session.Id,
-                                    Domain = domain,
-                                    SearchQuery = command.Content,
-                                    AccessedAt = DateTimeOffset.UtcNow
-                                }, cancellationToken);
-                            }
-
-                            _logger.LogInformation("Logged {Count} domains for web search query", domains.Count);
-                        }
-
-                        // Build web search context for Gemini
-                        if (searchResults.Count > 0)
-                        {
-                            webSearchContext = "Web search results:\n" +
-                                string.Join("\n", searchResults.Take(5).Select((r, i) =>
-                                    $"{i + 1}. {r.Title}\n   {r.Snippet}\n   Source: {r.Url}"));
-                        }
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        _logger.LogWarning("Web search timed out after 30 seconds for query: {Query}", command.Content);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Error performing web search for query: {Query}", command.Content);
-                    }
-                }
-                else
-                {
-                    _logger.LogWarning("Blocked competitor pricing query: {Query}", command.Content);
+                    enableGeminiSearch = true;
+                    _logger.LogInformation("Gemini built-in search enabled for query: {Query}", command.Content);
                 }
             }
 
-            // Check if message is off-topic (skip for intranet channel - internal authenticated users)
-            if (session.Channel != Channel.Intranet &&
-                coreInstruction != null && !_businessConstraintValidator.IsOnTopic(command.Content, coreInstruction))
-            {
-                _logger.LogWarning("Off-topic message detected for session {SessionId}: {Content}", session.Id, command.Content);
-
-                await _operationLogRepository.CreateAsync(new OperationLog
-                {
-                    Id = Guid.NewGuid(),
-                    UserProfileId = session.UserProfileId,
-                    MessageId = userMessage.Id,
-                    OperationType = "OffTopicAttempt",
-                    OperationParameters = JsonSerializer.Serialize(new { message = command.Content }),
-                    ExecutedAt = DateTimeOffset.UtcNow,
-                    Success = false,
-                    ActionSource = "ai-assistant"
-                }, cancellationToken);
-
-                var rejectionMessage = _businessConstraintValidator.GetRejectionMessage(command.Content, coreInstruction);
-
-                var rejectionMessageEntity = new Message
-                {
-                    Id = Guid.NewGuid(),
-                    SessionId = session.Id,
-                    Role = MessageRole.Assistant,
-                    Content = rejectionMessage,
-                    ContentType = ContentType.Text,
-                    CreatedAt = DateTimeOffset.UtcNow,
-                    MetadataJson = JsonSerializer.Serialize(new
-                    {
-                        intent = classification.Intent,
-                        confidence = classification.Confidence,
-                        isOnTopic = false,
-                        injectedKnowledgeIds
-                    })
-                };
-
-                await _messageRepository.CreateAsync(rejectionMessageEntity, cancellationToken);
-
-                session.LastActivityAt = DateTimeOffset.UtcNow;
-                session.ExpiresAt = DateTimeOffset.UtcNow.AddHours(24);
-                await _sessionRepository.UpdateAsync(session, cancellationToken);
-
-                stopwatch.Stop();
-
-                _metrics.RecordConversation();
-                _metrics.RecordResponseLatency(stopwatch.Elapsed.TotalMilliseconds);
-
-                // Publish ChatbotMessageReceivedEvent for rejection
-                await _eventPublisher.PublishAsync(new ChatbotMessageReceivedEvent
-                {
-                    MessageId = Guid.NewGuid(),
-                    Timestamp = DateTimeOffset.UtcNow,
-                    Source = "ChatbotService",
-                    CorrelationId = session.Id,
-                    SessionId = session.Id,
-                    UserProfileId = session.UserProfileId,
-                    Channel = session.Channel.ToString(),
-                    Language = detectedLanguage.ToString(),
-                    UserMessageContent = command.Content,
-                    AssistantResponseContent = rejectionMessage,
-                    ResponseLatencyMs = stopwatch.Elapsed.TotalMilliseconds,
-                    ReceivedAt = userMessage.CreatedAt
-                }, cancellationToken);
-
-                _logger.LogInformation("Returned rejection message for off-topic request in session {SessionId}", session.Id);
-
-                return new SendMessageResult
-                {
-                    MessageId = rejectionMessageEntity.Id,
-                    Content = rejectionMessage,
-                    Role = MessageRole.Assistant,
-                    Language = detectedLanguage,
-                    SuggestedActions = new List<SuggestedActionDto>(),
-                    CreatedAt = rejectionMessageEntity.CreatedAt
-                };
-            }
-
-            // Build Gemini request with web search context if available
-            var enhancedSystemInstruction = systemInstructionText;
-            if (!string.IsNullOrEmpty(webSearchContext))
-            {
-                enhancedSystemInstruction += $"\n\n{webSearchContext}\n\nPlease use the web search results above to provide accurate, sourced information.";
-            }
-
+            // Build Gemini request with built-in search if enabled
             var geminiRequest = new GeminiRequest
             {
-                SystemInstruction = enhancedSystemInstruction,
+                SystemInstruction = systemInstructionText,
                 Messages = conversationHistory
                     .OrderBy(m => m.CreatedAt)
                     .Select(m => new GeminiMessage
@@ -528,9 +395,10 @@ public class SendMessageCommandHandler
                         Content = m.Content
                     })
                     .ToList(),
-                TimeoutSeconds = !string.IsNullOrEmpty(webSearchContext) ? 30 : 10,
+                TimeoutSeconds = enableGeminiSearch ? 30 : 10,
                 ResponseMimeType = command.ResponseMimeType,
-                ResponseSchema = command.ResponseSchema
+                ResponseSchema = command.ResponseSchema,
+                EnableWebSearch = enableGeminiSearch
             };
 
             // For Intranet channel, use agent loop with function calling (RAG)

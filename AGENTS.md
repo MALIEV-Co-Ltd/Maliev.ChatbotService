@@ -48,6 +48,16 @@ This document contains instructions for AI agents operating in this repository.
 
 ## 4. Specific Workflows
 
+### LLM Integration
+- **Provider**: Google Gemini
+- **Primary Model**: Gemini 2.5 Flash
+- **Intent Model**: Gemini 2.5 Flash Lite
+- **Error Handling**: Returns fallback response messages when API fails or times out
+
+### Responsibilities
+- **Chatbot**: AI-powered customer support chatbot for general inquiries
+- **Payment Slip Validation**: Auto-prevalidates bank transfer slips uploaded by customers. Marks slips as validated, but **ALL slips still require manual human admin approval** before production can proceed.
+
 ### Adding a New Feature
 1. Define Entity in `Domain`.
 2. Create Repository Interface in `Domain/Interfaces`.
