@@ -215,7 +215,7 @@ public class BaseIntegrationTestFactory<TProgram, TDbContext> : WebApplicationFa
                 ["CORS:AllowedOrigins:0"] = "http://localhost:3000",
                 ["CORS:AllowedOrigins:1"] = "http://localhost:5173",
                 ["CORS_ALLOWED_ORIGINS"] = "http://localhost:3000,http://localhost:5173",
-                ["ASPNETCORE_ENVIRONMENT"] = "Development"
+                ["ASPNETCORE_ENVIRONMENT"] = "Testing"
             });
         });
 

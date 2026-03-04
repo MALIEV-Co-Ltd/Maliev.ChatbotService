@@ -99,9 +99,13 @@ try
     builder.Services.AddHostedService<Maliev.ChatbotService.Infrastructure.BackgroundServices.SessionExpiryBackgroundService>();
     builder.Services.AddHostedService<Maliev.ChatbotService.Infrastructure.Services.PromptFileLoaderService>();
 
-    // IAM Registration
-    builder.AddIAMServiceClient("chatbot");
-    builder.Services.AddIAMRegistration<ChatbotIAMRegistrationService>("chatbot");
+    // IAM Registration (skip in integration tests to avoid service discovery delays)
+    var isIntegrationTest = builder.Environment.EnvironmentName == "Testing";
+    if (!isIntegrationTest)
+    {
+        builder.AddIAMServiceClient("chatbot");
+        builder.Services.AddIAMRegistration<ChatbotIAMRegistrationService>("chatbot");
+    }
 
     // Handlers
     builder.Services.AddScoped<InitiateSessionCommandHandler>();
