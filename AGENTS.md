@@ -50,9 +50,9 @@ This document contains instructions for AI agents operating in this repository.
 
 ### LLM Integration
 - **Provider**: Google Gemini
-- **Primary Model**: Gemini 1.5 Flash
-- **Fallback Model**: Gemini 1.0 Pro (logs a warning when used)
-- **Error Handling**: If primary model fails, automatically fallback to Gemini 1.0 Pro with warning log
+- **Primary Model**: Gemini 2.5 Flash
+- **Intent Model**: Gemini 2.5 Flash Lite
+- **Error Handling**: Returns fallback response messages when API fails or times out
 
 ### Responsibilities
 - **Chatbot**: AI-powered customer support chatbot for general inquiries
