@@ -45,6 +45,9 @@ public class KnowledgeBaseApiTests : IAsyncLifetime
     [Fact]
     public async Task GetEntries_WithoutPermission_Returns403()
     {
+        // Deny the knowledge.read permission in the mock
+        MockIAMServiceClient.DenyPermission("chatbot.knowledge.read");
+        
         var client = CreateAuthenticatedClient(new[] { "chatbot.preferences.read" });
 
         var response = await client.GetAsync("/chatbot/v1/admin/knowledge-base");
@@ -124,6 +127,9 @@ public class KnowledgeBaseApiTests : IAsyncLifetime
     [Fact]
     public async Task CreateEntry_WithoutPermission_Returns403()
     {
+        // Deny the knowledge.write permission in the mock
+        MockIAMServiceClient.DenyPermission("chatbot.knowledge.write");
+        
         var client = CreateAuthenticatedClient(new[] { "chatbot.knowledge.read" });
         var request = new CreateKnowledgeBaseRequest
         {

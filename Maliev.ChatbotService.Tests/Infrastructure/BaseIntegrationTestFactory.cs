@@ -498,12 +498,15 @@ public class BaseIntegrationTestFactory<TProgram, TDbContext> : WebApplicationFa
     /// </summary>
     public HttpClient CreateAuthenticatedClient(string userId = "test-user", string[]? roles = null)
     {
+        // Reset mock permissions before each test
+        MockIAMServiceClient.ResetPermissions();
+
         // Create claims list
         var claims = new List<Claim>
         {
             new(JwtRegisteredClaimNames.Sub, userId),
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-            new(ClaimTypes.NameIdentifier, userId) // Required for PermissionAuthorizationHandler
+            new(ClaimTypes.NameIdentifier, userId)
         };
 
         // If no roles/permissions specified, add wildcard to bypass all checks
@@ -548,16 +551,16 @@ public class BaseIntegrationTestFactory<TProgram, TDbContext> : WebApplicationFa
     /// <returns>HTTP client with authentication header.</returns>
     public HttpClient CreateAuthenticatedClient(string[] permissions, string userId = "test-user")
     {
+        // Reset mock permissions before each test
+        MockIAMServiceClient.ResetPermissions();
+
         // Create a JWT token with permissions as claims
         var claims = new List<Claim>
         {
             new(JwtRegisteredClaimNames.Sub, userId),
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-            new(ClaimTypes.NameIdentifier, userId), // Add NameIdentifier for PermissionAuthorizationHandler
+            new(ClaimTypes.NameIdentifier, userId),
         };
-
-        // Add wildcard permission for tests to bypass all permission checks
-        claims.Add(new Claim("permission", "*"));
 
         // Add each specific permission as well
         foreach (var permission in permissions)
@@ -628,22 +631,47 @@ internal class TestIpAddressMiddleware
 
 /// <summary>
 /// Mock implementation of IAM service client for integration tests.
-/// Always returns true for permission checks.
+/// Supports configurable permission denial for testing authorization scenarios.
 /// </summary>
 internal class MockIAMServiceClient : IIAMServiceClient
 {
+    private static readonly HashSet<string> DeniedPermissions = new(StringComparer.OrdinalIgnoreCase);
+
+    public static void GrantPermission(string permission)
+    {
+        DeniedPermissions.Remove(permission);
+    }
+
+    public static void DenyPermission(string permission)
+    {
+        DeniedPermissions.Add(permission);
+    }
+
+    public static void ResetPermissions()
+    {
+        DeniedPermissions.Clear();
+    }
+
     public Task<bool> HasPermissionAsync(string userId, string permission, CancellationToken cancellationToken = default)
     {
-        return Task.FromResult(true);
+        var isDenied = DeniedPermissions.Contains(permission);
+        return Task.FromResult(!isDenied);
     }
 
     public Task<bool> CheckPermissionAsync(string userId, string permission, string? resourcePath = null, CancellationToken cancellationToken = default)
     {
-        return Task.FromResult(true);
+        var isDenied = DeniedPermissions.Contains(permission);
+        return Task.FromResult(!isDenied);
     }
 
     public Task<List<string>> GetUserPermissionsAsync(string userId, CancellationToken cancellationToken = default)
     {
+        if (DeniedPermissions.Count > 0)
+        {
+            var allPermissions = new List<string> { "chatbot.knowledge.read", "chatbot.knowledge.write", "chatbot.preferences.read", "chatbot.preferences.delete", "chatbot.instructions.read", "chatbot.instructions.write", "chatbot.users.link" };
+            var granted = allPermissions.Where(p => !DeniedPermissions.Contains(p)).ToList();
+            return Task.FromResult(granted);
+        }
         return Task.FromResult(new List<string> { "*" });
     }
 
