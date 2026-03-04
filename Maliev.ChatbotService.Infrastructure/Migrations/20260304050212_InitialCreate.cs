@@ -1,3 +1,4 @@
+﻿using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -32,11 +33,31 @@ namespace Maliev.ChatbotService.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "KnowledgeBase",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    TopicKey = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
+                    FactKey = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    Content = table.Column<string>(type: "text", nullable: false),
+                    Metadata = table.Column<string>(type: "jsonb", nullable: false, defaultValue: "{}"),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_KnowledgeBase", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "SystemInstructions",
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
                     Name = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    Category = table.Column<int>(type: "integer", nullable: false),
+                    TopicKey = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
+                    Priority = table.Column<int>(type: "integer", nullable: false, defaultValue: 0),
                     PersonaDefinition = table.Column<string>(type: "text", nullable: false),
                     BusinessConstraints = table.Column<string>(type: "text", nullable: false),
                     AllowedTopics = table.Column<string>(type: "text", nullable: false),
@@ -200,7 +221,8 @@ namespace Maliev.ChatbotService.Infrastructure.Migrations
                     OperationParameters = table.Column<string>(type: "jsonb", nullable: true),
                     ExecutionResult = table.Column<string>(type: "jsonb", nullable: true),
                     ExecutedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-                    Success = table.Column<bool>(type: "boolean", nullable: false)
+                    Success = table.Column<bool>(type: "boolean", nullable: false),
+                    ActionSource = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false, defaultValue: "user")
                 },
                 constraints: table =>
                 {
@@ -254,13 +276,8 @@ namespace Maliev.ChatbotService.Infrastructure.Migrations
                 values: new object[,]
                 {
                     { new Guid("00000000-0000-0000-0000-000000000010"), new DateTimeOffset(new DateTime(2025, 12, 31, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), false, true, 1, 100, "I'm Mali, and I apologize, but I encountered an unexpected error while processing your request. Please try again in a few moments. If the issue persists, you can contact our support team at support@maliev.com.", "UnexpectedError", null },
-                    { new Guid("00000000-0000-0000-0000-000000000011"), new DateTimeOffset(new DateTime(2025, 12, 31, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), false, true, 2, 100, "?????????????????? ??????????????????????????????????????????????? ??????????????????????????? ????????????????? ?????????????????????????????????????? support@maliev.com ???", "UnexpectedError", null }
+                    { new Guid("00000000-0000-0000-0000-000000000011"), new DateTimeOffset(new DateTime(2025, 12, 31, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), false, true, 2, 100, "มะลิขออภัยด้วยนะคะ เกิดข้อผิดพลาดที่ไม่คาดคิดขณะประมวลผลคำขอของคุณ โปรดลองอีกครั้งในอีกสักครู่ หากปัญหายังคงอยู่ คุณสามารถติดต่อทีมสนับสนุนของเราได้ที่ support@maliev.com ค่ะ", "UnexpectedError", null }
                 });
-
-            migrationBuilder.InsertData(
-                table: "SystemInstructions",
-                columns: new[] { "Id", "AllowedTopics", "BusinessConstraints", "EnableWebSearch", "IsActive", "LogSearchDomains", "Name", "PersonaDefinition", "RejectionTemplates", "Version" },
-                values: new object[] { new Guid("00000000-0000-0000-0000-000000000001"), "manufacturing,materials,processes,orders,quotations,technical specifications,quality standards,production capabilities,lead times,CNC machining,welding,casting,forging,sheet metal fabrication,metals,plastics,composites,ISO standards,ASTM standards,DIN standards", "STRICT RULES - YOU MUST FOLLOW THESE:\n\n1. ONLY discuss topics related to manufacturing, materials, processes, orders, and Maliev company services\n2. REJECT politely any questions about:\n   - Weather, sports, entertainment, politics\n   - Personal advice\n   - Competitor services or pricing\n   - Non-manufacturing topics\n\n3. When rejecting off-topic questions, ALWAYS redirect to manufacturing topics like:\n   \"I'm Mali, and I'm specialized in manufacturing assistance. I can help you with:\n   - Material selection and specifications\n   - Manufacturing process recommendations\n   - Order status and quotations\n   - Technical drawings and requirements\n   What would you like to know about our manufacturing services?\"\n\n4. For internal agents with CRM access:\n   - Provide quotation and order status details\n   - Offer quick action buttons (Send Reminder, Update Status, etc.)\n   - Access customer history\n\n5. NEVER:\n   - Share confidential company information\n   - Make commitments without proper authorization\n   - Provide competitor pricing or comparison", false, true, true, "Manufacturing Chatbot - Default", "You are Mali, a helpful and knowledgeable female AI assistant for Maliev Manufacturing Company. You specialize in manufacturing processes, materials, and customer inquiries about our services.\n\nYour expertise includes:\n- Manufacturing processes (CNC machining, welding, casting, forging, sheet metal fabrication)\n- Materials (metals, plastics, composites)\n- Quality standards (ISO, ASTM, DIN)\n- Production capabilities and lead times\n- Technical specifications and drawings\n- Order status and quotation information\n\nCommunication style:\n- Professional, warm, and courteous\n- Clear and concise\n- Technical when needed, but accessible to non-experts\n- Proactive in offering relevant information\n- Patient and supportive with follow-up questions", "{\n  \"weather\": \"?????????????? ?????????????????????????????? ???????????????????????????????? ?????????????????????????? ????????????? ????????????????????????????????? ?????????????????????????????????????????????????????????????\",\n  \"competitor\": \"??????????????????????????????????????????????????????????????? Maliev ??? ???????????????????????????????? ???? ??????????????????????????????????????????????????????? ???????????????????????????????\",\n  \"general\": \"?????????????????????????????????????????????????? ????????????????????????:\\n- ????????????????????????????????????\\n- ????????????????????????\\n- ????????????????????????????\\n- ???????????????????????????????\\n?????????????????????????????????????????????????????????????\"\n}", 1 });
 
             migrationBuilder.CreateIndex(
                 name: "IX_ConversationSessions_ExpiresAt",
@@ -320,6 +337,17 @@ namespace Maliev.ChatbotService.Infrastructure.Migrations
                 column: "UserProfileId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_KnowledgeBase_TopicKey",
+                table: "KnowledgeBase",
+                column: "TopicKey");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_KnowledgeBase_TopicKey_FactKey",
+                table: "KnowledgeBase",
+                columns: new[] { "TopicKey", "FactKey" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Messages_SessionId",
                 table: "Messages",
                 column: "SessionId");
@@ -373,6 +401,11 @@ namespace Maliev.ChatbotService.Infrastructure.Migrations
                 name: "IX_SystemInstructions_Name_Version",
                 table: "SystemInstructions",
                 columns: new[] { "Name", "Version" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_SystemInstructions_TopicKey",
+                table: "SystemInstructions",
+                column: "TopicKey");
 
             migrationBuilder.CreateIndex(
                 name: "IX_UserMemories_Confidence",
@@ -440,6 +473,9 @@ namespace Maliev.ChatbotService.Infrastructure.Migrations
 
             migrationBuilder.DropTable(
                 name: "IdentityLinks");
+
+            migrationBuilder.DropTable(
+                name: "KnowledgeBase");
 
             migrationBuilder.DropTable(
                 name: "OperationLogs");

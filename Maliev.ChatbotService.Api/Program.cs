@@ -121,9 +121,12 @@ try
     builder.AddServiceClient<IIAMServiceClient, IAMServiceClient>("IAM");
 
     // External Clients
+    var externalClientsConfig = builder.Configuration.GetSection("ExternalClients").Get<ExternalClientsConfiguration>() 
+        ?? new ExternalClientsConfiguration();
+    
     builder.Services.AddHttpClient<IGeminiClient, GeminiClient>(client =>
     {
-        client.BaseAddress = new Uri("https://generativelanguage.googleapis.com/");
+        client.BaseAddress = new Uri(externalClientsConfig.Gemini.BaseAddress);
         client.Timeout = TimeSpan.FromSeconds(60);
     })
     .AddStandardResilienceHandler();
@@ -136,14 +139,14 @@ try
 
     builder.Services.AddHttpClient<ILineClient, LineClient>(client =>
     {
-        client.BaseAddress = new Uri("https://api.line.me/");
+        client.BaseAddress = new Uri(externalClientsConfig.Line.BaseAddress);
         client.Timeout = TimeSpan.FromSeconds(30);
     })
     .AddStandardResilienceHandler();
 
     builder.Services.AddHttpClient<IMetaClient, MetaClient>(client =>
     {
-        client.BaseAddress = new Uri("https://graph.facebook.com/");
+        client.BaseAddress = new Uri(externalClientsConfig.Facebook.BaseAddress);
         client.Timeout = TimeSpan.FromSeconds(30);
     })
     .AddStandardResilienceHandler();

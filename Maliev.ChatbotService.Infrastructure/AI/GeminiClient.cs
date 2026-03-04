@@ -104,6 +104,7 @@ public class GeminiClient : IGeminiClient
 
             object geminiPayload;
             var hasTools = request.Tools != null && request.Tools.Count > 0;
+            var useBuiltInSearch = request.EnableWebSearch;
 
             if (!string.IsNullOrEmpty(request.ResponseMimeType))
             {
@@ -124,8 +125,30 @@ public class GeminiClient : IGeminiClient
                     }
                 };
             }
-            else if (hasTools)
+            else if (hasTools || useBuiltInSearch)
             {
+                var toolsList = new List<object>();
+
+                // Add built-in Google Search tool if enabled
+                if (useBuiltInSearch)
+                {
+                    toolsList.Add(new { googleSearch = new { } });
+                }
+
+                // Add custom function declarations
+                if (hasTools)
+                {
+                    toolsList.AddRange(request.Tools!.Select(t => new
+                    {
+                        functionDeclarations = t.FunctionDeclarations.Select(f => new
+                        {
+                            name = f.Name,
+                            description = f.Description,
+                            parameters = f.Parameters
+                        })
+                    }));
+                }
+
                 geminiPayload = new
                 {
                     systemInstruction = new
@@ -136,15 +159,7 @@ public class GeminiClient : IGeminiClient
                         }
                     },
                     contents = contentsParts.ToArray(),
-                    tools = request.Tools!.Select(t => new
-                    {
-                        functionDeclarations = t.FunctionDeclarations.Select(f => new
-                        {
-                            name = f.Name,
-                            description = f.Description,
-                            parameters = f.Parameters
-                        })
-                    }),
+                    tools = toolsList,
                     toolConfig = new
                     {
                         functionCallingConfig = new { mode = request.ToolConfig?.Mode ?? "AUTO" }
