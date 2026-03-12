@@ -25,6 +25,7 @@ using StackExchange.Redis;
 using Testcontainers.PostgreSql;
 using Testcontainers.RabbitMq;
 using Testcontainers.Redis;
+using Moq;
 using Xunit;
 
 // Disable parallel execution to prevent race conditions on the shared singleton database
@@ -203,10 +204,7 @@ public class BaseIntegrationTestFactory<TProgram, TDbContext> : WebApplicationFa
             {
                 ["Service:Name"] = "ChatbotService",
                 ["Service:Version"] = "1.0.0-test",
-                // IAM Integration MUST be enabled per Constitution
-                // Tests use AllowAllAuthorizationHandler to bypass permission checks
                 ["Features:WebSearchEnabled"] = "false",
-                // JWT configuration for ServiceAccountTokenProvider in tests
                 ["Jwt:SecurityKey"] = "test-secret-key-at-least-32-characters-long",
                 // Connection strings for Testcontainers
                 [$"ConnectionStrings:{DbConnectionStringName}"] = _postgresContainer!.GetConnectionString(),
@@ -224,8 +222,16 @@ public class BaseIntegrationTestFactory<TProgram, TDbContext> : WebApplicationFa
             // Add startup filter to inject test IP address middleware
             services.AddSingleton<IStartupFilter>(new TestIpAddressStartupFilter());
 
-            // Mock IAM service client to always return true for permission checks
-            services.AddScoped<IIAMServiceClient, MockIAMServiceClient>();
+                // Mock chatbot's own IAM service client
+                services.AddScoped<IIAMServiceClient, MockIAMServiceClient>();
+
+                // Mock ServiceDefaults IIamServiceClient so PermissionAuthorizationHandler
+                // falls back to JWT claims (returns false → handler uses claims check)
+                var mockIamClient = new Moq.Mock<Maliev.Aspire.ServiceDefaults.IAM.IIamServiceClient>();
+                mockIamClient
+                    .Setup(x => x.CheckPermissionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                    .ReturnsAsync(false);
+                services.AddScoped(_ => mockIamClient.Object);
 
             // Mock Gemini client to avoid external API calls
             services.AddScoped<IGeminiClient, MockGeminiClient>();
@@ -792,21 +798,6 @@ internal class MockGeminiClient : IGeminiClient
             Content = content,
             TokenUsage = new GeminiTokenUsage { TotalTokens = 100 }
         };
-    }
-}
-
-/// <summary>
-/// Authorization handler that succeeds all requirements for integration tests.
-/// </summary>
-internal class AllowAllAuthorizationHandler : IAuthorizationHandler
-{
-    public Task HandleAsync(AuthorizationHandlerContext context)
-    {
-        foreach (var requirement in context.PendingRequirements.ToList())
-        {
-            context.Succeed(requirement);
-        }
-        return Task.CompletedTask;
     }
 }
 
