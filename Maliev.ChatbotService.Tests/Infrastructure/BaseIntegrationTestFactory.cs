@@ -79,7 +79,9 @@ public class BaseIntegrationTestFactory<TProgram, TDbContext> : WebApplicationFa
         {
             if (!_containersStarted)
             {
-                _postgresContainer = new PostgreSqlBuilder("postgres:18-alpine")
+                _postgresContainer = 
+                #pragma warning disable CS0618
+        new PostgreSqlBuilder().WithImage("postgres:18-alpine")
                     .WithCommand("-c", "max_connections=1000")
                     .Build();
 
@@ -91,6 +93,7 @@ public class BaseIntegrationTestFactory<TProgram, TDbContext> : WebApplicationFa
                     .WithUsername("guest")
                     .WithPassword("guest")
                     .Build();
+#pragma warning restore CS0618
 
                 // Start all containers in parallel
                 await Task.WhenAll(
@@ -981,3 +984,6 @@ internal class MockOperationExecutionService : IOperationExecutionService
         }
     }
 }
+
+
+
