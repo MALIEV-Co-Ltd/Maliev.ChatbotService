@@ -80,7 +80,7 @@ public class BaseIntegrationTestFactory<TProgram, TDbContext> : WebApplicationFa
             if (!_containersStarted)
             {
                 _postgresContainer = 
-                #pragma warning disable CS0618
+#pragma warning disable CS0618
         new PostgreSqlBuilder().WithImage("postgres:18-alpine")
                     .WithCommand("-c", "max_connections=1000")
                     .Build();
