@@ -1,3 +1,4 @@
+using Asp.Versioning;
 using Maliev.ChatbotService.Api.Models.Requests;
 using Maliev.ChatbotService.Api.Models.Responses;
 using Maliev.ChatbotService.Application.Commands;
@@ -14,7 +15,8 @@ namespace Maliev.ChatbotService.Api.Controllers.V1;
 /// Controller for managing chatbot messages.
 /// </summary>
 [ApiController]
-[Route("chatbot/v1/messages")]
+[ApiVersion("1.0")]
+[Route("chatbot/v{version:apiVersion}/messages")]
 public class MessagesController : ControllerBase
 {
     private readonly SendMessageCommandHandler _handler;

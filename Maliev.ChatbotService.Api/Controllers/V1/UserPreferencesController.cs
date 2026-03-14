@@ -1,3 +1,4 @@
+using Asp.Versioning;
 using Maliev.Aspire.ServiceDefaults.Authorization;
 using Maliev.ChatbotService.Api.Models.Responses;
 using Maliev.ChatbotService.Application.Commands;
@@ -12,7 +13,8 @@ namespace Maliev.ChatbotService.Api.Controllers.V1;
 /// Controller for managing user preferences and data.
 /// </summary>
 [ApiController]
-[Route("chatbot/v1/users")]
+[ApiVersion("1.0")]
+[Route("chatbot/v{version:apiVersion}/users")]
 [Authorize]
 public class UserPreferencesController : ControllerBase
 {

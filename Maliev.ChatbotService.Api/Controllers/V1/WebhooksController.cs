@@ -1,3 +1,4 @@
+using Asp.Versioning;
 using Maliev.ChatbotService.Api.Models.Webhooks;
 using Maliev.ChatbotService.Application.Commands;
 using Maliev.ChatbotService.Application.Handlers;
@@ -13,7 +14,8 @@ namespace Maliev.ChatbotService.Api.Controllers.V1;
 /// Controller for handling webhook events from messaging platforms.
 /// </summary>
 [ApiController]
-[Route("chatbot/v1/webhooks")]
+[ApiVersion("1.0")]
+[Route("chatbot/v{version:apiVersion}/webhooks")]
 public class WebhooksController : ControllerBase
 {
     private readonly ProcessWebhookCommandHandler _webhookHandler;

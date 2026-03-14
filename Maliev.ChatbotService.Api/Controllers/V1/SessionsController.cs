@@ -1,3 +1,4 @@
+using Asp.Versioning;
 using Maliev.Aspire.ServiceDefaults.Authorization;
 using Maliev.ChatbotService.Api.Models.Requests;
 using Maliev.ChatbotService.Api.Models.Responses;
@@ -13,7 +14,8 @@ namespace Maliev.ChatbotService.Api.Controllers.V1;
 /// Controller for managing chatbot sessions.
 /// </summary>
 [ApiController]
-[Route("chatbot/v1/sessions")]
+[ApiVersion("1.0")]
+[Route("chatbot/v{version:apiVersion}/sessions")]
 public class SessionsController : ControllerBase
 {
     private readonly InitiateSessionCommandHandler _handler;

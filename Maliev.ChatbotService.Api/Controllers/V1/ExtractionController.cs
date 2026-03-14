@@ -1,3 +1,4 @@
+using Asp.Versioning;
 using Maliev.ChatbotService.Api.Models.Requests;
 using Maliev.ChatbotService.Api.Models.Responses;
 using Maliev.ChatbotService.Application.Commands;
@@ -11,7 +12,8 @@ namespace Maliev.ChatbotService.Api.Controllers.V1;
 /// Controller for AI-powered data extraction operations.
 /// </summary>
 [ApiController]
-[Route("chatbot/v1/extraction")]
+[ApiVersion("1.0")]
+[Route("chatbot/v{version:apiVersion}/extraction")]
 [Authorize]
 public class ExtractionController : ControllerBase
 {
