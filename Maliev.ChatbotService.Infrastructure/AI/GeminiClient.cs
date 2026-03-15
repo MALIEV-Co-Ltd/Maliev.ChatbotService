@@ -33,7 +33,12 @@ public class GeminiClient : IGeminiClient
         _httpClient = httpClient;
         _logger = logger;
         _metrics = metrics;
-        _apiKey = configuration["Gemini:ApiKey"] ?? throw new InvalidOperationException("Gemini API key not configured");
+        var apiKey = configuration["Gemini:ApiKey"];
+        if (string.IsNullOrEmpty(apiKey))
+            throw new InvalidOperationException(
+                "Gemini API key is not configured. Set 'Gemini:ApiKey' in user secrets: " +
+                "dotnet user-secrets set \"Gemini:ApiKey\" \"<your-key>\" --project Maliev.ChatbotService.Api");
+        _apiKey = apiKey;
         _modelName = configuration["Gemini:MainModelName"] ?? "gemini-2.5-flash";
         _totalApiCalls = 0;
         _successfulApiCalls = 0;
