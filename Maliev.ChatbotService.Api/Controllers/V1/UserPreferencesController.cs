@@ -13,7 +13,7 @@ namespace Maliev.ChatbotService.Api.Controllers.V1;
 /// Controller for managing user preferences and data.
 /// </summary>
 [ApiController]
-[ApiVersion("1.0")]
+[ApiVersion("1")]
 [Route("chatbot/v{version:apiVersion}/users")]
 [Authorize]
 public class UserPreferencesController : ControllerBase

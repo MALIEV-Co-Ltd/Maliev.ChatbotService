@@ -15,7 +15,7 @@ namespace Maliev.ChatbotService.Api.Controllers.V1;
 /// Controller for managing chatbot messages.
 /// </summary>
 [ApiController]
-[ApiVersion("1.0")]
+[ApiVersion("1")]
 [Route("chatbot/v{version:apiVersion}/messages")]
 public class MessagesController : ControllerBase
 {

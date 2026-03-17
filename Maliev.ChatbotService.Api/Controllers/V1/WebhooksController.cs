@@ -14,7 +14,7 @@ namespace Maliev.ChatbotService.Api.Controllers.V1;
 /// Controller for handling webhook events from messaging platforms.
 /// </summary>
 [ApiController]
-[ApiVersion("1.0")]
+[ApiVersion("1")]
 [Route("chatbot/v{version:apiVersion}/webhooks")]
 public class WebhooksController : ControllerBase
 {

@@ -1,4 +1,3 @@
-#pragma warning disable CS1591
 using System.Text.Json;
 using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Domain.Entities;

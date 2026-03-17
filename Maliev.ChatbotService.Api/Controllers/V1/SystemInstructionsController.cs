@@ -17,7 +17,7 @@ namespace Maliev.ChatbotService.Api.Controllers.V1;
 /// Controller for managing system instructions.
 /// </summary>
 [ApiController]
-[ApiVersion("1.0")]
+[ApiVersion("1")]
 [Route("chatbot/v{version:apiVersion}/admin/instructions")]
 [Authorize]
 public class SystemInstructionsController : ControllerBase

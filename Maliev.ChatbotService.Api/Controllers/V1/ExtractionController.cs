@@ -12,7 +12,7 @@ namespace Maliev.ChatbotService.Api.Controllers.V1;
 /// Controller for AI-powered data extraction operations.
 /// </summary>
 [ApiController]
-[ApiVersion("1.0")]
+[ApiVersion("1")]
 [Route("chatbot/v{version:apiVersion}/extraction")]
 [Authorize]
 public class ExtractionController : ControllerBase

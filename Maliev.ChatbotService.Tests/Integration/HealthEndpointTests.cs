@@ -1,4 +1,3 @@
-#pragma warning disable CS1591
 using Maliev.ChatbotService.Infrastructure.Data;
 using Maliev.ChatbotService.Tests.Infrastructure;
 using System.Net;

@@ -14,7 +14,7 @@ namespace Maliev.ChatbotService.Api.Controllers.V1;
 /// Controller for managing knowledge base entries.
 /// </summary>
 [ApiController]
-[ApiVersion("1.0")]
+[ApiVersion("1")]
 [Route("chatbot/v{version:apiVersion}/admin/knowledge-base")]
 [Authorize]
 public class KnowledgeBaseController : ControllerBase

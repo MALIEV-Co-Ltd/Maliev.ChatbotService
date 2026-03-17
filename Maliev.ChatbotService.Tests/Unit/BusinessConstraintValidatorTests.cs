@@ -1,4 +1,3 @@
-#pragma warning disable CS1591
 using Maliev.ChatbotService.Application.Validators;
 using Maliev.ChatbotService.Domain.Entities;
 using Microsoft.Extensions.Logging;
