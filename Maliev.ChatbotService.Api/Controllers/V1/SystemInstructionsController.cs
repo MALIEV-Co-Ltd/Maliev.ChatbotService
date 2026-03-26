@@ -2,6 +2,7 @@ using Asp.Versioning;
 using Maliev.Aspire.ServiceDefaults.Authorization;
 using Maliev.ChatbotService.Api.Models.Requests;
 using Maliev.ChatbotService.Api.Models.Responses;
+using Maliev.ChatbotService.Application.Authorization;
 using Maliev.ChatbotService.Application.Commands;
 using Maliev.ChatbotService.Application.Handlers;
 using Maliev.ChatbotService.Application.Interfaces;
@@ -49,7 +50,7 @@ public class SystemInstructionsController : ControllerBase
     /// Gets a list of system instructions.
     /// </summary>
     [HttpGet]
-    [RequirePermission("chatbot.instructions.read")]
+    [RequirePermission(ChatbotPermissions.InstructionsRead)]
     [ProducesResponseType(typeof(IEnumerable<SystemInstructionDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IEnumerable<SystemInstructionDto>>> GetInstructions(
         [FromQuery] SystemInstructionCategory? category = null,
@@ -80,7 +81,7 @@ public class SystemInstructionsController : ControllerBase
     /// Creates a new system instruction.
     /// </summary>
     [HttpPost]
-    [RequirePermission("chatbot.instructions.write")]
+    [RequirePermission(ChatbotPermissions.InstructionsWrite)]
     [ProducesResponseType(typeof(SystemInstructionDto), StatusCodes.Status201Created)]
     public async Task<ActionResult<SystemInstructionDto>> CreateInstruction(
         [FromBody] CreateSystemInstructionRequest request,
@@ -107,7 +108,7 @@ public class SystemInstructionsController : ControllerBase
     /// Updates an existing system instruction.
     /// </summary>
     [HttpPut("{id}")]
-    [RequirePermission("chatbot.instructions.write")]
+    [RequirePermission(ChatbotPermissions.InstructionsWrite)]
     [ProducesResponseType(typeof(SystemInstructionDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<SystemInstructionDto>> UpdateInstruction(
@@ -147,7 +148,7 @@ public class SystemInstructionsController : ControllerBase
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>No content.</returns>
     [HttpDelete("{id}")]
-    [RequirePermission("chatbot.instructions.write")]
+    [RequirePermission(ChatbotPermissions.InstructionsWrite)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> DeleteInstruction(

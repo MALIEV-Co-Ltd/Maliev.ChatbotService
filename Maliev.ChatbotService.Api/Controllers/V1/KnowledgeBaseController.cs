@@ -2,6 +2,7 @@ using Asp.Versioning;
 using Maliev.Aspire.ServiceDefaults.Authorization;
 using Maliev.ChatbotService.Api.Models.Requests;
 using Maliev.ChatbotService.Api.Models.Responses;
+using Maliev.ChatbotService.Application.Authorization;
 using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
@@ -39,7 +40,7 @@ public class KnowledgeBaseController : ControllerBase
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>A list of knowledge base entries.</returns>
     [HttpGet]
-    [RequirePermission("chatbot.knowledge.read")]
+    [RequirePermission(ChatbotPermissions.KnowledgeRead)]
     [ProducesResponseType(typeof(IEnumerable<KnowledgeBaseDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IEnumerable<KnowledgeBaseDto>>> GetEntries(
         [FromQuery] string? topicKey = null,
@@ -58,7 +59,7 @@ public class KnowledgeBaseController : ControllerBase
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The knowledge base entry.</returns>
     [HttpGet("{id}")]
-    [RequirePermission("chatbot.knowledge.read")]
+    [RequirePermission(ChatbotPermissions.KnowledgeRead)]
     [ProducesResponseType(typeof(KnowledgeBaseDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<KnowledgeBaseDto>> GetEntry(Guid id, CancellationToken cancellationToken = default)
@@ -78,7 +79,7 @@ public class KnowledgeBaseController : ControllerBase
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The created entry.</returns>
     [HttpPost]
-    [RequirePermission("chatbot.knowledge.write")]
+    [RequirePermission(ChatbotPermissions.KnowledgeWrite)]
     [ProducesResponseType(typeof(KnowledgeBaseDto), StatusCodes.Status201Created)]
     public async Task<ActionResult<KnowledgeBaseDto>> CreateEntry(
         [FromBody] CreateKnowledgeBaseRequest request,
@@ -106,7 +107,7 @@ public class KnowledgeBaseController : ControllerBase
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The updated entry.</returns>
     [HttpPut("{id}")]
-    [RequirePermission("chatbot.knowledge.write")]
+    [RequirePermission(ChatbotPermissions.KnowledgeWrite)]
     [ProducesResponseType(typeof(KnowledgeBaseDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<KnowledgeBaseDto>> UpdateEntry(
@@ -137,7 +138,7 @@ public class KnowledgeBaseController : ControllerBase
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>No content.</returns>
     [HttpDelete("{id}")]
-    [RequirePermission("chatbot.knowledge.write")]
+    [RequirePermission(ChatbotPermissions.KnowledgeWrite)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> DeleteEntry(Guid id, CancellationToken cancellationToken = default)

@@ -2,6 +2,7 @@ using Asp.Versioning;
 using Maliev.Aspire.ServiceDefaults.Authorization;
 using Maliev.ChatbotService.Api.Models.Requests;
 using Maliev.ChatbotService.Api.Models.Responses;
+using Maliev.ChatbotService.Application.Authorization;
 using Maliev.ChatbotService.Application.Commands;
 using Maliev.ChatbotService.Application.Handlers;
 using Maliev.ChatbotService.Domain.Enums;
@@ -102,7 +103,7 @@ public class SessionsController : ControllerBase
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The created identity link details.</returns>
     [HttpPost("link")]
-    [RequirePermission("chatbot.users.link")]
+    [RequirePermission(ChatbotPermissions.UsersLink)]
     [ProducesResponseType(typeof(LinkIdentityResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]

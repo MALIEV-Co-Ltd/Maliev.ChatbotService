@@ -1,6 +1,7 @@
 using Asp.Versioning;
 using Maliev.Aspire.ServiceDefaults.Authorization;
 using Maliev.ChatbotService.Api.Models.Responses;
+using Maliev.ChatbotService.Application.Authorization;
 using Maliev.ChatbotService.Application.Commands;
 using Maliev.ChatbotService.Application.Handlers;
 using Maliev.ChatbotService.Application.Queries;
@@ -46,7 +47,7 @@ public class UserPreferencesController : ControllerBase
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Paginated list of user preferences.</returns>
     [HttpGet("me/preferences")]
-    [RequirePermission("chatbot.preferences.read")]
+    [RequirePermission(ChatbotPermissions.PreferencesRead)]
     [ProducesResponseType(typeof(PagedPreferencesResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<PagedPreferencesResponse>> GetMyPreferences(
@@ -121,7 +122,7 @@ public class UserPreferencesController : ControllerBase
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Confirmation of deletion.</returns>
     [HttpDelete("me/data")]
-    [RequirePermission("chatbot.preferences.delete")]
+    [RequirePermission(ChatbotPermissions.PreferencesDelete)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
