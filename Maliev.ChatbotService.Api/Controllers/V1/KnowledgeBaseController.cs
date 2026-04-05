@@ -17,7 +17,6 @@ namespace Maliev.ChatbotService.Api.Controllers.V1;
 [ApiController]
 [ApiVersion("1")]
 [Route("chatbot/v{version:apiVersion}/admin/knowledge-base")]
-[Authorize]
 public class KnowledgeBaseController : ControllerBase
 {
     private readonly IKnowledgeBaseRepository _repository;

@@ -16,7 +16,6 @@ namespace Maliev.ChatbotService.Api.Controllers.V1;
 [ApiController]
 [ApiVersion("1")]
 [Route("chatbot/v{version:apiVersion}/users")]
-[Authorize]
 public class UserPreferencesController : ControllerBase
 {
     private readonly GetUserPreferencesQueryHandler _getPreferencesHandler;
