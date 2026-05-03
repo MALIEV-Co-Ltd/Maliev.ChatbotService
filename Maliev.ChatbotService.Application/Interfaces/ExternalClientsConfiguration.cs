@@ -9,12 +9,12 @@ public class ExternalClientsConfiguration
     /// Configuration for Gemini API client.
     /// </summary>
     public ClientConfiguration Gemini { get; set; } = new();
-    
+
     /// <summary>
     /// Configuration for LINE API client.
     /// </summary>
     public ClientConfiguration Line { get; set; } = new();
-    
+
     /// <summary>
     /// Configuration for Facebook/Meta API client.
     /// </summary>

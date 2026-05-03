@@ -125,9 +125,9 @@ try
     builder.AddServiceClient<IIAMServiceClient, IAMServiceClient>("IAM");
 
     // External Clients
-    var externalClientsConfig = builder.Configuration.GetSection("ExternalClients").Get<ExternalClientsConfiguration>() 
+    var externalClientsConfig = builder.Configuration.GetSection("ExternalClients").Get<ExternalClientsConfiguration>()
         ?? new ExternalClientsConfiguration();
-    
+
     builder.Services.AddHttpClient<IGeminiClient, GeminiClient>(client =>
     {
         client.BaseAddress = new Uri(externalClientsConfig.Gemini.BaseAddress);
