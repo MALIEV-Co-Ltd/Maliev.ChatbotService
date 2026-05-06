@@ -21,6 +21,8 @@ out/
 *.swo
 *~
 *.user
+*.csproj.user
+*.rsuser
 *.suo
 *.userosscache
 *.userprefs
