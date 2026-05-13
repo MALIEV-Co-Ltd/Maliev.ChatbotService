@@ -42,6 +42,10 @@ public static class ChatbotPermissions
     /// <summary>Permission to execute internal operations.</summary>
     public const string OperationsExecute = "chatbot.operations.execute";
 
+    // AI extraction operations
+    /// <summary>Permission to run AI extraction workflows.</summary>
+    public const string ExtractionsRun = "chatbot.extractions.run";
+
     // Metrics and monitoring
     /// <summary>Permission to read chatbot metrics.</summary>
     public const string MetricsRead = "chatbot.metrics.read";
@@ -64,6 +68,7 @@ public static class ChatbotPermissions
         { InstructionsUpdate, "Update existing system instructions" },
         { InstructionsDelete, "Delete system instructions" },
         { OperationsExecute, "Execute internal operations (CRM queries, order status, etc.)" },
+        { ExtractionsRun, "Run AI extraction workflows" },
         { MetricsRead, "View chatbot metrics and analytics" }
     };
 }

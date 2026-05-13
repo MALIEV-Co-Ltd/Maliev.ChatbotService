@@ -1,9 +1,10 @@
 using Asp.Versioning;
+using Maliev.Aspire.ServiceDefaults.Authorization;
 using Maliev.ChatbotService.Api.Models.Requests;
 using Maliev.ChatbotService.Api.Models.Responses;
+using Maliev.ChatbotService.Application.Authorization;
 using Maliev.ChatbotService.Application.Commands;
 using Maliev.ChatbotService.Application.Handlers;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Maliev.ChatbotService.Api.Controllers.V1;
@@ -16,6 +17,20 @@ namespace Maliev.ChatbotService.Api.Controllers.V1;
 [Route("chatbot/v{version:apiVersion}/extraction")]
 public class ExtractionController : ControllerBase
 {
+    private const int MaxFiles = 5;
+    private const int MaxStoragePaths = 10;
+    private const int MaxRawTextLength = 12_000;
+    private const int MaxBase64CharactersPerFile = 14_000_000;
+
+    private static readonly HashSet<string> AllowedExtractionMimeTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "application/pdf",
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "text/plain"
+    };
+
     private readonly ExtractCustomerCommandHandler _handler;
     private readonly ExtractCustomerIntentCommandHandler _intentHandler;
 
@@ -37,7 +52,10 @@ public class ExtractionController : ControllerBase
     /// <param name="ct">Cancellation token.</param>
     /// <returns>Extracted customer data.</returns>
     [HttpPost("customer")]
+    [RequirePermission(ChatbotPermissions.ExtractionsRun)]
     [ProducesResponseType(typeof(ExtractCustomerResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<ExtractCustomerResponse>> ExtractCustomer(
@@ -51,6 +69,12 @@ public class ExtractionController : ControllerBase
         if (!hasFiles && !hasStoragePaths && !hasText)
         {
             return BadRequest("No files or text provided for extraction.");
+        }
+
+        var validationError = ValidateExtractionRequest(request);
+        if (validationError != null)
+        {
+            return BadRequest(validationError);
         }
 
         var command = new ExtractCustomerCommand
@@ -83,7 +107,10 @@ public class ExtractionController : ControllerBase
     /// <param name="ct">Cancellation token.</param>
     /// <returns>Extracted customer intent.</returns>
     [HttpPost("customer-intent")]
+    [RequirePermission(ChatbotPermissions.ExtractionsRun)]
     [ProducesResponseType(typeof(ExtractCustomerIntentResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<ExtractCustomerIntentResponse>> ExtractCustomerIntent(
@@ -108,6 +135,49 @@ public class ExtractionController : ControllerBase
             CustomerSearchTerm = result.CustomerSearchTerm,
             NeedsHistory = result.NeedsHistory
         });
+    }
+
+    private static string? ValidateExtractionRequest(ExtractCustomerRequest request)
+    {
+        if (request.RawText?.Length > MaxRawTextLength)
+        {
+            return $"RawText must be {MaxRawTextLength} characters or fewer.";
+        }
+
+        if (request.StoragePaths.Count > MaxStoragePaths)
+        {
+            return $"No more than {MaxStoragePaths} storage paths can be extracted at once.";
+        }
+
+        if (request.Files is not { Count: > 0 })
+        {
+            return null;
+        }
+
+        if (request.Files.Count > MaxFiles)
+        {
+            return $"No more than {MaxFiles} files can be extracted at once.";
+        }
+
+        foreach (var file in request.Files)
+        {
+            if (string.IsNullOrWhiteSpace(file.FileName) || file.FileName.Length > 255)
+            {
+                return "Each extraction file must include a file name of 255 characters or fewer.";
+            }
+
+            if (!AllowedExtractionMimeTypes.Contains(file.MimeType))
+            {
+                return $"Unsupported extraction file MIME type: {file.MimeType}";
+            }
+
+            if (string.IsNullOrWhiteSpace(file.Base64Data) || file.Base64Data.Length > MaxBase64CharactersPerFile)
+            {
+                return "Each extraction file must include bounded base64 data.";
+            }
+        }
+
+        return null;
     }
 
     private static ExtractCustomerResponse MapToResponse(ExtractedCustomerData data)

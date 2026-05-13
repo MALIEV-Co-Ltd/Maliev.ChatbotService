@@ -38,6 +38,7 @@ public static class ChatbotPermissions
 
     public const string KnowledgeRead = "chatbot.knowledge.read";
     public const string KnowledgeWrite = "chatbot.knowledge.write";
+    public const string ExtractionsRun = "chatbot.extractions.run";
 
     public static readonly IReadOnlyDictionary<string, string> AllWithDescriptions = new Dictionary<string, string>
     {
@@ -66,6 +67,7 @@ public static class ChatbotPermissions
         { UsersLink, "Link chatbot users" },
         { KnowledgeRead, "Read knowledge base" },
         { KnowledgeWrite, "Write knowledge base" },
+        { ExtractionsRun, "Run AI extraction workflows" },
     };
 
     public static string[] All => AllWithDescriptions.Keys.ToArray();

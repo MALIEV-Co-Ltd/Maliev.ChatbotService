@@ -60,6 +60,23 @@ public class ExtractionApiTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// Tests that ExtractCustomer requires authentication.
+    /// </summary>
+    [Fact]
+    public async Task ExtractCustomer_WithoutAuthentication_ReturnsUnauthorized()
+    {
+        var client = _factory.CreateClient();
+        var request = new ExtractCustomerRequest
+        {
+            RawText = "John Doe from Acme Corp"
+        };
+
+        var response = await client.PostAsJsonAsync("/chatbot/v1/extraction/customer", request, _factory.JsonSerializerOptions);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    /// <summary>
     /// Tests that ExtractCustomerIntent returns detected intent.
     /// </summary>
     [Fact]
@@ -83,6 +100,23 @@ public class ExtractionApiTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// Tests that ExtractCustomerIntent requires authentication.
+    /// </summary>
+    [Fact]
+    public async Task ExtractCustomerIntent_WithoutAuthentication_ReturnsUnauthorized()
+    {
+        var client = _factory.CreateClient();
+        var request = new ExtractCustomerIntentRequest
+        {
+            UserMessage = "Find Acme Corp contact info"
+        };
+
+        var response = await client.PostAsJsonAsync("/chatbot/v1/extraction/customer-intent", request, _factory.JsonSerializerOptions);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    /// <summary>
     /// Tests that ExtractCustomer with no input returns 400.
     /// </summary>
     [Fact]
@@ -96,6 +130,30 @@ public class ExtractionApiTests : IAsyncLifetime
         var response = await client.PostAsJsonAsync("/chatbot/v1/extraction/customer", request, _factory.JsonSerializerOptions);
 
         // Assert
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    /// <summary>
+    /// Tests that ExtractCustomer rejects unbounded file batches.
+    /// </summary>
+    [Fact]
+    public async Task ExtractCustomer_TooManyFiles_Returns400()
+    {
+        var client = CreateAuthenticatedClient();
+        var request = new ExtractCustomerRequest
+        {
+            Files = Enumerable.Range(0, 6)
+                .Select(index => new ExtractionFileData
+                {
+                    FileName = $"file-{index}.txt",
+                    MimeType = "text/plain",
+                    Base64Data = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("data"))
+                })
+                .ToList()
+        };
+
+        var response = await client.PostAsJsonAsync("/chatbot/v1/extraction/customer", request, _factory.JsonSerializerOptions);
+
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 }

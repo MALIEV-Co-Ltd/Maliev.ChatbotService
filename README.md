@@ -96,12 +96,21 @@ The service will be available at `http://localhost:5000/chatbot`. Access the int
 
 All endpoints are prefixed with `/chatbot/v1/`.
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/sessions/initiate` | Initiate a new conversation session |
-| POST | `/messages` | Send a message to the chatbot (Supports multimodal) |
-| GET | `/users/me/preferences` | Get current user's stored preferences |
-| POST | `/webhooks/line` | LINE messaging webhook |
+| Method | Endpoint | Permission | Description |
+|--------|----------|------------|-------------|
+| POST | `/sessions/initiate` | Public for website sessions; authenticated for intranet sessions | Initiate a new conversation session |
+| POST | `/messages` | Session-bound access | Send a message to the chatbot (supports multimodal input) |
+| POST | `/extraction/customer` | `chatbot.extractions.run` | Extract customer data from bounded text, storage paths, or uploaded file payloads |
+| POST | `/extraction/customer-intent` | `chatbot.extractions.run` | Detect whether a user message needs customer data lookup |
+| GET | `/users/me/preferences` | Authenticated user context | Get current user's stored preferences |
+| POST | `/webhooks/line` | Webhook signature validation | LINE messaging webhook |
+
+## Security Assumptions
+
+- Intranet chatbot sessions require an authenticated MALIEV user; anonymous sessions are limited to public website channels.
+- AI extraction endpoints are internal workflows guarded by `chatbot.extractions.run`.
+- Customer extraction accepts only bounded request sizes: up to 5 inline files, 10 storage paths, 12,000 raw-text characters, and supported document/image/text MIME types.
+- Thinking-step callbacks are limited to same-origin HTTPS URLs or same-origin absolute paths.
 
 ---
 

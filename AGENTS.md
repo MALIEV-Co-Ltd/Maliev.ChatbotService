@@ -153,6 +153,9 @@ entity.Property<uint>("xmin").HasColumnType("xid").IsRowVersion();
 - **Primary Model**: Gemini 2.5 Flash
 - **Intent Model**: Gemini 2.5 Flash Lite
 - **Error Handling**: Returns fallback response messages when API fails or times out
+- **AI extraction permission**: `/chatbot/v1/extraction/*` requires `chatbot.extractions.run`.
+- **AI extraction bounds**: Keep file count, storage-path count, raw text, MIME type, and inline base64 limits enforced before calling Gemini.
+- **Callback safety**: Thinking-step callback URLs must remain same-origin HTTPS URLs or same-origin absolute paths.
 
 ### Responsibilities
 - **Chatbot**: AI-powered customer support chatbot for general inquiries
