@@ -78,6 +78,21 @@ public class SessionsApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task InitiateSession_WithAnonymousIntranetChannel_ReturnsUnauthorized()
+    {
+        var client = _factory.CreateClient();
+        var request = new InitiateSessionRequest
+        {
+            Channel = "intranet",
+            Language = "en"
+        };
+
+        var response = await client.PostAsJsonAsync("/chatbot/v1/sessions/initiate", request, _factory.JsonSerializerOptions);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
     public async Task LinkIdentity_WithValidData_ReturnsSuccess()
     {
         var userId = Guid.NewGuid();

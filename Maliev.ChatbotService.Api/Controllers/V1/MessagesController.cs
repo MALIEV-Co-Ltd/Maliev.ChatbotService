@@ -96,17 +96,22 @@ public class MessagesController : ControllerBase
             Func<ThinkingStep, Task>? thinkingCallback = null;
             if (!string.IsNullOrEmpty(request.CallbackUrl))
             {
-                var callbackUrl = request.CallbackUrl;
+                if (!TryBuildSafeCallbackUri(request.CallbackUrl, out var callbackUri))
+                {
+                    _logger.LogWarning("Rejected unsafe thinking-step callback URL for session {SessionId}", request.SessionId);
+                    return BadRequest(new { error = "CallbackUrl must be a same-origin HTTPS URL or same-origin absolute path." });
+                }
+
                 var client = _httpClientFactory.CreateClient("ThinkingCallback");
                 thinkingCallback = async step =>
                 {
                     try
                     {
-                        await client.PostAsJsonAsync(callbackUrl, step, CamelCaseOptions, cancellationToken);
+                        await client.PostAsJsonAsync(callbackUri, step, CamelCaseOptions, cancellationToken);
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogWarning(ex, "Failed to send thinking step callback to {Url}", callbackUrl);
+                        _logger.LogWarning(ex, "Failed to send thinking step callback for session {SessionId}", request.SessionId);
                     }
                 };
             }
@@ -159,5 +164,39 @@ public class MessagesController : ControllerBase
             _logger.LogWarning(ex, "Invalid operation for session {SessionId}", request.SessionId);
             return BadRequest(new { error = ex.Message });
         }
+    }
+
+    private bool TryBuildSafeCallbackUri(string callbackUrl, out Uri callbackUri)
+    {
+        callbackUri = null!;
+
+        if (Uri.TryCreate(callbackUrl, UriKind.Relative, out var relativeUri))
+        {
+            if (!callbackUrl.StartsWith("/", StringComparison.Ordinal) ||
+                callbackUrl.StartsWith("//", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            callbackUri = new Uri(new Uri($"{Request.Scheme}://{Request.Host}"), relativeUri);
+            return true;
+        }
+
+        if (!Uri.TryCreate(callbackUrl, UriKind.Absolute, out var absoluteUri))
+        {
+            return false;
+        }
+
+        if (!string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (!string.Equals(absoluteUri.Host, Request.Host.Host, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return !Request.Host.Port.HasValue || absoluteUri.Port == Request.Host.Port.Value;
     }
 }

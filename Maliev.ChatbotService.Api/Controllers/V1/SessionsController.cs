@@ -49,12 +49,19 @@ public class SessionsController : ControllerBase
     [AllowAnonymous]
     [ProducesResponseType(typeof(SessionResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<SessionResponse>> InitiateSession(
         [FromBody] InitiateSessionRequest request,
         CancellationToken cancellationToken)
     {
         try
         {
+            if (IsIntranetChannel(request.Channel) && User.Identity?.IsAuthenticated != true)
+            {
+                _logger.LogWarning("Anonymous caller attempted to initiate an intranet chatbot session");
+                return Unauthorized(new { error = "Intranet chatbot sessions require authentication" });
+            }
+
             // Get authenticated user profile ID from claims if available
             Guid? authenticatedUserProfileId = null;
             if (User.Identity?.IsAuthenticated == true)
@@ -94,6 +101,11 @@ public class SessionsController : ControllerBase
             _logger.LogWarning(ex, "Invalid request for session initiation");
             return BadRequest(new { error = ex.Message });
         }
+    }
+
+    private static bool IsIntranetChannel(string channel)
+    {
+        return string.Equals(channel, "intranet", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

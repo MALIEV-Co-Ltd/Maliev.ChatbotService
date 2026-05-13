@@ -89,6 +89,24 @@ public class MessagesApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task SendMessage_WithExternalCallbackUrl_ReturnsBadRequest()
+    {
+        var client = _factory.CreateClient();
+        var sessionId = await CreateSessionAsync(client);
+
+        var request = new SendMessageRequest
+        {
+            SessionId = sessionId,
+            Content = "Hello",
+            CallbackUrl = "https://attacker.example/callback"
+        };
+
+        var response = await client.PostAsJsonAsync("/chatbot/v1/messages", request, _factory.JsonSerializerOptions);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task SendMessage_WithEmptyContent_ReturnsBadRequest()
     {
         var client = _factory.CreateClient();
