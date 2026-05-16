@@ -10,6 +10,8 @@ using Maliev.ChatbotService.Infrastructure.Repositories;
 using Maliev.ChatbotService.Infrastructure.Services;
 using Maliev.ChatbotService.Infrastructure.Tools;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using StackExchange.Redis;
 
 // Initialize bootstrap logging
 using var loggerFactory = LoggerFactory.Create(logBuilder => logBuilder.AddConsole());
@@ -32,9 +34,27 @@ try
     });
     builder.AddServiceMeters("chatbot-meter");
 
+    var isIntegrationTest = builder.Environment.EnvironmentName == "Testing";
+
     // --- Data & Cache ---
     builder.AddPostgresDbContext<ChatbotDbContext>("ChatbotDbContext", enableDynamicJson: true);
-    builder.AddStandardCache("chatbot:"); // Redis + in-memory fallback, memory-optimized (includes IConnectionMultiplexer)
+    builder.AddStandardCache("chatbot:"); // Redis + in-memory fallback, memory-optimized
+    var redisConnectionString = builder.Configuration.GetConnectionString("redis");
+    if (isIntegrationTest && !string.IsNullOrWhiteSpace(redisConnectionString))
+    {
+        builder.Services.TryAddSingleton<IConnectionMultiplexer>(_ =>
+        {
+            var redisOptions = ConfigurationOptions.Parse(redisConnectionString);
+            redisOptions.AbortOnConnectFail = false;
+            redisOptions.ConnectRetry = 10;
+            redisOptions.ConnectTimeout = 60_000;
+            redisOptions.SyncTimeout = 60_000;
+            redisOptions.AsyncTimeout = 60_000;
+            redisOptions.ReconnectRetryPolicy = new ExponentialRetry(1_000, 10_000);
+
+            return ConnectionMultiplexer.Connect(redisOptions);
+        });
+    }
 
     // --- Messaging ---
     builder.AddMassTransitWithRabbitMq(cfg =>
@@ -100,7 +120,6 @@ try
     builder.Services.AddHostedService<Maliev.ChatbotService.Infrastructure.Services.PromptFileLoaderService>();
 
     // IAM Registration (skip in integration tests to avoid service discovery delays)
-    var isIntegrationTest = builder.Environment.EnvironmentName == "Testing";
     if (!isIntegrationTest)
     {
         builder.AddIAMServiceClient("chatbot");
