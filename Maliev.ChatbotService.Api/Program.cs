@@ -128,12 +128,19 @@ try
     var externalClientsConfig = builder.Configuration.GetSection("ExternalClients").Get<ExternalClientsConfiguration>()
         ?? new ExternalClientsConfiguration();
 
-    builder.Services.AddHttpClient<IGeminiClient, GeminiClient>(client =>
+    if (isIntegrationTest)
     {
-        client.BaseAddress = new Uri(externalClientsConfig.Gemini.BaseAddress);
-        client.Timeout = TimeSpan.FromSeconds(60);
-    })
-    .AddStandardResilienceHandler();
+        builder.Services.AddScoped<IGeminiClient, TestingGeminiClient>();
+    }
+    else
+    {
+        builder.Services.AddHttpClient<IGeminiClient, GeminiClient>(client =>
+        {
+            client.BaseAddress = new Uri(externalClientsConfig.Gemini.BaseAddress);
+            client.Timeout = TimeSpan.FromSeconds(60);
+        })
+        .AddStandardResilienceHandler();
+    }
 
     builder.Services.AddHttpClient<IWebSearchService, WebSearchService>(client =>
     {

@@ -107,6 +107,27 @@ public class MessagesApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task SendMessage_WithLoopbackCallbackUrl_InTesting_ReturnsResponse()
+    {
+        var client = _factory.CreateClient();
+        var sessionId = await CreateSessionAsync(client);
+
+        var request = new SendMessageRequest
+        {
+            SessionId = sessionId,
+            Content = "Check quotation Q-2026-000001",
+            CallbackUrl = $"https://localhost:9443/api/v1/chat/callback/{sessionId}/thinking?token=test"
+        };
+
+        var response = await client.PostAsJsonAsync("/chatbot/v1/messages", request, _factory.JsonSerializerOptions);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<MessageResponse>(_factory.JsonSerializerOptions);
+        Assert.NotNull(result);
+        Assert.NotEqual(Guid.Empty, result.MessageId);
+    }
+
+    [Fact]
     public async Task SendMessage_WithEmptyContent_ReturnsBadRequest()
     {
         var client = _factory.CreateClient();
