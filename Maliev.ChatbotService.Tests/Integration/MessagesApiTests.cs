@@ -1,9 +1,14 @@
-using Maliev.ChatbotService.Infrastructure.Data;
 using System.Net;
 using System.Net.Http.Json;
 using Maliev.ChatbotService.Api.Models.Requests;
 using Maliev.ChatbotService.Api.Models.Responses;
+using Maliev.ChatbotService.Application.Authorization;
+using Maliev.ChatbotService.Application.Interfaces;
+using Maliev.ChatbotService.Domain.Entities;
+using Maliev.ChatbotService.Domain.Enums;
+using Maliev.ChatbotService.Infrastructure.Data;
 using Maliev.ChatbotService.Tests.Infrastructure;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Maliev.ChatbotService.Tests.Integration;
 
@@ -171,5 +176,110 @@ public class MessagesApiTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var result = await response.Content.ReadFromJsonAsync<MessageResponse>(_factory.JsonSerializerOptions);
         Assert.NotNull(result);
+    }
+
+    [Fact]
+    public async Task GetSessionMessages_WithAuthenticatedEmployee_ReturnsOnlyOwnedConversationMessages()
+    {
+        var employeeId = Guid.NewGuid();
+        var otherEmployeeId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var otherSessionId = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var userRepo = scope.ServiceProvider.GetRequiredService<IUserProfileRepository>();
+            var sessionRepo = scope.ServiceProvider.GetRequiredService<IConversationSessionRepository>();
+            var messageRepo = scope.ServiceProvider.GetRequiredService<IMessageRepository>();
+
+            await userRepo.CreateAsync(new UserProfile
+            {
+                Id = employeeId,
+                Role = UserRole.InternalAgent,
+                CreatedAt = now,
+                LastActiveAt = now
+            });
+
+            await userRepo.CreateAsync(new UserProfile
+            {
+                Id = otherEmployeeId,
+                Role = UserRole.InternalAgent,
+                CreatedAt = now,
+                LastActiveAt = now
+            });
+
+            await sessionRepo.CreateAsync(new ConversationSession
+            {
+                Id = sessionId,
+                UserProfileId = employeeId,
+                Channel = Channel.Intranet,
+                StartTime = now.AddMinutes(-20),
+                LastActivityAt = now.AddMinutes(-10),
+                ExpiresAt = now.AddHours(23),
+                Language = Language.English,
+                Status = SessionStatus.Active
+            });
+
+            await sessionRepo.CreateAsync(new ConversationSession
+            {
+                Id = otherSessionId,
+                UserProfileId = otherEmployeeId,
+                Channel = Channel.Intranet,
+                StartTime = now.AddMinutes(-10),
+                LastActivityAt = now.AddMinutes(-5),
+                ExpiresAt = now.AddHours(23),
+                Language = Language.English,
+                Status = SessionStatus.Active
+            });
+
+            await messageRepo.CreateAsync(new Message
+            {
+                Id = Guid.NewGuid(),
+                SessionId = sessionId,
+                Role = MessageRole.User,
+                Content = "Can you create customer Acme?",
+                ContentType = ContentType.Text,
+                CreatedAt = now.AddMinutes(-9)
+            });
+
+            await messageRepo.CreateAsync(new Message
+            {
+                Id = Guid.NewGuid(),
+                SessionId = sessionId,
+                Role = MessageRole.Assistant,
+                Content = "I can help with that.",
+                ContentType = ContentType.Text,
+                CreatedAt = now.AddMinutes(-8)
+            });
+
+            await messageRepo.CreateAsync(new Message
+            {
+                Id = Guid.NewGuid(),
+                SessionId = otherSessionId,
+                Role = MessageRole.User,
+                Content = "Other employee message",
+                ContentType = ContentType.Text,
+                CreatedAt = now.AddMinutes(-4)
+            });
+        }
+
+        var client = _factory.CreateAuthenticatedClient([ChatbotPermissions.SessionRead], employeeId.ToString());
+
+        var response = await client.GetAsync($"/chatbot/v1/sessions/{sessionId}/messages");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<ConversationMessagesResponse>(_factory.JsonSerializerOptions);
+
+        Assert.NotNull(result);
+        Assert.Equal(sessionId, result.SessionId);
+        Assert.Equal(employeeId, result.UserProfileId);
+        Assert.Equal(2, result.Messages.Count);
+        Assert.Equal("user", result.Messages[0].Role);
+        Assert.Equal("assistant", result.Messages[1].Role);
+
+        var otherResponse = await client.GetAsync($"/chatbot/v1/sessions/{otherSessionId}/messages");
+
+        Assert.Equal(HttpStatusCode.NotFound, otherResponse.StatusCode);
     }
 }

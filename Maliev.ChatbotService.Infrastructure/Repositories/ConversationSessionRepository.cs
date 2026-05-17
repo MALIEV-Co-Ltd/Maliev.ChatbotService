@@ -72,6 +72,35 @@ public class ConversationSessionRepository : IConversationSessionRepository
     }
 
     /// <inheritdoc/>
+    public async Task<(List<ConversationSession> Sessions, int TotalCount)> GetByUserIdAndChannelAsync(
+        Guid userProfileId,
+        Channel? channel,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken = default)
+    {
+        var query = _context.ConversationSessions
+            .Where(x => x.UserProfileId == userProfileId);
+
+        if (channel.HasValue)
+        {
+            query = query.Where(x => x.Channel == channel.Value);
+        }
+
+        query = query
+            .OrderByDescending(x => x.LastActivityAt)
+            .ThenByDescending(x => x.StartTime);
+
+        var totalCount = await query.CountAsync(cancellationToken);
+        var sessions = await query
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+
+        return (sessions, totalCount);
+    }
+
+    /// <inheritdoc/>
     public async Task UpdateAsync(ConversationSession session, CancellationToken cancellationToken = default)
     {
         _context.ConversationSessions.Update(session);

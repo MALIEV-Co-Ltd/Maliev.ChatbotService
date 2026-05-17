@@ -130,6 +130,7 @@ try
     builder.Services.AddScoped<InitiateSessionCommandHandler>();
     builder.Services.AddScoped<SendMessageCommandHandler>();
     builder.Services.AddScoped<LinkIdentityCommandHandler>();
+    builder.Services.AddScoped<GetConversationHistoryQueryHandler>();
     builder.Services.AddScoped<GetUserPreferencesQueryHandler>();
     builder.Services.AddScoped<DeleteUserDataCommandHandler>();
     builder.Services.AddScoped<CreateSystemInstructionCommandHandler>();

@@ -50,6 +50,22 @@ public interface IConversationSessionRepository
     Task<(List<ConversationSession> Sessions, int TotalCount)> GetByUserIdAsync(Guid userProfileId, int page, int pageSize, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Gets conversation sessions by user profile ID and optional channel with pagination.
+    /// </summary>
+    /// <param name="userProfileId">The user profile ID.</param>
+    /// <param name="channel">Optional channel filter.</param>
+    /// <param name="page">Page number (1-based).</param>
+    /// <param name="pageSize">Page size.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Tuple of sessions list and total count.</returns>
+    Task<(List<ConversationSession> Sessions, int TotalCount)> GetByUserIdAndChannelAsync(
+        Guid userProfileId,
+        Channel? channel,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Updates a conversation session.
     /// </summary>
     /// <param name="session">The conversation session to update.</param>

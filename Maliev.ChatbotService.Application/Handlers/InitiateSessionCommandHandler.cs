@@ -180,6 +180,11 @@ public class InitiateSessionCommandHandler
         if (authenticatedUserProfileId.HasValue)
         {
             userProfile = await _userProfileRepository.GetByIdAsync(authenticatedUserProfileId.Value, cancellationToken);
+            if (userProfile == null)
+            {
+                userProfile = await _userProfileRepository.GetByInternalUserIdAsync(authenticatedUserProfileId.Value.ToString(), cancellationToken);
+            }
+
             if (userProfile != null)
             {
                 _logger.LogInformation("Using authenticated user profile {UserProfileId}", authenticatedUserProfileId.Value);
@@ -207,7 +212,8 @@ public class InitiateSessionCommandHandler
 
             userProfile = new UserProfile
             {
-                Id = Guid.NewGuid(),
+                Id = authenticatedUserProfileId ?? Guid.NewGuid(),
+                InternalUserId = authenticatedUserProfileId?.ToString(),
                 LineUserId = channel == Channel.Line ? externalUserId : null,
                 FacebookId = channel == Channel.Facebook ? externalUserId : null,
                 InstagramId = channel == Channel.Instagram ? externalUserId : null,
@@ -222,6 +228,11 @@ public class InitiateSessionCommandHandler
         }
         else
         {
+            if (authenticatedUserProfileId.HasValue && string.IsNullOrWhiteSpace(userProfile.InternalUserId))
+            {
+                userProfile.InternalUserId = authenticatedUserProfileId.Value.ToString();
+            }
+
             // Update last active time
             userProfile.LastActiveAt = DateTimeOffset.UtcNow;
             await _userProfileRepository.UpdateAsync(userProfile, cancellationToken);
