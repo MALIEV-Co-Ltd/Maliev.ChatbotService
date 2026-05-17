@@ -1,6 +1,7 @@
 ---
 name: "Intranet Operations Assistant"
 category: Core
+topic_key: "intranet"
 priority: 0
 is_active: true
 allowed_topics: "manufacturing,production,quality,process,capacity,customers,orders,quotations,invoices,payments,receipts,materials,suppliers,employees,time-off,recruitment,analytics,iam"

@@ -329,8 +329,12 @@ public class SendMessageCommandHandler
                 }
             }
 
-            // 2. Get Merged Instructions
-            var systemInstructionText = await _systemInstructionService.GetMergedInstructionsAsync(topicKeys, cancellationToken);
+            // 2. Get merged instructions using the channel-specific core prompt profile.
+            var coreInstructionTopicKey = GetCoreInstructionTopicKey(session.Channel);
+            var systemInstructionText = await _systemInstructionService.GetMergedInstructionsAsync(
+                topicKeys,
+                coreInstructionTopicKey,
+                cancellationToken);
 
             // 3. Fetch Knowledge Base Facts
             var injectedKnowledgeIds = new List<Guid>();
@@ -365,7 +369,7 @@ public class SendMessageCommandHandler
             }
 
             // Get system instruction for business constraint validation (Core only for now)
-            var coreInstruction = await _systemInstructionService.GetActiveInstructionAsync(cancellationToken);
+            var coreInstruction = await _systemInstructionService.GetActiveInstructionAsync(coreInstructionTopicKey, cancellationToken);
 
             // Check if Gemini built-in search should be triggered
             bool enableGeminiSearch = false;
@@ -670,6 +674,12 @@ public class SendMessageCommandHandler
 
         return contextParts.Count > 0 ? string.Join("\n", contextParts) : string.Empty;
     }
+
+    private static string GetCoreInstructionTopicKey(Channel channel)
+    {
+        return channel == Channel.Intranet ? "intranet" : "website";
+    }
+
 
     /// <summary>
     /// Detects whether the user message requires web search based on keywords.

@@ -183,5 +183,56 @@ public class SystemInstructionServiceTests : IAsyncLifetime
         Assert.Equal(2, updated.Version);
         Assert.Equal("Updated persona", updated.PersonaDefinition);
     }
+
+    /// <summary>
+    /// Tests that merged prompts use the requested channel-specific core instruction.
+    /// </summary>
+    [Fact]
+    public async Task GetMergedInstructionsAsync_CoreTopicKey_UsesMatchingCustomerPromptProfile()
+    {
+        // Arrange
+        using var scope = _factory.Services.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<ISystemInstructionService>();
+        var repository = scope.ServiceProvider.GetRequiredService<ISystemInstructionRepository>();
+
+        await repository.DeactivateAllAsync();
+        await service.InvalidateCacheAsync();
+
+        await repository.CreateAsync(new SystemInstruction
+        {
+            Id = Guid.NewGuid(),
+            Name = "Website Customer Instruction",
+            TopicKey = "website",
+            PersonaDefinition = "WEBSITE_CUSTOMER_MALI_PROMPT",
+            BusinessConstraints = "Customer-facing manufacturing support only",
+            IsActive = true,
+            Version = 1,
+            AllowedTopics = string.Empty,
+            RejectionTemplates = "{}"
+        });
+
+        await repository.CreateAsync(new SystemInstruction
+        {
+            Id = Guid.NewGuid(),
+            Name = "Intranet Operations Instruction",
+            TopicKey = "intranet",
+            PersonaDefinition = "INTRANET_ERP_CRM_PROMPT",
+            BusinessConstraints = "Internal operations only",
+            IsActive = true,
+            Version = 1,
+            AllowedTopics = string.Empty,
+            RejectionTemplates = "{}"
+        });
+
+        // Act
+        var websitePrompt = await service.GetMergedInstructionsAsync([], "website");
+        var intranetPrompt = await service.GetMergedInstructionsAsync([], "intranet");
+
+        // Assert
+        Assert.Contains("WEBSITE_CUSTOMER_MALI_PROMPT", websitePrompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("INTRANET_ERP_CRM_PROMPT", websitePrompt, StringComparison.Ordinal);
+        Assert.Contains("INTRANET_ERP_CRM_PROMPT", intranetPrompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("WEBSITE_CUSTOMER_MALI_PROMPT", intranetPrompt, StringComparison.Ordinal);
+    }
 }
 

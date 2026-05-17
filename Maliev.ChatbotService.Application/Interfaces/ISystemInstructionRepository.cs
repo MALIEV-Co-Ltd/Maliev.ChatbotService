@@ -32,6 +32,14 @@ public interface ISystemInstructionRepository
     Task<SystemInstruction?> GetActiveCoreAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Gets the active core system instruction for a specific prompt profile.
+    /// </summary>
+    /// <param name="topicKey">The core prompt profile key, such as website or intranet.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The active core system instruction if found; otherwise, null.</returns>
+    Task<SystemInstruction?> GetActiveCoreAsync(string? topicKey, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Gets the active topic-specific system instructions for the given topic keys.
     /// </summary>
     /// <param name="topicKeys">The topic keys to filter by.</param>

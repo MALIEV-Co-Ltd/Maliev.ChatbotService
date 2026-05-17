@@ -83,6 +83,49 @@ public class SystemInstructionRepositoryTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// Tests that active core instructions can be scoped by prompt profile key.
+    /// </summary>
+    [Fact]
+    public async Task GetActiveCoreAsync_TopicKey_ReturnsMatchingInstruction()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<ISystemInstructionRepository>();
+
+        await repo.DeactivateAllAsync();
+
+        var websiteInstruction = new SystemInstruction
+        {
+            Id = Guid.NewGuid(),
+            Name = "Website Customer Core",
+            TopicKey = "website",
+            PersonaDefinition = "Website customer persona",
+            BusinessConstraints = "Customer constraints",
+            IsActive = true,
+            Version = 1
+        };
+
+        var intranetInstruction = new SystemInstruction
+        {
+            Id = Guid.NewGuid(),
+            Name = "Intranet Operations Core",
+            TopicKey = "intranet",
+            PersonaDefinition = "Intranet operations persona",
+            BusinessConstraints = "Intranet constraints",
+            IsActive = true,
+            Version = 1
+        };
+
+        await repo.CreateAsync(websiteInstruction);
+        await repo.CreateAsync(intranetInstruction);
+
+        var active = await repo.GetActiveCoreAsync("website");
+
+        Assert.NotNull(active);
+        Assert.Equal(websiteInstruction.Id, active.Id);
+        Assert.Equal("website", active.TopicKey);
+    }
+
+    /// <summary>
     /// Tests that a system instruction can be deactivated successfully.
     /// </summary>
     [Fact]

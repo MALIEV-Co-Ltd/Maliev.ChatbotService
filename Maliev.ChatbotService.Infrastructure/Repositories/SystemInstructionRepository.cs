@@ -40,9 +40,21 @@ public class SystemInstructionRepository : ISystemInstructionRepository
     /// <inheritdoc/>
     public async Task<SystemInstruction?> GetActiveCoreAsync(CancellationToken cancellationToken = default)
     {
-        return await _context.SystemInstructions
-            .Where(x => x.IsActive && x.Category == SystemInstructionCategory.Core)
-            .OrderByDescending(x => x.Version)
+        return await GetActiveCoreAsync(null, cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public async Task<SystemInstruction?> GetActiveCoreAsync(string? topicKey, CancellationToken cancellationToken = default)
+    {
+        var normalizedTopicKey = NormalizeTopicKey(topicKey);
+        var query = _context.SystemInstructions
+            .Where(x => x.IsActive && x.Category == SystemInstructionCategory.Core);
+
+        query = normalizedTopicKey is null
+            ? query.Where(x => x.TopicKey == null || x.TopicKey == string.Empty)
+            : query.Where(x => x.TopicKey == normalizedTopicKey);
+
+        return await query.OrderByDescending(x => x.Version)
             .FirstOrDefaultAsync(cancellationToken);
     }
 
@@ -115,11 +127,16 @@ public class SystemInstructionRepository : ISystemInstructionRepository
         if (category.HasValue)
         {
             query = query.Where(x => x.Category == category.Value);
-        }
 
-        if (!string.IsNullOrEmpty(topicKey))
+            var normalizedTopicKey = NormalizeTopicKey(topicKey);
+            query = normalizedTopicKey is null
+                ? query.Where(x => x.TopicKey == null || x.TopicKey == string.Empty)
+                : query.Where(x => x.TopicKey == normalizedTopicKey);
+        }
+        else if (!string.IsNullOrWhiteSpace(topicKey))
         {
-            query = query.Where(x => x.TopicKey == topicKey);
+            var normalizedTopicKey = NormalizeTopicKey(topicKey);
+            query = query.Where(x => x.TopicKey == normalizedTopicKey);
         }
 
         var activeInstructions = await query.ToListAsync(cancellationToken);
@@ -166,5 +183,10 @@ public class SystemInstructionRepository : ISystemInstructionRepository
     {
         return await _context.SystemInstructions
             .FirstOrDefaultAsync(x => x.Version == version, cancellationToken);
+    }
+
+    private static string? NormalizeTopicKey(string? topicKey)
+    {
+        return string.IsNullOrWhiteSpace(topicKey) ? null : topicKey.Trim();
     }
 }

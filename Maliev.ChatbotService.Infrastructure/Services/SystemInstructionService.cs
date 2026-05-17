@@ -15,7 +15,7 @@ public class SystemInstructionService : ISystemInstructionService
     private readonly ICacheService _cache;
     private readonly IConversationMetrics _metrics;
     private readonly ILogger<SystemInstructionService> _logger;
-    private const string CacheKey = "chatbot:system_instruction:active";
+    private const string CoreCacheKeyPrefix = "chatbot:system_instruction:active:core:";
     private const string MergedCacheKeyPrefix = "chatbot:system_instruction:merged:v";
     private const string CacheVersionKey = "chatbot:system_instruction:version";
     private const int MaxPromptCharacters = 8000;
@@ -44,20 +44,28 @@ public class SystemInstructionService : ISystemInstructionService
     /// <inheritdoc/>
     public async Task<SystemInstruction?> GetActiveInstructionAsync(CancellationToken cancellationToken = default)
     {
+        return await GetActiveInstructionAsync(null, cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public async Task<SystemInstruction?> GetActiveInstructionAsync(string? coreTopicKey, CancellationToken cancellationToken = default)
+    {
         var redisAvailable = true;
+        var normalizedCoreTopicKey = NormalizeCoreTopicKey(coreTopicKey);
+        var cacheKey = $"{CoreCacheKeyPrefix}{normalizedCoreTopicKey ?? "default"}";
 
         try
         {
             // Try to get from Redis cache first
-            var cachedData = await _cache.GetAsync<SystemInstruction>(CacheKey, cancellationToken);
+            var cachedData = await _cache.GetAsync<SystemInstruction>(cacheKey, cancellationToken);
             if (cachedData != null)
             {
-                _logger.LogDebug("Retrieved active system instruction from Redis cache");
+                _logger.LogDebug("Retrieved active system instruction for {CoreTopicKey} from Redis cache", normalizedCoreTopicKey ?? "default");
                 _metrics.RecordCacheEvent("Entity", true);
                 return cachedData;
             }
 
-            _logger.LogDebug("Cache miss for active system instruction, querying PostgreSQL");
+            _logger.LogDebug("Cache miss for active system instruction {CoreTopicKey}, querying PostgreSQL", normalizedCoreTopicKey ?? "default");
             _metrics.RecordCacheEvent("Entity", false);
         }
         catch (Exception ex)
@@ -67,15 +75,19 @@ public class SystemInstructionService : ISystemInstructionService
         }
 
         // Fallback to PostgreSQL (either cache miss or Redis unavailable)
-        var instruction = await _repository.GetActiveAsync(SystemInstructionCategory.Core, cancellationToken);
+        var instruction = await _repository.GetActiveCoreAsync(normalizedCoreTopicKey, cancellationToken);
+        if (instruction is null && normalizedCoreTopicKey is not null)
+        {
+            instruction = await _repository.GetActiveCoreAsync(cancellationToken);
+        }
 
         if (instruction != null && redisAvailable)
         {
             try
             {
                 // Attempt to cache the result
-                await _cache.SetAsync(CacheKey, instruction, _cacheExpiration, cancellationToken);
-                _logger.LogDebug("Cached active system instruction in Redis");
+                await _cache.SetAsync(cacheKey, instruction, _cacheExpiration, cancellationToken);
+                _logger.LogDebug("Cached active system instruction {CoreTopicKey} in Redis", normalizedCoreTopicKey ?? "default");
             }
             catch (Exception ex)
             {
@@ -102,7 +114,7 @@ public class SystemInstructionService : ISystemInstructionService
                 // Cache the instruction now that Redis is back
                 if (instruction != null)
                 {
-                    await _cache.SetAsync(CacheKey, instruction, _cacheExpiration, cancellationToken);
+                    await _cache.SetAsync(cacheKey, instruction, _cacheExpiration, cancellationToken);
                 }
             }
             catch
@@ -119,11 +131,18 @@ public class SystemInstructionService : ISystemInstructionService
     /// <inheritdoc/>
     public async Task<string> GetMergedInstructionsAsync(IEnumerable<string> topicKeys, CancellationToken cancellationToken = default)
     {
+        return await GetMergedInstructionsAsync(topicKeys, null, cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public async Task<string> GetMergedInstructionsAsync(IEnumerable<string> topicKeys, string? coreTopicKey, CancellationToken cancellationToken = default)
+    {
         var topics = topicKeys.Distinct().OrderBy(t => t).ToList();
+        var normalizedCoreTopicKey = NormalizeCoreTopicKey(coreTopicKey) ?? "default";
 
         // 0. Get current cache version to allow atomic invalidation of all merged prompts
         var version = await _cache.GetAsync<string>(CacheVersionKey, cancellationToken) ?? "1";
-        var mergedCacheKey = $"{MergedCacheKeyPrefix}{version}:{string.Join(",", topics)}";
+        var mergedCacheKey = $"{MergedCacheKeyPrefix}{version}:{normalizedCoreTopicKey}:{string.Join(",", topics)}";
 
         try
         {
@@ -142,7 +161,7 @@ public class SystemInstructionService : ISystemInstructionService
         }
 
         // 1. Get Core Instruction
-        var core = await GetActiveInstructionAsync(cancellationToken);
+        var core = await GetActiveInstructionAsync(coreTopicKey, cancellationToken);
         var promptParts = new List<string>();
 
         if (core != null)
@@ -151,7 +170,7 @@ public class SystemInstructionService : ISystemInstructionService
         }
         else
         {
-            promptParts.Add(GetDefaultSystemInstruction());
+            promptParts.Add(GetDefaultSystemInstruction(normalizedCoreTopicKey));
         }
 
         // 2. Get Topic Instructions
@@ -205,8 +224,17 @@ public class SystemInstructionService : ISystemInstructionService
         return mergedPrompt;
     }
 
-    private static string GetDefaultSystemInstruction()
+    private static string GetDefaultSystemInstruction(string? coreTopicKey)
     {
+        if (string.Equals(coreTopicKey, "website", StringComparison.OrdinalIgnoreCase))
+        {
+            return """
+                You are Mali (น้องมะลิ), MALIEV's customer-facing manufacturing assistant for www.maliev.com.
+                Help customers with MALIEV services, materials, quote preparation, order guidance, delivery, and support.
+                Stay within MALIEV manufacturing topics and politely redirect unrelated requests.
+                """;
+        }
+
         return """
             You are Mali (มะลิ), a bilingual (Thai/English) AI operations assistant for Maliev Manufacturing Company.
             You help internal staff with CRM, sales, finance, HR, inventory, and analytics.
@@ -219,7 +247,7 @@ public class SystemInstructionService : ISystemInstructionService
     {
         try
         {
-            await _cache.RemoveAsync(CacheKey, cancellationToken);
+            await _cache.RemoveByPatternAsync($"{CoreCacheKeyPrefix}*", cancellationToken);
 
             // Increment version to invalidate all merged prompt combinations
             var versionString = await _cache.GetAsync<string>(CacheVersionKey, cancellationToken) ?? "1";
@@ -234,5 +262,12 @@ public class SystemInstructionService : ISystemInstructionService
         {
             _logger.LogWarning(ex, "Failed to invalidate cache");
         }
+    }
+
+    private static string? NormalizeCoreTopicKey(string? coreTopicKey)
+    {
+        return string.IsNullOrWhiteSpace(coreTopicKey)
+            ? null
+            : coreTopicKey.Trim().ToLowerInvariant();
     }
 }
