@@ -282,4 +282,85 @@ public class MessagesApiTests : IAsyncLifetime
 
         Assert.Equal(HttpStatusCode.NotFound, otherResponse.StatusCode);
     }
+
+    [Fact]
+    public async Task GetInternalSessionMessages_WithSessionReadPermission_ReturnsBffHydrationMessagesWithoutOwnerCheck()
+    {
+        var employeeId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var userRepo = scope.ServiceProvider.GetRequiredService<IUserProfileRepository>();
+            var sessionRepo = scope.ServiceProvider.GetRequiredService<IConversationSessionRepository>();
+            var messageRepo = scope.ServiceProvider.GetRequiredService<IMessageRepository>();
+
+            await userRepo.CreateAsync(new UserProfile
+            {
+                Id = employeeId,
+                Role = UserRole.InternalAgent,
+                CreatedAt = now,
+                LastActiveAt = now
+            });
+
+            await userRepo.CreateAsync(new UserProfile
+            {
+                Id = customerId,
+                Role = UserRole.Customer,
+                CreatedAt = now,
+                LastActiveAt = now
+            });
+
+            await sessionRepo.CreateAsync(new ConversationSession
+            {
+                Id = sessionId,
+                UserProfileId = customerId,
+                Channel = Channel.Website,
+                StartTime = now.AddMinutes(-15),
+                LastActivityAt = now.AddMinutes(-2),
+                ExpiresAt = now.AddHours(23),
+                Language = Language.English,
+                Status = SessionStatus.Active
+            });
+
+            await messageRepo.CreateAsync(new Message
+            {
+                Id = Guid.Parse("d8de94a9-45ea-4c69-baa2-e5b147ba8924"),
+                SessionId = sessionId,
+                Role = MessageRole.User,
+                Content = "Can you help with my quote?",
+                ContentType = ContentType.Text,
+                CreatedAt = now.AddMinutes(-4)
+            });
+
+            await messageRepo.CreateAsync(new Message
+            {
+                Id = Guid.Parse("5cbf2ad1-fef7-437d-a8ec-b4a26c704ae4"),
+                SessionId = sessionId,
+                Role = MessageRole.Assistant,
+                Content = "Yes, I can continue that quote conversation.",
+                ContentType = ContentType.Text,
+                CreatedAt = now.AddMinutes(-3)
+            });
+        }
+
+        var client = _factory.CreateAuthenticatedClient([ChatbotPermissions.SessionRead], employeeId.ToString());
+
+        var response = await client.GetAsync($"/chatbot/v1/internal/sessions/{sessionId}/messages");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<ConversationMessagesResponse>(_factory.JsonSerializerOptions);
+
+        Assert.NotNull(result);
+        Assert.Equal(sessionId, result.SessionId);
+        Assert.Equal(customerId, result.UserProfileId);
+        Assert.Equal("website", result.Channel);
+        Assert.Equal("en", result.Language);
+        Assert.Equal(2, result.Messages.Count);
+        Assert.Equal("user", result.Messages[0].Role);
+        Assert.Equal("Can you help with my quote?", result.Messages[0].Content);
+        Assert.Equal("assistant", result.Messages[1].Role);
+    }
 }
