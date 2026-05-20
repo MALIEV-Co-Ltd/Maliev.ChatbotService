@@ -91,7 +91,7 @@ public class AdminApiTests : IAsyncLifetime
             Name = "Topic Instruction",
             Category = SystemInstructionCategory.Topic,
             TopicKey = "3D-Scanning",
-            Priority = 10,
+            Priority = 5,
             PersonaDefinition = "You are a 3D scanning expert",
             BusinessConstraints = "3D scanning rules only",
             IsActive = true
@@ -106,7 +106,33 @@ public class AdminApiTests : IAsyncLifetime
         Assert.NotNull(instruction);
         Assert.Equal(SystemInstructionCategory.Topic, instruction.Category);
         Assert.Equal("3D-Scanning", instruction.TopicKey);
-        Assert.Equal(10, instruction.Priority);
+        Assert.Equal(5, instruction.Priority);
+    }
+
+    /// <summary>
+    /// Tests that Admin API rejects priority values outside the public 1-5 level scale.
+    /// </summary>
+    [Fact]
+    public async Task CreateInstruction_WithPriorityOutsideLevelScale_ReturnsBadRequest()
+    {
+        // Arrange
+        var client = CreateAuthenticatedClient(new[] { "chatbot.instructions.write" });
+        var request = new CreateSystemInstructionRequest
+        {
+            Name = "Invalid priority prompt",
+            Category = SystemInstructionCategory.Topic,
+            TopicKey = "invalid-priority",
+            Priority = 99999,
+            PersonaDefinition = "Prompt body long enough for validation",
+            BusinessConstraints = "Business constraints long enough for validation",
+            IsActive = true
+        };
+
+        // Act
+        var response = await client.PostAsJsonAsync("/chatbot/v1/admin/instructions", request, _factory.JsonSerializerOptions);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     /// <summary>
@@ -174,7 +200,7 @@ public class AdminApiTests : IAsyncLifetime
         var updateRequest = new UpdateSystemInstructionRequest
         {
             TopicKey = "Updated-Topic",
-            Priority = 20
+            Priority = 4
         };
 
         // Act
@@ -186,7 +212,7 @@ public class AdminApiTests : IAsyncLifetime
         var updated = await response.Content.ReadFromJsonAsync<SystemInstructionDto>(_factory.JsonSerializerOptions);
         Assert.NotNull(updated);
         Assert.Equal("Updated-Topic", updated.TopicKey);
-        Assert.Equal(20, updated.Priority);
+        Assert.Equal(4, updated.Priority);
     }
 
     /// <summary>

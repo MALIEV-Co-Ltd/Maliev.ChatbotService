@@ -49,7 +49,7 @@ public class DynamicInjectionTests : IAsyncLifetime
             Name = "3D Scanning Domain",
             Category = SystemInstructionCategory.Topic,
             TopicKey = "3D-Scanning",
-            Priority = 10,
+            Priority = 5,
             PersonaDefinition = "SPECIALIZED_3D_SCANNING_INSTRUCTION",
             BusinessConstraints = "3D scanning rules only",
             IsActive = true

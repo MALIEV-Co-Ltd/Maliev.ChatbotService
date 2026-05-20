@@ -39,7 +39,7 @@ public class SystemInstructionApiTests : IClassFixture<BaseIntegrationTestFactor
             Name = "Test Instruction",
             Category = SystemInstructionCategory.Core,
             TopicKey = "test-topic",
-            Priority = 10,
+            Priority = 5,
             PersonaDefinition = "Test Persona Definition Long Enough",
             BusinessConstraints = "Test Constraints Definition Long Enough",
             IsActive = true

@@ -30,7 +30,8 @@ public class CreateSystemInstructionRequest
     /// <summary>
     /// Gets or sets the priority for injection order.
     /// </summary>
-    public int Priority { get; set; }
+    [Range(1, 5)]
+    public int Priority { get; set; } = 3;
 
     /// <summary>
     /// Gets or sets the persona definition for the chatbot.

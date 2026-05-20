@@ -28,6 +28,7 @@ public class UpdateSystemInstructionRequest
     /// <summary>
     /// Gets or sets the priority for injection order.
     /// </summary>
+    [Range(1, 5)]
     public int? Priority { get; set; }
 
     /// <summary>
