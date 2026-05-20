@@ -27,6 +27,7 @@ public class SystemInstructionsController : ControllerBase
     private readonly CreateSystemInstructionCommandHandler _createHandler;
     private readonly UpdateSystemInstructionCommandHandler _updateHandler;
     private readonly GetSystemInstructionsQueryHandler _getQueryHandler;
+    private readonly RefineSystemInstructionCommandHandler _refineHandler;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SystemInstructionsController"/> class.
@@ -36,13 +37,15 @@ public class SystemInstructionsController : ControllerBase
         ISystemInstructionService service,
         CreateSystemInstructionCommandHandler createHandler,
         UpdateSystemInstructionCommandHandler updateHandler,
-        GetSystemInstructionsQueryHandler getQueryHandler)
+        GetSystemInstructionsQueryHandler getQueryHandler,
+        RefineSystemInstructionCommandHandler refineHandler)
     {
         _repository = repository;
         _service = service;
         _createHandler = createHandler;
         _updateHandler = updateHandler;
         _getQueryHandler = getQueryHandler;
+        _refineHandler = refineHandler;
     }
 
     /// <summary>
@@ -137,6 +140,44 @@ public class SystemInstructionsController : ControllerBase
         catch (InvalidOperationException)
         {
             return NotFound();
+        }
+    }
+
+    /// <summary>
+    /// Uses the configured LLM to improve a system instruction draft without saving it.
+    /// </summary>
+    [HttpPost("refine")]
+    [RequirePermission(ChatbotPermissions.InstructionsWrite)]
+    [ProducesResponseType(typeof(RefinedSystemInstructionResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status502BadGateway)]
+    public async Task<ActionResult<RefinedSystemInstructionResponse>> RefineInstruction(
+        [FromBody] RefineSystemInstructionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var command = new RefineSystemInstructionCommand
+            {
+                Name = request.Name,
+                Category = request.Category,
+                TopicKey = request.TopicKey,
+                PersonaDefinition = request.PersonaDefinition,
+                BusinessConstraints = request.BusinessConstraints,
+                ImprovementGoal = request.ImprovementGoal
+            };
+
+            var refined = await _refineHandler.HandleAsync(command, cancellationToken);
+
+            return Ok(new RefinedSystemInstructionResponse
+            {
+                PersonaDefinition = refined.PersonaDefinition,
+                BusinessConstraints = refined.BusinessConstraints,
+                Summary = refined.Summary
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return StatusCode(StatusCodes.Status502BadGateway, new { error = ex.Message });
         }
     }
 

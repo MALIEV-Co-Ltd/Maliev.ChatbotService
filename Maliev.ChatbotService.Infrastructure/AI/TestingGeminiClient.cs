@@ -58,6 +58,17 @@ public sealed class TestingGeminiClient : IGeminiClient
         }
 
         if (request.ResponseMimeType == "application/json" &&
+            request.SystemInstruction.Contains("system instruction refiner", StringComparison.OrdinalIgnoreCase))
+        {
+            return JsonSerializer.Serialize(new
+            {
+                persona_definition = "Refined system instruction prompt for the MALIEV assistant.",
+                business_constraints = "Refined customer-safe guardrails for MALIEV manufacturing conversations.",
+                summary = "Clarified instruction scope and tightened customer-safe constraints."
+            });
+        }
+
+        if (request.ResponseMimeType == "application/json" &&
             request.SystemInstruction.Contains("Extract customer information", StringComparison.OrdinalIgnoreCase))
         {
             return JsonSerializer.Serialize(new

@@ -190,6 +190,59 @@ public class AdminApiTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// Tests that POST /v1/admin/instructions/refine uses the LLM to improve an instruction draft.
+    /// </summary>
+    [Fact]
+    public async Task RefineInstruction_WithAuthentication_ReturnsImprovedDraft()
+    {
+        // Arrange
+        var client = CreateAuthenticatedClient(new[] { "chatbot.instructions.write" });
+        var request = new RefineSystemInstructionRequest
+        {
+            Name = "Customer Website Assistant",
+            Category = SystemInstructionCategory.Core,
+            TopicKey = "website",
+            PersonaDefinition = "Mali answers website questions.",
+            BusinessConstraints = "Keep customer data safe."
+        };
+
+        // Act
+        var response = await client.PostAsJsonAsync("/chatbot/v1/admin/instructions/refine", request, _factory.JsonSerializerOptions);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var refined = await response.Content.ReadFromJsonAsync<RefinedSystemInstructionResponse>(_factory.JsonSerializerOptions);
+        Assert.NotNull(refined);
+        Assert.Contains("Refined", refined.PersonaDefinition, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("customer-safe", refined.BusinessConstraints, StringComparison.OrdinalIgnoreCase);
+        Assert.False(string.IsNullOrWhiteSpace(refined.Summary));
+    }
+
+    /// <summary>
+    /// Tests that POST /v1/admin/instructions/refine requires write permission.
+    /// </summary>
+    [Fact]
+    public async Task RefineInstruction_WithoutPermission_Returns403()
+    {
+        // Arrange
+        var client = CreateAuthenticatedClient(new[] { "chatbot.instructions.read" });
+        var request = new RefineSystemInstructionRequest
+        {
+            Name = "Customer Website Assistant",
+            Category = SystemInstructionCategory.Core,
+            TopicKey = "website",
+            PersonaDefinition = "Mali answers website questions.",
+            BusinessConstraints = "Keep customer data safe."
+        };
+
+        // Act
+        var response = await client.PostAsJsonAsync("/chatbot/v1/admin/instructions/refine", request, _factory.JsonSerializerOptions);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    /// <summary>
     /// Tests that DELETE /v1/admin/instructions/{id} with authentication deactivates instruction.
     /// </summary>
     [Fact]

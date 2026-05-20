@@ -136,6 +136,7 @@ try
     builder.Services.AddScoped<CreateSystemInstructionCommandHandler>();
     builder.Services.AddScoped<UpdateSystemInstructionCommandHandler>();
     builder.Services.AddScoped<GetSystemInstructionsQueryHandler>();
+    builder.Services.AddScoped<RefineSystemInstructionCommandHandler>();
     builder.Services.AddScoped<ProcessWebhookCommandHandler>();
     builder.Services.AddScoped<ExtractCustomerCommandHandler>();
     builder.Services.AddScoped<ExtractCustomerIntentCommandHandler>();
