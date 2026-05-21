@@ -47,7 +47,10 @@ public sealed class TestingGeminiClient : IGeminiClient
             });
         }
 
-        if (request.SystemInstruction.Contains("determine if they need customer data", StringComparison.OrdinalIgnoreCase))
+        if (request.ResponseMimeType == "application/json" &&
+            (request.SystemInstruction.Contains("determine if they need customer data", StringComparison.OrdinalIgnoreCase) ||
+             request.SystemInstruction.Contains("customer data lookup", StringComparison.OrdinalIgnoreCase) ||
+             request.SystemInstruction.Contains("needs_customer_data", StringComparison.OrdinalIgnoreCase)))
         {
             return JsonSerializer.Serialize(new
             {
