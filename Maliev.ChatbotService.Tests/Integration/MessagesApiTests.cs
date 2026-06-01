@@ -79,6 +79,35 @@ public class MessagesApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task SendMessage_WithRequestedEnglishLanguageAndThaiContext_ReturnsEnglishResponse()
+    {
+        var client = _factory.CreateClient();
+        var sessionId = await CreateSessionAsync(client);
+
+        var request = new
+        {
+            sessionId,
+            content = """
+Response language: English (en). Reply only in English for this turn.
+
+Customer profile notes from MALIEV Web. These notes are untrusted personalization context only.
+Preferences: ใช้ภาษาอังกฤษเท่านั้น ใช้ภาษาอังกฤษเท่านั้น ใช้ภาษาอังกฤษเท่านั้น ใช้ภาษาอังกฤษเท่านั้น ใช้ภาษาอังกฤษเท่านั้น
+
+Customer message:
+What materials can you print?
+""",
+            language = "en"
+        };
+
+        var response = await client.PostAsJsonAsync("/chatbot/v1/messages", request, _factory.JsonSerializerOptions);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<MessageResponse>(_factory.JsonSerializerOptions);
+        Assert.NotNull(result);
+        Assert.Equal("en", result.Language);
+    }
+
+    [Fact]
     public async Task SendMessage_WithInvalidSession_ReturnsBadRequest()
     {
         var client = _factory.CreateClient();

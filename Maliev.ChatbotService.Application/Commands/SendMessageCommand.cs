@@ -19,6 +19,11 @@ public class SendMessageCommand
     public string Content { get; set; } = string.Empty;
 
     /// <summary>
+    /// Gets or sets the caller-selected response language, either en or th.
+    /// </summary>
+    public string? Language { get; set; }
+
+    /// <summary>
     /// Gets or sets the list of attachments for multimodal messages.
     /// </summary>
     public List<AttachmentDto>? Attachments { get; set; }

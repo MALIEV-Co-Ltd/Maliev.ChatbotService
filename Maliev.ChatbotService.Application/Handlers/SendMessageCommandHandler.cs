@@ -198,8 +198,9 @@ public class SendMessageCommandHandler
                 }
             }
 
-            // Detect language from user message
-            var detectedLanguage = _languageDetectionService.DetectLanguage(command.Content);
+            // Prefer an explicit caller-selected response language; fall back to message detection for
+            // legacy clients that do not send one.
+            var detectedLanguage = ResolveMessageLanguage(command.Language, command.Content);
 
             // Update session language if different
             if (session.Language != detectedLanguage)
@@ -697,6 +698,16 @@ public class SendMessageCommandHandler
 
         var messageLower = message.ToLowerInvariant();
         return searchKeywords.Any(keyword => messageLower.Contains(keyword));
+    }
+
+    private Language ResolveMessageLanguage(string? language, string content)
+    {
+        return language?.ToLowerInvariant() switch
+        {
+            "th" => Language.Thai,
+            "en" => Language.English,
+            _ => _languageDetectionService.DetectLanguage(content)
+        };
     }
 
     /// <summary>

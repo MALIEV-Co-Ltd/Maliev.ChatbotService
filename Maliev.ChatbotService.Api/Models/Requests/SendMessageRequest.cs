@@ -21,6 +21,12 @@ public class SendMessageRequest
     public string Content { get; set; } = string.Empty;
 
     /// <summary>
+    /// Gets or sets the caller-selected response language, either en or th.
+    /// </summary>
+    [RegularExpression("^(en|th)?$", ErrorMessage = "Language must be 'en' or 'th'")]
+    public string? Language { get; set; }
+
+    /// <summary>
     /// Gets or sets the list of attachments for the message.
     /// </summary>
     public List<Attachment>? Attachments { get; set; }

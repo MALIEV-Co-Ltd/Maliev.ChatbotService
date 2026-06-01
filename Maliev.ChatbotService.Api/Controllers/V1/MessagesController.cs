@@ -78,6 +78,7 @@ public class MessagesController : ControllerBase
             {
                 SessionId = request.SessionId,
                 Content = request.Content,
+                Language = request.Language,
                 Attachments = request.Attachments?.Select(a => new AttachmentDto
                 {
                     ContentType = a.Type?.ToLowerInvariant() switch
