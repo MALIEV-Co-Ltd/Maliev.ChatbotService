@@ -234,5 +234,74 @@ public class SystemInstructionServiceTests : IAsyncLifetime
         Assert.Contains("INTRANET_ERP_CRM_PROMPT", intranetPrompt, StringComparison.Ordinal);
         Assert.DoesNotContain("WEBSITE_CUSTOMER_MALI_PROMPT", intranetPrompt, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Tests that topic-specific instructions are truncated when they exceed the merged prompt limit.
+    /// </summary>
+    [Fact]
+    public async Task GetMergedInstructionsAsync_WithLargeTopicInstructions_TruncatesLowestPriorityTopics()
+    {
+        // Arrange
+        using var scope = _factory.Services.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<ISystemInstructionService>();
+        var repository = scope.ServiceProvider.GetRequiredService<ISystemInstructionRepository>();
+
+        await repository.DeactivateAllAsync();
+        await service.InvalidateCacheAsync();
+
+        await repository.CreateAsync(new SystemInstruction
+        {
+            Id = Guid.NewGuid(),
+            Name = "Core Instruction",
+            TopicKey = null,
+            PersonaDefinition = "Core persona for truncation test.",
+            BusinessConstraints = "Core constraints for truncation test.",
+            Category = Maliev.ChatbotService.Domain.Enums.SystemInstructionCategory.Core,
+            IsActive = true,
+            Version = 1,
+            Priority = 100,
+            AllowedTopics = string.Empty,
+            RejectionTemplates = "{}"
+        });
+
+        await repository.CreateAsync(new SystemInstruction
+        {
+            Id = Guid.NewGuid(),
+            Name = "Topic Instruction High",
+            TopicKey = "large-primary",
+            PersonaDefinition = new string('P', 7300),
+            BusinessConstraints = "High priority topic constraint.",
+            Category = Maliev.ChatbotService.Domain.Enums.SystemInstructionCategory.Topic,
+            IsActive = true,
+            Version = 1,
+            Priority = 100,
+            AllowedTopics = string.Empty,
+            RejectionTemplates = "{}"
+        });
+
+        await repository.CreateAsync(new SystemInstruction
+        {
+            Id = Guid.NewGuid(),
+            Name = "Topic Instruction Low",
+            TopicKey = "large-secondary",
+            PersonaDefinition = new string('L', 7300),
+            BusinessConstraints = "Low priority topic constraint.",
+            Category = Maliev.ChatbotService.Domain.Enums.SystemInstructionCategory.Topic,
+            IsActive = true,
+            Version = 1,
+            Priority = 10,
+            AllowedTopics = string.Empty,
+            RejectionTemplates = "{}"
+        });
+
+        // Act
+        var mergedPrompt = await service.GetMergedInstructionsAsync(
+            new[] { "large-primary", "large-secondary" },
+            cancellationToken: default);
+
+        // Assert
+        Assert.Contains("### Topic: large-primary", mergedPrompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("### Topic: large-secondary", mergedPrompt, StringComparison.Ordinal);
+    }
 }
 

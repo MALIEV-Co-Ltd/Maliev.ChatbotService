@@ -180,19 +180,16 @@ public class SystemInstructionService : ISystemInstructionService
             if (topicInstructions.Any())
             {
                 var topicHeaderAdded = false;
+                var omittedTopicKeys = new List<string>();
                 var currentTotalLength = promptParts.Sum(p => p.Length);
 
                 foreach (var topic in topicInstructions)
-
                 {
-
                     var topicText = $"### Topic: {topic.TopicKey}\n{topic.PersonaDefinition}\n\n{topic.BusinessConstraints}";
-
-
 
                     if (currentTotalLength + topicText.Length > MaxPromptCharacters)
                     {
-                        _logger.LogWarning("System instruction truncation: Topic {TopicKey} omitted due to character limit", topic.TopicKey);
+                        omittedTopicKeys.Add(topic.TopicKey);
                         continue;
                     }
 
@@ -206,6 +203,15 @@ public class SystemInstructionService : ISystemInstructionService
 
                     promptParts.Add(topicText);
                     currentTotalLength += topicText.Length;
+                }
+
+                if (omittedTopicKeys.Any())
+                {
+                    var topicsSummary = string.Join(", ", omittedTopicKeys);
+                    _logger.LogWarning(
+                        "System instruction context limit reached. Omitted {OmittedTopicCount} topic instruction(s): {OmittedTopicKeys}.",
+                        omittedTopicKeys.Count,
+                        topicsSummary);
                 }
             }
         }
