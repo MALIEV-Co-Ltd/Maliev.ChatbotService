@@ -185,11 +185,12 @@ public class SystemInstructionService : ISystemInstructionService
 
                 foreach (var topic in topicInstructions)
                 {
-                    var topicText = $"### Topic: {topic.TopicKey}\n{topic.PersonaDefinition}\n\n{topic.BusinessConstraints}";
+                    var topicKey = topic.TopicKey ?? string.Empty;
+                    var topicText = $"### Topic: {topicKey}\n{topic.PersonaDefinition}\n\n{topic.BusinessConstraints}";
 
                     if (currentTotalLength + topicText.Length > MaxPromptCharacters)
                     {
-                        omittedTopicKeys.Add(topic.TopicKey);
+                        omittedTopicKeys.Add(topicKey);
                         continue;
                     }
 
