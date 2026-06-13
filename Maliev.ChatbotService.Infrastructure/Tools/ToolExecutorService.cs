@@ -62,6 +62,7 @@ public class ToolExecutorService : IToolExecutorService
             ["search_receipts"] = receiptHandler,
             ["get_receipt"] = receiptHandler,
             ["quote_get_state"] = quoteEngineHandler,
+            ["quote_get_project_summary"] = quoteEngineHandler,
             ["quote_get_connectors"] = quoteEngineHandler,
             ["quote_register_uploads"] = quoteEngineHandler,
             ["quote_resume_project"] = quoteEngineHandler,

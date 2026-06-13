@@ -233,6 +233,11 @@ public static class ToolRegistry
                 type = "OBJECT",
                 properties = new { }
             }),
+            Fn("quote_get_project_summary", "Get a compact customer-safe summary of current project progress, estimate, blockers, and next actions.", new
+            {
+                type = "OBJECT",
+                properties = new { }
+            }),
             Fn("quote_get_connectors", "List customer-safe planned and future Make Studio connectors such as file import and CAD sender integrations.", new
             {
                 type = "OBJECT",

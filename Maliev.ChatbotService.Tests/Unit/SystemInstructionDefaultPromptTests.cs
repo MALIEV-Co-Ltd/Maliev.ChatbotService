@@ -38,6 +38,7 @@ public sealed class SystemInstructionDefaultPromptTests
 
         var prompt = await service.GetMergedInstructionsAsync([], "quote-engine");
 
+        Assert.Contains("quote_get_project_summary", prompt, StringComparison.Ordinal);
         Assert.Contains("quote_get_auth_handoff", prompt, StringComparison.Ordinal);
         Assert.Contains("sign-in or sign-up", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("checkout", prompt, StringComparison.OrdinalIgnoreCase);

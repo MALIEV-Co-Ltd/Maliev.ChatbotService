@@ -96,6 +96,7 @@ public sealed class QuoteEngineToolHandlerTests
     }
 
     [Theory]
+    [InlineData("quote_get_project_summary", "focus", "next_steps")]
     [InlineData("quote_get_connectors", "category", "file_import")]
     [InlineData("quote_register_uploads", "requirements", "Quote this uploaded STEP file.")]
     [InlineData("quote_search_customer_data", "query", "fixture")]
@@ -135,6 +136,7 @@ public sealed class QuoteEngineToolHandlerTests
     }
 
     [Theory]
+    [InlineData("quote_get_project_summary")]
     [InlineData("quote_get_connectors")]
     [InlineData("quote_register_uploads")]
     [InlineData("quote_search_customer_data")]

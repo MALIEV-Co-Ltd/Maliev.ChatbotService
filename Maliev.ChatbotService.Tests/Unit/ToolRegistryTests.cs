@@ -56,6 +56,7 @@ public class ToolRegistryTests
         var quoteNames = quoteDeclarations[0].FunctionDeclarations!.Select(f => f.Name).ToList();
 
         Assert.Contains("quote_get_state", quoteNames);
+        Assert.Contains("quote_get_project_summary", quoteNames);
         Assert.Contains("quote_get_connectors", quoteNames);
         Assert.Contains("quote_register_uploads", quoteNames);
         Assert.Contains("quote_resume_project", quoteNames);

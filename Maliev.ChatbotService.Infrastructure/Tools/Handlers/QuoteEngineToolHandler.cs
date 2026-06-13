@@ -19,6 +19,7 @@ public sealed class QuoteEngineToolHandler(IHttpClientFactory httpClientFactory)
     private static readonly HashSet<string> AllowedTools = new(StringComparer.Ordinal)
     {
         "quote_get_state",
+        "quote_get_project_summary",
         "quote_get_connectors",
         "quote_register_uploads",
         "quote_resume_project",
