@@ -70,6 +70,7 @@ public class AgentChatHandler
                     Success = false,
                     Content = response.Content,
                     ErrorMessage = response.ErrorMessage,
+                    IsFallback = response.IsFallback,
                     ThinkingSteps = thinkingSteps,
                     TokenUsage = response.TokenUsage
                 };
@@ -207,6 +208,8 @@ public class AgentChatResult
     public string Content { get; set; } = string.Empty;
     /// <summary>Error message if the operation failed.</summary>
     public string? ErrorMessage { get; set; }
+    /// <summary>Whether the result is a graceful fallback from the AI provider.</summary>
+    public bool IsFallback { get; set; }
     /// <summary>Accumulated thinking steps from the agent loop.</summary>
     public List<ThinkingStep> ThinkingSteps { get; set; } = new();
     /// <summary>Token usage from the last Gemini call.</summary>

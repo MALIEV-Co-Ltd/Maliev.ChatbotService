@@ -432,6 +432,7 @@ public class SendMessageCommandHandler
                         Success = agentResult.Success,
                         Content = agentResult.Content,
                         ErrorMessage = agentResult.ErrorMessage,
+                        IsFallback = agentResult.IsFallback,
                         TokenUsage = agentResult.TokenUsage
                     };
                 }

@@ -150,4 +150,34 @@ public class AgentChatHandlerTests
         // Verify that no attachments were added in either call
         Assert.All(capturedRequests, r => Assert.All(r.Messages, m => Assert.Null(m.Attachments)));
     }
+
+    /// <summary>
+    /// Verifies that provider fallback responses remain fallback results after the agent loop.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_GeminiFallback_PreservesFallbackFlag()
+    {
+        var initialRequest = new GeminiRequest
+        {
+            Messages = new List<GeminiMessage>
+            {
+                new GeminiMessage { Role = "user", Content = "Quote this part" }
+            }
+        };
+
+        _geminiClientMock.Setup(x => x.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GeminiResponse
+            {
+                Success = false,
+                IsFallback = true,
+                Content = "The assistant is temporarily unavailable.",
+                ErrorMessage = "The assistant is temporarily unavailable."
+            });
+
+        var result = await _handler.ExecuteAsync(initialRequest);
+
+        Assert.False(result.Success);
+        Assert.True(result.IsFallback);
+        Assert.Equal("The assistant is temporarily unavailable.", result.Content);
+    }
 }
