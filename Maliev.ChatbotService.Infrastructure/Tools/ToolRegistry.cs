@@ -233,6 +233,15 @@ public static class ToolRegistry
                 type = "OBJECT",
                 properties = new { }
             }),
+            Fn("quote_resume_project", "Resume an existing customer-owned QuoteEngine project into the current Make Studio session.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    project_id = new { type = "STRING", description = "Project UUID to resume." }
+                },
+                required = new[] { "project_id" }
+            }),
             Fn("quote_get_reference_data", "Get customer-safe manufacturing reference options such as processes, materials, finishes, tolerances, quantities, and lead-time options.", new
             {
                 type = "OBJECT",

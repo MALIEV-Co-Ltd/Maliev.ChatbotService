@@ -49,6 +49,51 @@ public sealed class QuoteEngineToolHandlerTests
         Assert.Equal("/quote/v1/agent/tools/quote_approve_quote", handler.SentRequest.RequestUri?.PathAndQuery);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_QuoteResumeProject_ForwardsSignedContextToQuoteEngineBff()
+    {
+        var handler = new CapturingQuoteEngineHandler();
+        var factory = CreateFactory(handler);
+        var quoteEngineToolHandler = new QuoteEngineToolHandler(factory.Object);
+
+        var result = await quoteEngineToolHandler.ExecuteAsync(
+            "quote_resume_project",
+            new Dictionary<string, object>
+            {
+                ["project_id"] = "11111111-1111-1111-1111-111111111111"
+            },
+            new ToolExecutionContext(null, "signed-context-token"),
+            CancellationToken.None);
+
+        Assert.Equal("{\"ok\":true}", result);
+        Assert.NotNull(handler.SentRequest);
+        Assert.Equal(HttpMethod.Post, handler.SentRequest.Method);
+        Assert.Equal("/quote/v1/agent/tools/quote_resume_project", handler.SentRequest.RequestUri?.PathAndQuery);
+        Assert.True(handler.SentRequest.Headers.TryGetValues("X-Maliev-Agent-Context", out var values));
+        Assert.Contains("signed-context-token", values);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_QuoteResumeProject_RoutesThroughToolExecutor()
+    {
+        var handler = new CapturingQuoteEngineHandler();
+        var factory = CreateFactory(handler);
+        var executor = new ToolExecutorService(factory.Object, NullLogger<ToolExecutorService>.Instance);
+
+        var result = await executor.ExecuteAsync(
+            "quote_resume_project",
+            new Dictionary<string, object>
+            {
+                ["project_id"] = "11111111-1111-1111-1111-111111111111"
+            },
+            new ToolExecutionContext(null, "signed-context-token"),
+            CancellationToken.None);
+
+        Assert.Equal("{\"ok\":true}", result);
+        Assert.NotNull(handler.SentRequest);
+        Assert.Equal("/quote/v1/agent/tools/quote_resume_project", handler.SentRequest.RequestUri?.PathAndQuery);
+    }
+
     private static Mock<IHttpClientFactory> CreateFactory(HttpMessageHandler handler)
     {
         var factory = new Mock<IHttpClientFactory>();
