@@ -20,6 +20,7 @@ public sealed class QuoteEngineToolHandler(IHttpClientFactory httpClientFactory)
     {
         "quote_get_state",
         "quote_get_connectors",
+        "quote_register_uploads",
         "quote_resume_project",
         "quote_search_customer_data",
         "quote_get_reference_data",

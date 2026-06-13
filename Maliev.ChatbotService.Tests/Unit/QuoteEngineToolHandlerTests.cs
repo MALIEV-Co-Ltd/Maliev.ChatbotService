@@ -97,6 +97,7 @@ public sealed class QuoteEngineToolHandlerTests
 
     [Theory]
     [InlineData("quote_get_connectors", "category", "file_import")]
+    [InlineData("quote_register_uploads", "requirements", "Quote this uploaded STEP file.")]
     [InlineData("quote_search_customer_data", "query", "fixture")]
     [InlineData("quote_duplicate_project", "title", "Duplicate from chat")]
     [InlineData("quote_pin_project", "project_id", "11111111-1111-1111-1111-111111111111")]
@@ -133,6 +134,7 @@ public sealed class QuoteEngineToolHandlerTests
 
     [Theory]
     [InlineData("quote_get_connectors")]
+    [InlineData("quote_register_uploads")]
     [InlineData("quote_search_customer_data")]
     [InlineData("quote_duplicate_project")]
     [InlineData("quote_pin_project")]

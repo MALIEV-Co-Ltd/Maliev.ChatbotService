@@ -241,6 +241,34 @@ public static class ToolRegistry
                     category = new { type = "STRING", description = "Optional connector category such as file_import or cad_sender." }
                 }
             }),
+            Fn("quote_register_uploads", "Register uploaded or connector-provided manufacturing files into the current Make Studio session.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    requirements = new { type = "STRING", description = "Customer manufacturing request or notes to apply while interpreting the files." },
+                    files = new
+                    {
+                        type = "ARRAY",
+                        items = new
+                        {
+                            type = "OBJECT",
+                            properties = new
+                            {
+                                file_name = new { type = "STRING", description = "Original file name." },
+                                content_type = new { type = "STRING", description = "MIME content type." },
+                                file_size_bytes = new { type = "INTEGER", description = "File size in bytes." },
+                                kind = new { type = "STRING", description = "cad, drawing, photo, sketch, or supplemental." },
+                                upload_id = new { type = "STRING", description = "Existing upload identifier when available." },
+                                storage_path = new { type = "STRING", description = "Existing storage path when available." },
+                                url = new { type = "STRING", description = "Browser-visible URL for image or PDF context when available." }
+                            },
+                            required = new[] { "file_name", "content_type", "file_size_bytes" }
+                        }
+                    }
+                },
+                required = new[] { "files" }
+            }),
             Fn("quote_resume_project", "Resume an existing customer-owned QuoteEngine project into the current Make Studio session.", new
             {
                 type = "OBJECT",
