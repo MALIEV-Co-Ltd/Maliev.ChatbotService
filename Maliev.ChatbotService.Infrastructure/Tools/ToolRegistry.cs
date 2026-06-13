@@ -287,6 +287,15 @@ public static class ToolRegistry
                     limit = new { type = "INTEGER", description = "Maximum result count from 1 to 50." }
                 }
             }),
+            Fn("quote_get_auth_handoff", "Get a customer-safe sign-in or sign-up handoff for checkout or quote actions without collecting credentials in chat.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    intent = new { type = "STRING", description = "Optional auth intent: sign-in or sign-up." },
+                    return_url = new { type = "STRING", description = "Local return URL after trusted authentication completes." }
+                }
+            }),
             Fn("quote_get_reference_data", "Get customer-safe manufacturing reference options such as processes, materials, finishes, tolerances, quantities, and lead-time options.", new
             {
                 type = "OBJECT",

@@ -60,6 +60,7 @@ public class ToolRegistryTests
         Assert.Contains("quote_register_uploads", quoteNames);
         Assert.Contains("quote_resume_project", quoteNames);
         Assert.Contains("quote_search_customer_data", quoteNames);
+        Assert.Contains("quote_get_auth_handoff", quoteNames);
         Assert.Contains("quote_duplicate_project", quoteNames);
         Assert.Contains("quote_pin_project", quoteNames);
         Assert.Contains("quote_archive_project", quoteNames);
