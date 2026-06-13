@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Infrastructure.Tools;
 using Maliev.ChatbotService.Infrastructure.Tools.Handlers;
@@ -94,6 +95,59 @@ public sealed class QuoteEngineToolHandlerTests
         Assert.Equal("/quote/v1/agent/tools/quote_resume_project", handler.SentRequest.RequestUri?.PathAndQuery);
     }
 
+    [Theory]
+    [InlineData("quote_search_customer_data", "query", "fixture")]
+    [InlineData("quote_duplicate_project", "title", "Duplicate from chat")]
+    public async Task ExecuteAsync_QuoteProjectWorkflowTool_ForwardsSignedContextAndArgumentsToQuoteEngineBff(
+        string toolName,
+        string argumentName,
+        string argumentValue)
+    {
+        var handler = new CapturingQuoteEngineHandler();
+        var factory = CreateFactory(handler);
+        var quoteEngineToolHandler = new QuoteEngineToolHandler(factory.Object);
+
+        var result = await quoteEngineToolHandler.ExecuteAsync(
+            toolName,
+            new Dictionary<string, object>
+            {
+                [argumentName] = argumentValue
+            },
+            new ToolExecutionContext(null, "signed-context-token"),
+            CancellationToken.None);
+
+        Assert.Equal("{\"ok\":true}", result);
+        Assert.NotNull(handler.SentRequest);
+        Assert.Equal(HttpMethod.Post, handler.SentRequest.Method);
+        Assert.Equal($"/quote/v1/agent/tools/{toolName}", handler.SentRequest.RequestUri?.PathAndQuery);
+        Assert.True(handler.SentRequest.Headers.TryGetValues("X-Maliev-Agent-Context", out var values));
+        Assert.Contains("signed-context-token", values);
+
+        Assert.False(string.IsNullOrWhiteSpace(handler.SentContent));
+        using var document = JsonDocument.Parse(handler.SentContent);
+        Assert.Equal(argumentValue, document.RootElement.GetProperty("arguments").GetProperty(argumentName).GetString());
+    }
+
+    [Theory]
+    [InlineData("quote_search_customer_data")]
+    [InlineData("quote_duplicate_project")]
+    public async Task ExecuteAsync_QuoteProjectWorkflowTool_RoutesThroughToolExecutor(string toolName)
+    {
+        var handler = new CapturingQuoteEngineHandler();
+        var factory = CreateFactory(handler);
+        var executor = new ToolExecutorService(factory.Object, NullLogger<ToolExecutorService>.Instance);
+
+        var result = await executor.ExecuteAsync(
+            toolName,
+            new Dictionary<string, object>(),
+            new ToolExecutionContext(null, "signed-context-token"),
+            CancellationToken.None);
+
+        Assert.Equal("{\"ok\":true}", result);
+        Assert.NotNull(handler.SentRequest);
+        Assert.Equal($"/quote/v1/agent/tools/{toolName}", handler.SentRequest.RequestUri?.PathAndQuery);
+    }
+
     private static Mock<IHttpClientFactory> CreateFactory(HttpMessageHandler handler)
     {
         var factory = new Mock<IHttpClientFactory>();
@@ -105,16 +159,21 @@ public sealed class QuoteEngineToolHandlerTests
     private sealed class CapturingQuoteEngineHandler : HttpMessageHandler
     {
         public HttpRequestMessage? SentRequest { get; private set; }
+        public string? SentContent { get; private set; }
 
-        protected override Task<HttpResponseMessage> SendAsync(
+        protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
             SentRequest = request;
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            SentContent = request.Content is null
+                ? null
+                : await request.Content.ReadAsStringAsync(cancellationToken);
+
+            return new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent("{\"ok\":true}")
-            });
+            };
         }
     }
 }

@@ -242,6 +242,15 @@ public static class ToolRegistry
                 },
                 required = new[] { "project_id" }
             }),
+            Fn("quote_search_customer_data", "Search customer-owned Make Studio projects, quotes, orders, documents, files, and current-session artifacts.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    query = new { type = "STRING", description = "Optional search text. Omit or send empty string to list recent customer resources." },
+                    limit = new { type = "INTEGER", description = "Maximum result count from 1 to 50." }
+                }
+            }),
             Fn("quote_get_reference_data", "Get customer-safe manufacturing reference options such as processes, materials, finishes, tolerances, quantities, and lead-time options.", new
             {
                 type = "OBJECT",
@@ -280,6 +289,14 @@ public static class ToolRegistry
                 {
                     title = new { type = "STRING", description = "Draft project title." },
                     requirements = new { type = "STRING", description = "Project requirements summary." }
+                }
+            }),
+            Fn("quote_duplicate_project", "Prepare duplication of the current customer draft project. The BFF returns a confirmation card before creating the duplicate.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    title = new { type = "STRING", description = "Optional title for the duplicated project." }
                 }
             }),
             Fn("quote_prepare_formal_quote", "Prepare a formal quote action. The BFF returns a confirmation card and requires customer authentication before execution.", new

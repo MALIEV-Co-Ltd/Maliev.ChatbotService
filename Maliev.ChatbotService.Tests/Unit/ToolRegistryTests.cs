@@ -57,6 +57,8 @@ public class ToolRegistryTests
 
         Assert.Contains("quote_get_state", quoteNames);
         Assert.Contains("quote_resume_project", quoteNames);
+        Assert.Contains("quote_search_customer_data", quoteNames);
+        Assert.Contains("quote_duplicate_project", quoteNames);
         Assert.Contains("quote_calculate_estimate", quoteNames);
         Assert.Contains("quote_prepare_formal_quote", quoteNames);
         Assert.Contains("quote_approve_quote", quoteNames);
