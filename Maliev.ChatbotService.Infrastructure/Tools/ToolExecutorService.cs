@@ -67,6 +67,7 @@ public class ToolExecutorService : IToolExecutorService
             ["quote_calculate_estimate"] = quoteEngineHandler,
             ["quote_prepare_draft_project"] = quoteEngineHandler,
             ["quote_prepare_formal_quote"] = quoteEngineHandler,
+            ["quote_approve_quote"] = quoteEngineHandler,
             ["quote_acknowledge_dfm"] = quoteEngineHandler,
             ["quote_create_order"] = quoteEngineHandler,
             ["quote_start_payment"] = quoteEngineHandler,

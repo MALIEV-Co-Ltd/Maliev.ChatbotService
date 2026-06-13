@@ -24,6 +24,7 @@ public sealed class QuoteEngineToolHandler(IHttpClientFactory httpClientFactory)
         "quote_calculate_estimate",
         "quote_prepare_draft_project",
         "quote_prepare_formal_quote",
+        "quote_approve_quote",
         "quote_acknowledge_dfm",
         "quote_create_order",
         "quote_start_payment",

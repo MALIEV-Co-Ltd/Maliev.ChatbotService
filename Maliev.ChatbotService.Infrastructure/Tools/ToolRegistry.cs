@@ -281,6 +281,14 @@ public static class ToolRegistry
                     requirements = new { type = "STRING", description = "Requirements summary to include in the formal quote artifact." }
                 }
             }),
+            Fn("quote_approve_quote", "Prepare quote approval after a formal quote is ready. The BFF returns a confirmation card before recording customer approval.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    note = new { type = "STRING", description = "Optional customer approval note." }
+                }
+            }),
             Fn("quote_acknowledge_dfm", "Prepare acknowledgement for reviewed DFM risks. The BFF returns a confirmation card before recording acknowledgement.", new
             {
                 type = "OBJECT",
