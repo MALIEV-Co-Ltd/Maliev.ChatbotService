@@ -48,4 +48,20 @@ public class ToolRegistryTests
             Assert.False(string.IsNullOrEmpty(fn.Description), $"Function '{fn.Name}' has empty description");
         }
     }
+
+    [Fact]
+    public void GetToolDeclarationsForProfile_ReturnsQuoteEngineWorkflowToolsOnlyForQuoteEngine()
+    {
+        var quoteDeclarations = ToolRegistry.GetToolDeclarationsForProfile("quote-engine");
+        var quoteNames = quoteDeclarations[0].FunctionDeclarations!.Select(f => f.Name).ToList();
+
+        Assert.Contains("quote_get_state", quoteNames);
+        Assert.Contains("quote_calculate_estimate", quoteNames);
+        Assert.Contains("quote_prepare_formal_quote", quoteNames);
+        Assert.DoesNotContain("search_customers", quoteNames);
+        Assert.DoesNotContain("get_employee", quoteNames);
+
+        var websiteDeclarations = ToolRegistry.GetToolDeclarationsForProfile("website");
+        Assert.Empty(websiteDeclarations);
+    }
 }

@@ -94,7 +94,8 @@ public class MessagesController : ControllerBase
                     SizeBytes = a.SizeBytes ?? 0
                 }).ToList(),
                 ResponseMimeType = request.ResponseMimeType,
-                ResponseSchema = request.ResponseSchema
+                ResponseSchema = request.ResponseSchema,
+                QuoteAgentContextToken = request.QuoteAgentContextToken
             };
 
             // Forward the authenticated user's Bearer token for downstream tool calls

@@ -158,6 +158,7 @@ public class InitiateSessionCommandHandler
             "instagram" => Channel.Instagram,
             "whatsapp" => Channel.WhatsApp,
             "intranet" => Channel.Intranet,
+            "quote-engine" => Channel.QuoteEngine,
             _ => throw new ArgumentException($"Invalid channel: {channel}", nameof(channel))
         };
     }

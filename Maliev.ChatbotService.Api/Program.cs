@@ -198,6 +198,7 @@ try
     builder.AddServiceClient("ReceiptService");
     builder.AddServiceClient("UploadService");
     builder.AddServiceClient("CareerService");
+    builder.AddServiceClient("QuoteEngineBff");
 
     // HttpClient for thinking step callbacks to BFF
     builder.Services.AddHttpClient("ThinkingCallback")

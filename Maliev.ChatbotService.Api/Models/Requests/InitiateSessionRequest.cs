@@ -11,8 +11,8 @@ public class InitiateSessionRequest
     /// Gets or sets the channel through which the session is initiated.
     /// </summary>
     [Required]
-    [RegularExpression("^(website|line|facebook|instagram|whatsapp|intranet)$",
-        ErrorMessage = "Channel must be one of: website, line, facebook, instagram, whatsapp, intranet")]
+    [RegularExpression("^(website|line|facebook|instagram|whatsapp|intranet|quote-engine)$",
+        ErrorMessage = "Channel must be one of: website, line, facebook, instagram, whatsapp, intranet, quote-engine")]
     public string Channel { get; set; } = string.Empty;
 
     /// <summary>

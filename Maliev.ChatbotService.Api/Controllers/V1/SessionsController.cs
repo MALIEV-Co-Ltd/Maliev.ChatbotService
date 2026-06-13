@@ -283,6 +283,7 @@ public class SessionsController : ControllerBase
             "instagram" => Channel.Instagram,
             "whatsapp" => Channel.WhatsApp,
             "intranet" => Channel.Intranet,
+            "quote-engine" => Channel.QuoteEngine,
             _ => null
         };
 

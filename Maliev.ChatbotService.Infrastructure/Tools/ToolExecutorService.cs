@@ -35,6 +35,7 @@ public class ToolExecutorService : IToolExecutorService
         var supplierHandler = new SupplierToolHandler(httpClientFactory);
         var receiptHandler = new ReceiptToolHandler(httpClientFactory);
         var documentHandler = new DocumentToolHandler(httpClientFactory);
+        var quoteEngineHandler = new QuoteEngineToolHandler(httpClientFactory);
 
         _handlers = new Dictionary<string, IToolHandler>
         {
@@ -59,12 +60,32 @@ public class ToolExecutorService : IToolExecutorService
             ["search_suppliers"] = supplierHandler,
             ["get_supplier"] = supplierHandler,
             ["search_receipts"] = receiptHandler,
-            ["get_receipt"] = receiptHandler
+            ["get_receipt"] = receiptHandler,
+            ["quote_get_state"] = quoteEngineHandler,
+            ["quote_get_reference_data"] = quoteEngineHandler,
+            ["quote_update_part_configuration"] = quoteEngineHandler,
+            ["quote_calculate_estimate"] = quoteEngineHandler,
+            ["quote_prepare_draft_project"] = quoteEngineHandler,
+            ["quote_prepare_formal_quote"] = quoteEngineHandler,
+            ["quote_acknowledge_dfm"] = quoteEngineHandler,
+            ["quote_create_order"] = quoteEngineHandler,
+            ["quote_start_payment"] = quoteEngineHandler,
+            ["quote_get_account_context"] = quoteEngineHandler
         };
     }
 
     /// <inheritdoc/>
     public async Task<string> ExecuteAsync(string toolName, Dictionary<string, object> args, string? userToken = null, CancellationToken cancellationToken = default)
+    {
+        return await ExecuteAsync(toolName, args, new ToolExecutionContext(userToken, null), cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public async Task<string> ExecuteAsync(
+        string toolName,
+        Dictionary<string, object> args,
+        ToolExecutionContext context,
+        CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Executing tool: {ToolName} with args: {Args}", toolName, JsonSerializer.Serialize(args));
 
@@ -75,7 +96,12 @@ public class ToolExecutorService : IToolExecutorService
 
         try
         {
-            return await handler.ExecuteAsync(toolName, args, userToken, cancellationToken);
+            if (handler is IContextualToolHandler contextualHandler)
+            {
+                return await contextualHandler.ExecuteAsync(toolName, args, context, cancellationToken);
+            }
+
+            return await handler.ExecuteAsync(toolName, args, context.UserToken, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -86,4 +112,7 @@ public class ToolExecutorService : IToolExecutorService
 
     /// <inheritdoc/>
     public List<GeminiToolDeclaration> GetToolDeclarations() => ToolRegistry.GetAllToolDeclarations();
+
+    /// <inheritdoc/>
+    public List<GeminiToolDeclaration> GetToolDeclarations(string profile) => ToolRegistry.GetToolDeclarationsForProfile(profile);
 }

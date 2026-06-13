@@ -33,5 +33,10 @@ public enum Channel
     /// <summary>
     /// Internal intranet channel.
     /// </summary>
-    Intranet = 6
+    Intranet = 6,
+
+    /// <summary>
+    /// Customer quote-engine manufacturing workflow channel.
+    /// </summary>
+    QuoteEngine = 7
 }

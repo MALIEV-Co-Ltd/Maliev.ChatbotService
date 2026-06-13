@@ -406,13 +406,13 @@ public class SendMessageCommandHandler
                 EnableWebSearch = enableGeminiSearch
             };
 
-            // For Intranet channel, use agent loop with function calling (RAG)
+            // Use the agent loop only for channels with scoped, allowlisted tool profiles.
             GeminiResponse geminiResponse;
             var thinkingSteps = new List<Models.ThinkingStep>();
 
-            if (session.Channel == Channel.Intranet && string.IsNullOrEmpty(command.ResponseMimeType))
+            if (IsAgentToolChannel(session.Channel) && string.IsNullOrEmpty(command.ResponseMimeType))
             {
-                var tools = _toolExecutor.GetToolDeclarations();
+                var tools = _toolExecutor.GetToolDeclarations(GetToolProfile(session.Channel));
                 if (tools.Count > 0)
                 {
                     geminiRequest.Tools = tools;
@@ -420,7 +420,11 @@ public class SendMessageCommandHandler
                     geminiRequest.TimeoutSeconds = 30;
 
                     var agentResult = await _agentChatHandler.ExecuteAsync(
-                        geminiRequest, command.ThinkingStepCallback, command.UserToken, cancellationToken);
+                        geminiRequest,
+                        command.ThinkingStepCallback,
+                        command.UserToken,
+                        command.QuoteAgentContextToken,
+                        cancellationToken);
 
                     thinkingSteps = agentResult.ThinkingSteps;
                     geminiResponse = new GeminiResponse
@@ -678,7 +682,27 @@ public class SendMessageCommandHandler
 
     private static string GetCoreInstructionTopicKey(Channel channel)
     {
-        return channel == Channel.Intranet ? "intranet" : "website";
+        return channel switch
+        {
+            Channel.Intranet => "intranet",
+            Channel.QuoteEngine => "quote-engine",
+            _ => "website"
+        };
+    }
+
+    private static bool IsAgentToolChannel(Channel channel)
+    {
+        return channel is Channel.Intranet or Channel.QuoteEngine;
+    }
+
+    private static string GetToolProfile(Channel channel)
+    {
+        return channel switch
+        {
+            Channel.Intranet => "intranet",
+            Channel.QuoteEngine => "quote-engine",
+            _ => "website"
+        };
     }
 
 

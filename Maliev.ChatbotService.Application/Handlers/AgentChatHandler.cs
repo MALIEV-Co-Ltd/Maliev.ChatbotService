@@ -35,12 +35,14 @@ public class AgentChatHandler
     /// <param name="request">The initial Gemini request with tools.</param>
     /// <param name="onThinkingStep">Callback for each thinking step (for real-time streaming).</param>
     /// <param name="userToken">The Bearer token to forward to downstream tool calls, or null if unavailable.</param>
+    /// <param name="quoteAgentContextToken">Signed QuoteEngine agent context token for QuoteEngine tool calls.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The final response with accumulated thinking steps.</returns>
     public async Task<AgentChatResult> ExecuteAsync(
         GeminiRequest request,
         Func<ThinkingStep, Task>? onThinkingStep = null,
         string? userToken = null,
+        string? quoteAgentContextToken = null,
         CancellationToken cancellationToken = default)
     {
         var thinkingSteps = new List<ThinkingStep>();
@@ -112,7 +114,15 @@ public class AgentChatHandler
                 string toolResult;
                 try
                 {
-                    toolResult = await _toolExecutor.ExecuteAsync(functionCall.Name, functionCall.Args, userToken, cancellationToken);
+                    if (string.IsNullOrWhiteSpace(quoteAgentContextToken))
+                    {
+                        toolResult = await _toolExecutor.ExecuteAsync(functionCall.Name, functionCall.Args, userToken, cancellationToken);
+                    }
+                    else
+                    {
+                        var context = new ToolExecutionContext(userToken, quoteAgentContextToken);
+                        toolResult = await _toolExecutor.ExecuteAsync(functionCall.Name, functionCall.Args, context, cancellationToken);
+                    }
                 }
                 catch (Exception ex)
                 {

@@ -46,4 +46,10 @@ public class SendMessageRequest
     /// When provided, thinking steps are POSTed to this URL as they happen.
     /// </summary>
     public string? CallbackUrl { get; set; }
+
+    /// <summary>
+    /// Gets or sets the signed QuoteEngine agent context token forwarded to QuoteEngine tools.
+    /// </summary>
+    [StringLength(4096)]
+    public string? QuoteAgentContextToken { get; set; }
 }

@@ -7,17 +7,28 @@ namespace Maliev.ChatbotService.Infrastructure.Tools;
 /// </summary>
 public static class ToolRegistry
 {
+    private const string QuoteEngineProfile = "quote-engine";
+    private const string IntranetProfile = "intranet";
+
     /// <summary>
     /// Gets all tool declarations for Gemini function calling.
     /// </summary>
     public static List<GeminiToolDeclaration> GetAllToolDeclarations()
     {
-        return new List<GeminiToolDeclaration>
+        return Wrap(GetAllFunctionDeclarations());
+    }
+
+    /// <summary>
+    /// Gets tool declarations for a channel-specific execution profile.
+    /// </summary>
+    /// <param name="profile">The execution profile name.</param>
+    public static List<GeminiToolDeclaration> GetToolDeclarationsForProfile(string? profile)
+    {
+        return profile?.Trim().ToLowerInvariant() switch
         {
-            new()
-            {
-                FunctionDeclarations = GetAllFunctionDeclarations()
-            }
+            IntranetProfile => GetAllToolDeclarations(),
+            QuoteEngineProfile => Wrap(GetQuoteEngineFunctionDeclarations()),
+            _ => []
         };
     }
 
@@ -211,6 +222,112 @@ public static class ToolRegistry
         }));
 
         return declarations;
+    }
+
+    private static List<GeminiFunctionDeclaration> GetQuoteEngineFunctionDeclarations()
+    {
+        return
+        [
+            Fn("quote_get_state", "Get the current QuoteEngine session state, gates, artifacts, attachments, and proposed actions.", new
+            {
+                type = "OBJECT",
+                properties = new { }
+            }),
+            Fn("quote_get_reference_data", "Get customer-safe manufacturing reference options such as processes, materials, finishes, tolerances, quantities, and lead-time options.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    process = new { type = "STRING", description = "Optional manufacturing process code such as fdm, sla, sls, cnc, sheet-metal, or urethane-casting." }
+                }
+            }),
+            Fn("quote_update_part_configuration", "Update draft quote configuration for process, material, finish or color, tolerance, quantity, and lead time. This is a draft-only action.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    part_id = new { type = "STRING", description = "Optional part identifier. Omit to apply to the primary part." },
+                    process = new { type = "STRING", description = "Manufacturing process code." },
+                    material = new { type = "STRING", description = "Material code or human-readable material." },
+                    finish = new { type = "STRING", description = "Surface finish or post-processing option." },
+                    color = new { type = "STRING", description = "Color selection if applicable." },
+                    tolerance = new { type = "STRING", description = "Tolerance class or custom requirement." },
+                    quantity = new { type = "INTEGER", description = "Requested production quantity." },
+                    lead_time = new { type = "STRING", description = "Lead-time target or option." }
+                }
+            }),
+            Fn("quote_calculate_estimate", "Request a current estimate after geometry and required configuration gates are satisfied.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    currency = new { type = "STRING", description = "Preferred currency code such as THB or USD." }
+                }
+            }),
+            Fn("quote_prepare_draft_project", "Prepare a draft project action. The BFF returns a confirmation card before durable project creation.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    title = new { type = "STRING", description = "Draft project title." },
+                    requirements = new { type = "STRING", description = "Project requirements summary." }
+                }
+            }),
+            Fn("quote_prepare_formal_quote", "Prepare a formal quote action. The BFF returns a confirmation card and requires customer authentication before execution.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    requirements = new { type = "STRING", description = "Requirements summary to include in the formal quote artifact." }
+                }
+            }),
+            Fn("quote_acknowledge_dfm", "Prepare acknowledgement for reviewed DFM risks. The BFF returns a confirmation card before recording acknowledgement.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    issue_ids = new { type = "ARRAY", items = new { type = "STRING" }, description = "DFM issue identifiers that the customer reviewed." },
+                    note = new { type = "STRING", description = "Customer acknowledgement note." }
+                }
+            }),
+            Fn("quote_create_order", "Prepare manufacturing order creation. The BFF requires authentication, approved quote state, checkout readiness, and an explicit confirmation card.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    purchase_order = new { type = "STRING", description = "Optional customer PO number." },
+                    requirements = new { type = "STRING", description = "Order requirements summary." }
+                }
+            }),
+            Fn("quote_start_payment", "Prepare payment initiation. The BFF validates ownership, amount, terms, and checkout gates before returning a confirmation/payment handoff.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    order_number = new { type = "STRING", description = "Manufacturing order number." },
+                    amount = new { type = "NUMBER", description = "Amount expected by the customer." },
+                    currency = new { type = "STRING", description = "Currency code." }
+                }
+            }),
+            Fn("quote_get_account_context", "Get customer sign-in state and safe account context for deciding whether to show sign-in, sign-up, or continuation prompts.", new
+            {
+                type = "OBJECT",
+                properties = new { }
+            })
+        ];
+    }
+
+    private static List<GeminiToolDeclaration> Wrap(List<GeminiFunctionDeclaration> functionDeclarations)
+    {
+        return functionDeclarations.Count == 0
+            ? []
+            :
+            [
+                new()
+                {
+                    FunctionDeclarations = functionDeclarations
+                }
+            ];
     }
 
     private static GeminiFunctionDeclaration Fn(string name, string description, object parameters) =>

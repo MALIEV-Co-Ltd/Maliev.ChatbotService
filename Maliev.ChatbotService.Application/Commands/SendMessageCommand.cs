@@ -47,6 +47,11 @@ public class SendMessageCommand
     /// The Bearer token of the authenticated user, forwarded to downstream tool calls.
     /// </summary>
     public string? UserToken { get; set; }
+
+    /// <summary>
+    /// Signed QuoteEngine agent context forwarded to QuoteEngine BFF tool endpoints.
+    /// </summary>
+    public string? QuoteAgentContextToken { get; set; }
 }
 
 /// <summary>
