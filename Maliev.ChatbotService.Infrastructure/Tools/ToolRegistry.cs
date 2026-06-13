@@ -233,6 +233,14 @@ public static class ToolRegistry
                 type = "OBJECT",
                 properties = new { }
             }),
+            Fn("quote_get_connectors", "List customer-safe planned and future Make Studio connectors such as file import and CAD sender integrations.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    category = new { type = "STRING", description = "Optional connector category such as file_import or cad_sender." }
+                }
+            }),
             Fn("quote_resume_project", "Resume an existing customer-owned QuoteEngine project into the current Make Studio session.", new
             {
                 type = "OBJECT",
@@ -297,6 +305,22 @@ public static class ToolRegistry
                 properties = new
                 {
                     title = new { type = "STRING", description = "Optional title for the duplicated project." }
+                }
+            }),
+            Fn("quote_pin_project", "Prepare pinning a customer Make Studio project for quick access. The BFF returns a confirmation card before changing project state.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    project_id = new { type = "STRING", description = "Optional project UUID. Omit to use the current draft project." }
+                }
+            }),
+            Fn("quote_archive_project", "Prepare archiving a customer Make Studio project. The BFF returns a confirmation card before changing project state.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    project_id = new { type = "STRING", description = "Optional project UUID. Omit to use the current draft project." }
                 }
             }),
             Fn("quote_prepare_formal_quote", "Prepare a formal quote action. The BFF returns a confirmation card and requires customer authentication before execution.", new
