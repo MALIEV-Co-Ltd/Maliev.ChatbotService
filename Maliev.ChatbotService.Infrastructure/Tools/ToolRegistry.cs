@@ -318,6 +318,21 @@ public static class ToolRegistry
                     currency = new { type = "STRING", description = "Preferred currency code such as THB or USD." }
                 }
             }),
+            Fn("quote_update_checkout_details", "Record billing, shipping, phone, company/VAT, terms, and consent details required before payment.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    billing_address_id = new { type = "STRING", description = "Customer billing address UUID." },
+                    shipping_address_id = new { type = "STRING", description = "Customer shipping address UUID." },
+                    phone = new { type = "STRING", description = "Checkout or delivery phone number." },
+                    company = new { type = "STRING", description = "Billing company name when applicable." },
+                    vat_number = new { type = "STRING", description = "Billing VAT or tax number when applicable." },
+                    accepted_terms = new { type = "BOOLEAN", description = "Whether the customer accepted checkout terms." },
+                    consent = new { type = "BOOLEAN", description = "Whether the customer granted required checkout consent." }
+                },
+                required = new[] { "billing_address_id", "shipping_address_id", "accepted_terms", "consent" }
+            }),
             Fn("quote_prepare_draft_project", "Prepare a draft project action. The BFF returns a confirmation card before durable project creation.", new
             {
                 type = "OBJECT",

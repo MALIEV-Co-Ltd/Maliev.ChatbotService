@@ -26,6 +26,7 @@ public sealed class QuoteEngineToolHandler(IHttpClientFactory httpClientFactory)
         "quote_get_reference_data",
         "quote_update_part_configuration",
         "quote_calculate_estimate",
+        "quote_update_checkout_details",
         "quote_prepare_draft_project",
         "quote_duplicate_project",
         "quote_pin_project",

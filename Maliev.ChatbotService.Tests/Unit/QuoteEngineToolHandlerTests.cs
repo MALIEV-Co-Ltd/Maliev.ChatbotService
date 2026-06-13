@@ -102,6 +102,7 @@ public sealed class QuoteEngineToolHandlerTests
     [InlineData("quote_duplicate_project", "title", "Duplicate from chat")]
     [InlineData("quote_pin_project", "project_id", "11111111-1111-1111-1111-111111111111")]
     [InlineData("quote_archive_project", "project_id", "11111111-1111-1111-1111-111111111111")]
+    [InlineData("quote_update_checkout_details", "billing_address_id", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")]
     public async Task ExecuteAsync_QuoteProjectWorkflowTool_ForwardsSignedContextAndArgumentsToQuoteEngineBff(
         string toolName,
         string argumentName,
@@ -139,6 +140,7 @@ public sealed class QuoteEngineToolHandlerTests
     [InlineData("quote_duplicate_project")]
     [InlineData("quote_pin_project")]
     [InlineData("quote_archive_project")]
+    [InlineData("quote_update_checkout_details")]
     public async Task ExecuteAsync_QuoteProjectWorkflowTool_RoutesThroughToolExecutor(string toolName)
     {
         var handler = new CapturingQuoteEngineHandler();

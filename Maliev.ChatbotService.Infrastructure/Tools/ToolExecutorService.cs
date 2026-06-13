@@ -69,6 +69,7 @@ public class ToolExecutorService : IToolExecutorService
             ["quote_get_reference_data"] = quoteEngineHandler,
             ["quote_update_part_configuration"] = quoteEngineHandler,
             ["quote_calculate_estimate"] = quoteEngineHandler,
+            ["quote_update_checkout_details"] = quoteEngineHandler,
             ["quote_prepare_draft_project"] = quoteEngineHandler,
             ["quote_duplicate_project"] = quoteEngineHandler,
             ["quote_pin_project"] = quoteEngineHandler,

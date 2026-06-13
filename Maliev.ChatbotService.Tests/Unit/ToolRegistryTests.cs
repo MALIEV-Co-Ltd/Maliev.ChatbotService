@@ -63,6 +63,7 @@ public class ToolRegistryTests
         Assert.Contains("quote_duplicate_project", quoteNames);
         Assert.Contains("quote_pin_project", quoteNames);
         Assert.Contains("quote_archive_project", quoteNames);
+        Assert.Contains("quote_update_checkout_details", quoteNames);
         Assert.Contains("quote_calculate_estimate", quoteNames);
         Assert.Contains("quote_prepare_formal_quote", quoteNames);
         Assert.Contains("quote_approve_quote", quoteNames);
