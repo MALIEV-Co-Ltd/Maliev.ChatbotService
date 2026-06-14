@@ -37,6 +37,7 @@ public sealed class QuoteEngineToolHandler(IHttpClientFactory httpClientFactory)
         "quote_pin_project",
         "quote_unpin_project",
         "quote_archive_project",
+        "quote_achieve_project",
         "quote_prepare_formal_quote",
         "quote_approve_quote",
         "quote_acknowledge_dfm",

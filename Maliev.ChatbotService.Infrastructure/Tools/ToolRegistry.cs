@@ -416,6 +416,14 @@ public static class ToolRegistry
                     project_id = new { type = "STRING", description = "Optional project UUID. Omit to use the current draft project." }
                 }
             }),
+            Fn("quote_achieve_project", "Prepare marking a customer Make Studio project as achieved or completed. The BFF returns a confirmation card before changing project state.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    project_id = new { type = "STRING", description = "Optional project UUID. Omit to use the current draft project." }
+                }
+            }),
             Fn("quote_prepare_formal_quote", "Prepare a formal quote action. The BFF returns a confirmation card and requires customer authentication before execution.", new
             {
                 type = "OBJECT",
