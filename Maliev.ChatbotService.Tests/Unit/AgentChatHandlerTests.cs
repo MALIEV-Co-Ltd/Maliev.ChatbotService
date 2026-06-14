@@ -152,6 +152,110 @@ public class AgentChatHandlerTests
     }
 
     /// <summary>
+    /// Verifies that QuoteEngine tool calls receive the trusted signed agent context.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_WithQuoteAgentContext_ForwardsContextToToolExecutor()
+    {
+        var initialRequest = new GeminiRequest
+        {
+            Messages = new List<GeminiMessage> { new GeminiMessage { Role = "user", Content = "Price this uploaded part" } }
+        };
+
+        ToolExecutionContext? capturedContext = null;
+        _geminiClientMock.Setup(x => x.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((GeminiRequest _, CancellationToken _) =>
+            {
+                if (capturedContext is null)
+                {
+                    return new GeminiResponse
+                    {
+                        Success = true,
+                        FunctionCalls = new List<GeminiFunctionCall>
+                        {
+                            new GeminiFunctionCall
+                            {
+                                Name = "quote_get_state",
+                                Args = new Dictionary<string, object>()
+                            }
+                        }
+                    };
+                }
+
+                return new GeminiResponse
+                {
+                    Success = true,
+                    Content = "I checked the quote state."
+                };
+            });
+
+        _toolExecutorMock.Setup(x => x.ExecuteAsync(
+                "quote_get_state",
+                It.IsAny<Dictionary<string, object>>(),
+                It.IsAny<ToolExecutionContext>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<string, Dictionary<string, object>, ToolExecutionContext, CancellationToken>((_, _, context, _) => capturedContext = context)
+            .ReturnsAsync("""{"summary":"ready"}""");
+
+        var result = await _handler.ExecuteAsync(
+            initialRequest,
+            userToken: "customer-token",
+            quoteAgentContextToken: "signed-quote-context");
+
+        Assert.True(result.Success);
+        Assert.NotNull(capturedContext);
+        Assert.Equal("customer-token", capturedContext.UserToken);
+        Assert.Equal("signed-quote-context", capturedContext.QuoteAgentContextToken);
+        _toolExecutorMock.Verify(x => x.ExecuteAsync(
+            "quote_get_state",
+            It.IsAny<Dictionary<string, object>>(),
+            It.IsAny<string?>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    /// <summary>
+    /// Verifies that streamed final assistant text is emitted as deltas from the agent loop.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_WithTextDeltaCallback_StreamsAssistantDeltas()
+    {
+        var initialRequest = new GeminiRequest
+        {
+            Messages = new List<GeminiMessage> { new GeminiMessage { Role = "user", Content = "Quote this part" } }
+        };
+        var deltas = new List<string>();
+
+        _geminiClientMock.Setup(x => x.StreamMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()))
+            .Returns(CreateStream([
+                new GeminiStreamEvent { Type = "started" },
+                new GeminiStreamEvent { Type = "delta", Delta = "Upload " },
+                new GeminiStreamEvent { Type = "delta", Delta = "a CAD file." },
+                new GeminiStreamEvent
+                {
+                    Type = "final",
+                    Response = new GeminiResponse
+                    {
+                        Success = true,
+                        Content = "Upload a CAD file."
+                    }
+                }
+            ]));
+
+        var result = await _handler.ExecuteAsync(
+            initialRequest,
+            onTextDelta: delta =>
+            {
+                deltas.Add(delta);
+                return Task.CompletedTask;
+            });
+
+        Assert.True(result.Success);
+        Assert.Equal("Upload a CAD file.", result.Content);
+        Assert.Equal(["Upload ", "a CAD file."], deltas);
+        _geminiClientMock.Verify(x => x.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    /// <summary>
     /// Verifies that provider fallback responses remain fallback results after the agent loop.
     /// </summary>
     [Fact]
@@ -179,5 +283,14 @@ public class AgentChatHandlerTests
         Assert.False(result.Success);
         Assert.True(result.IsFallback);
         Assert.Equal("The assistant is temporarily unavailable.", result.Content);
+    }
+
+    private static async IAsyncEnumerable<GeminiStreamEvent> CreateStream(IEnumerable<GeminiStreamEvent> events)
+    {
+        foreach (var streamEvent in events)
+        {
+            yield return streamEvent;
+            await Task.Yield();
+        }
     }
 }
