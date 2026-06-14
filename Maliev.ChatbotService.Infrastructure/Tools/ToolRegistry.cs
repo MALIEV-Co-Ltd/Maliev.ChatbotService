@@ -372,6 +372,14 @@ public static class ToolRegistry
                     project_id = new { type = "STRING", description = "Optional project UUID. Omit to use the current draft project." }
                 }
             }),
+            Fn("quote_unpin_project", "Prepare unpinning a customer Make Studio project from quick access. The BFF returns a confirmation card before changing project state.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    project_id = new { type = "STRING", description = "Optional project UUID. Omit to use the current draft project." }
+                }
+            }),
             Fn("quote_archive_project", "Prepare archiving a customer Make Studio project. The BFF returns a confirmation card before changing project state.", new
             {
                 type = "OBJECT",

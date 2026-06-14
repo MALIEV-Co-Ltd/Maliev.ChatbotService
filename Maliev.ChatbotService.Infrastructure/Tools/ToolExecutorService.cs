@@ -75,6 +75,7 @@ public class ToolExecutorService : IToolExecutorService
             ["quote_prepare_draft_project"] = quoteEngineHandler,
             ["quote_duplicate_project"] = quoteEngineHandler,
             ["quote_pin_project"] = quoteEngineHandler,
+            ["quote_unpin_project"] = quoteEngineHandler,
             ["quote_archive_project"] = quoteEngineHandler,
             ["quote_prepare_formal_quote"] = quoteEngineHandler,
             ["quote_approve_quote"] = quoteEngineHandler,
