@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Maliev.ChatbotService.Application.Interfaces;
+using System.Runtime.CompilerServices;
 
 namespace Maliev.ChatbotService.Infrastructure.AI;
 
@@ -22,6 +23,22 @@ public sealed class TestingGeminiClient : IGeminiClient
             Content = content,
             TokenUsage = new GeminiTokenUsage { TotalTokens = 42 }
         });
+    }
+
+    /// <inheritdoc />
+    public async IAsyncEnumerable<GeminiStreamEvent> StreamMessageAsync(
+        GeminiRequest request,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        yield return new GeminiStreamEvent { Type = "started" };
+        var response = await SendMessageAsync(request, cancellationToken);
+        foreach (var chunk in Chunk(response.Content))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            yield return new GeminiStreamEvent { Type = "delta", Delta = chunk };
+        }
+
+        yield return new GeminiStreamEvent { Type = "final", Response = response };
     }
 
     private static string BuildContent(GeminiRequest request, string normalizedMessage)
@@ -97,5 +114,14 @@ public sealed class TestingGeminiClient : IGeminiClient
         return normalizedMessage.Contains("สวัสดี", StringComparison.OrdinalIgnoreCase)
             ? "สวัสดีครับ นี่คือคำตอบทดสอบสำหรับสภาพแวดล้อม Aspire"
             : "This is a deterministic Aspire Testing response from the MALIEV assistant.";
+    }
+
+    private static IEnumerable<string> Chunk(string text)
+    {
+        const int chunkSize = 16;
+        for (var index = 0; index < text.Length; index += chunkSize)
+        {
+            yield return text.Substring(index, Math.Min(chunkSize, text.Length - index));
+        }
     }
 }

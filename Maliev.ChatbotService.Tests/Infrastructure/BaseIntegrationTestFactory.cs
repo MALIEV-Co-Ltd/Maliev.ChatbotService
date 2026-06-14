@@ -813,6 +813,26 @@ internal class MockGeminiClient : IGeminiClient
             TokenUsage = new GeminiTokenUsage { TotalTokens = 100 }
         };
     }
+
+    public async IAsyncEnumerable<GeminiStreamEvent> StreamMessageAsync(
+        GeminiRequest request,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        yield return new GeminiStreamEvent { Type = "started" };
+        var response = await SendMessageAsync(request, cancellationToken);
+        const int chunkSize = 16;
+        for (var index = 0; index < response.Content.Length; index += chunkSize)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            yield return new GeminiStreamEvent
+            {
+                Type = "delta",
+                Delta = response.Content.Substring(index, Math.Min(chunkSize, response.Content.Length - index))
+            };
+        }
+
+        yield return new GeminiStreamEvent { Type = "final", Response = response };
+    }
 }
 
 /// <summary>

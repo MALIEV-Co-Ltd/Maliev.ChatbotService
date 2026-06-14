@@ -44,6 +44,11 @@ public class SendMessageCommand
     public Func<ThinkingStep, Task>? ThinkingStepCallback { get; set; }
 
     /// <summary>
+    /// Optional callback for streaming generated assistant text deltas to the caller.
+    /// </summary>
+    public Func<string, Task>? TextDeltaCallback { get; set; }
+
+    /// <summary>
     /// The Bearer token of the authenticated user, forwarded to downstream tool calls.
     /// </summary>
     public string? UserToken { get; set; }

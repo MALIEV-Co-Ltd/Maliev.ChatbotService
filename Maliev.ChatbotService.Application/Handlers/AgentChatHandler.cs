@@ -36,6 +36,7 @@ public class AgentChatHandler
     /// <param name="onThinkingStep">Callback for each thinking step (for real-time streaming).</param>
     /// <param name="userToken">The Bearer token to forward to downstream tool calls, or null if unavailable.</param>
     /// <param name="quoteAgentContextToken">Signed QuoteEngine agent context token for QuoteEngine tool calls.</param>
+    /// <param name="onTextDelta">Callback for generated assistant text deltas.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The final response with accumulated thinking steps.</returns>
     public async Task<AgentChatResult> ExecuteAsync(
@@ -43,6 +44,7 @@ public class AgentChatHandler
         Func<ThinkingStep, Task>? onThinkingStep = null,
         string? userToken = null,
         string? quoteAgentContextToken = null,
+        Func<string, Task>? onTextDelta = null,
         CancellationToken cancellationToken = default)
     {
         var thinkingSteps = new List<ThinkingStep>();
@@ -61,7 +63,7 @@ public class AgentChatHandler
                 ToolConfig = request.ToolConfig
             };
 
-            var response = await _geminiClient.SendMessageAsync(iterationRequest, cancellationToken);
+            var response = await SendGeminiMaybeStreamingAsync(iterationRequest, onTextDelta, cancellationToken);
 
             if (!response.Success)
             {
@@ -193,6 +195,56 @@ public class AgentChatHandler
             Success = true,
             Content = "I apologize, but I was unable to complete the research within the allowed number of steps. Please try a more specific question.",
             ThinkingSteps = thinkingSteps
+        };
+    }
+
+    private async Task<GeminiResponse> SendGeminiMaybeStreamingAsync(
+        GeminiRequest request,
+        Func<string, Task>? onTextDelta,
+        CancellationToken cancellationToken)
+    {
+        if (onTextDelta == null)
+        {
+            return await _geminiClient.SendMessageAsync(request, cancellationToken);
+        }
+
+        GeminiResponse? finalResponse = null;
+        try
+        {
+            await foreach (var streamEvent in _geminiClient.StreamMessageAsync(request, cancellationToken))
+            {
+                if (streamEvent.Type.Equals("delta", StringComparison.OrdinalIgnoreCase) &&
+                    !string.IsNullOrEmpty(streamEvent.Delta))
+                {
+                    await onTextDelta(streamEvent.Delta);
+                }
+                else if (streamEvent.Type.Equals("final", StringComparison.OrdinalIgnoreCase))
+                {
+                    finalResponse = streamEvent.Response;
+                }
+                else if (streamEvent.Type.Equals("error", StringComparison.OrdinalIgnoreCase))
+                {
+                    finalResponse = new GeminiResponse
+                    {
+                        Success = false,
+                        ErrorMessage = streamEvent.ErrorMessage ?? "Gemini streaming failed"
+                    };
+                }
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return new GeminiResponse
+            {
+                Success = false,
+                ErrorMessage = "Gemini streaming failed"
+            };
+        }
+
+        return finalResponse ?? new GeminiResponse
+        {
+            Success = false,
+            ErrorMessage = "Gemini streaming ended without a final response."
         };
     }
 }

@@ -12,6 +12,14 @@ public interface IGeminiClient
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The response from the Gemini API.</returns>
     Task<GeminiResponse> SendMessageAsync(GeminiRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Streams a response from the Gemini API.
+    /// </summary>
+    /// <param name="request">The request containing the message and context.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Incremental response events from Gemini.</returns>
+    IAsyncEnumerable<GeminiStreamEvent> StreamMessageAsync(GeminiRequest request, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -161,6 +169,32 @@ public class GeminiResponse
     /// Gets whether the response contains function calls.
     /// </summary>
     public bool HasFunctionCalls => FunctionCalls.Count > 0;
+}
+
+/// <summary>
+/// Incremental Gemini streaming event.
+/// </summary>
+public class GeminiStreamEvent
+{
+    /// <summary>
+    /// Gets or sets the event type: started, delta, final, or error.
+    /// </summary>
+    public string Type { get; set; } = "delta";
+
+    /// <summary>
+    /// Gets or sets the incremental generated text.
+    /// </summary>
+    public string? Delta { get; set; }
+
+    /// <summary>
+    /// Gets or sets the final accumulated response.
+    /// </summary>
+    public GeminiResponse? Response { get; set; }
+
+    /// <summary>
+    /// Gets or sets a customer-safe error message.
+    /// </summary>
+    public string? ErrorMessage { get; set; }
 }
 
 /// <summary>

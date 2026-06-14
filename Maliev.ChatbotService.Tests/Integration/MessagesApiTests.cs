@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Maliev.ChatbotService.Api.Models.Requests;
 using Maliev.ChatbotService.Api.Models.Responses;
 using Maliev.ChatbotService.Application.Authorization;
@@ -56,6 +57,44 @@ public class MessagesApiTests : IAsyncLifetime
         var result = await response.Content.ReadFromJsonAsync<MessageResponse>(_factory.JsonSerializerOptions);
         Assert.NotNull(result);
         Assert.NotEqual(Guid.Empty, result.MessageId);
+    }
+
+    [Fact]
+    public async Task StreamMessage_WithValidSession_ReturnsDeltaAndFinalMessage()
+    {
+        var client = _factory.CreateClient();
+        var sessionId = await CreateSessionAsync(client);
+
+        var request = new SendMessageRequest
+        {
+            SessionId = sessionId,
+            Content = "Hello, I need pricing for FDM printing"
+        };
+
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/chatbot/v1/messages/stream")
+        {
+            Content = JsonContent.Create(request, options: _factory.JsonSerializerOptions)
+        };
+        using var response = await client.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("application/x-ndjson", response.Content.Headers.ContentType?.MediaType);
+
+        var body = await response.Content.ReadAsStringAsync();
+        var events = body
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(line => JsonSerializer.Deserialize<MessageStreamEvent>(line, _factory.JsonSerializerOptions))
+            .ToList();
+
+        Assert.NotEmpty(events);
+        Assert.Equal("started", events[0]!.Type);
+        Assert.Contains(events, streamEvent =>
+            streamEvent!.Type == "delta" && !string.IsNullOrWhiteSpace(streamEvent.Delta));
+
+        var final = Assert.Single(events, streamEvent => streamEvent!.Type == "final");
+        Assert.NotNull(final!.Message);
+        Assert.NotEqual(Guid.Empty, final.Message.MessageId);
+        Assert.Equal("assistant", final.Message.Role);
     }
 
     [Fact]

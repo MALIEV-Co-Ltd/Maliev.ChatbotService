@@ -42,6 +42,32 @@ public class MessageResponse
 }
 
 /// <summary>
+/// Stream event emitted while processing a chatbot message.
+/// </summary>
+public class MessageStreamEvent
+{
+    /// <summary>
+    /// Gets or sets the event type: started, delta, final, or error.
+    /// </summary>
+    public string Type { get; set; } = "delta";
+
+    /// <summary>
+    /// Gets or sets the incremental assistant text for delta events.
+    /// </summary>
+    public string? Delta { get; set; }
+
+    /// <summary>
+    /// Gets or sets the final persisted assistant message for final events.
+    /// </summary>
+    public MessageResponse? Message { get; set; }
+
+    /// <summary>
+    /// Gets or sets a customer-safe error message for error events.
+    /// </summary>
+    public string? Error { get; set; }
+}
+
+/// <summary>
 /// A step in the AI's thinking chain.
 /// </summary>
 public class ThinkingStepResponse

@@ -424,6 +424,7 @@ public class SendMessageCommandHandler
                         command.ThinkingStepCallback,
                         command.UserToken,
                         command.QuoteAgentContextToken,
+                        command.TextDeltaCallback,
                         cancellationToken);
 
                     thinkingSteps = agentResult.ThinkingSteps;
@@ -438,12 +439,18 @@ public class SendMessageCommandHandler
                 }
                 else
                 {
-                    geminiResponse = await _geminiClient.SendMessageAsync(geminiRequest, cancellationToken);
+                    geminiResponse = await SendGeminiMaybeStreamingAsync(
+                        geminiRequest,
+                        command.TextDeltaCallback,
+                        cancellationToken);
                 }
             }
             else
             {
-                geminiResponse = await _geminiClient.SendMessageAsync(geminiRequest, cancellationToken);
+                geminiResponse = await SendGeminiMaybeStreamingAsync(
+                    geminiRequest,
+                    command.TextDeltaCallback,
+                    cancellationToken);
             }
 
             if (!geminiResponse.Success && !geminiResponse.IsFallback)
@@ -597,6 +604,57 @@ public class SendMessageCommandHandler
             await db.LockReleaseAsync(lockKey, lockValue);
         }
     }
+
+    private async Task<GeminiResponse> SendGeminiMaybeStreamingAsync(
+        GeminiRequest request,
+        Func<string, Task>? onTextDelta,
+        CancellationToken cancellationToken)
+    {
+        if (onTextDelta == null)
+        {
+            return await _geminiClient.SendMessageAsync(request, cancellationToken);
+        }
+
+        GeminiResponse? finalResponse = null;
+        try
+        {
+            await foreach (var streamEvent in _geminiClient.StreamMessageAsync(request, cancellationToken))
+            {
+                if (streamEvent.Type.Equals("delta", StringComparison.OrdinalIgnoreCase) &&
+                    !string.IsNullOrEmpty(streamEvent.Delta))
+                {
+                    await onTextDelta(streamEvent.Delta);
+                }
+                else if (streamEvent.Type.Equals("final", StringComparison.OrdinalIgnoreCase))
+                {
+                    finalResponse = streamEvent.Response;
+                }
+                else if (streamEvent.Type.Equals("error", StringComparison.OrdinalIgnoreCase))
+                {
+                    finalResponse = new GeminiResponse
+                    {
+                        Success = false,
+                        ErrorMessage = streamEvent.ErrorMessage ?? "Gemini streaming failed"
+                    };
+                }
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return new GeminiResponse
+            {
+                Success = false,
+                ErrorMessage = "Gemini streaming failed"
+            };
+        }
+
+        return finalResponse ?? new GeminiResponse
+        {
+            Success = false,
+            ErrorMessage = "Gemini streaming ended without a final response."
+        };
+    }
+
     private static string BuildSummariesContext(IEnumerable<ConversationSummary> summaries)
     {
         var contextParts = new List<string>();
