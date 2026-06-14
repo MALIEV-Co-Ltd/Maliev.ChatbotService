@@ -40,6 +40,7 @@ public sealed class SystemInstructionDefaultPromptTests
 
         Assert.Contains("quote_get_project_summary", prompt, StringComparison.Ordinal);
         Assert.Contains("quote_get_auth_handoff", prompt, StringComparison.Ordinal);
+        Assert.Contains("quote_get_connector_handoff", prompt, StringComparison.Ordinal);
         Assert.Contains("quote_get_settings", prompt, StringComparison.Ordinal);
         Assert.Contains("quote_update_settings", prompt, StringComparison.Ordinal);
         Assert.Contains("quote_get_account_context", prompt, StringComparison.Ordinal);

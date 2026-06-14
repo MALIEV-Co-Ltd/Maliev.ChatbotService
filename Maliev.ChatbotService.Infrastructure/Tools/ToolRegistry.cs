@@ -246,6 +246,16 @@ public static class ToolRegistry
                     category = new { type = "STRING", description = "Optional connector category such as file_import or cad_sender." }
                 }
             }),
+            Fn("quote_get_connector_handoff", "Get a trusted customer-safe connector setup handoff for Make Studio integrations such as Google Drive.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    connector_id = new { type = "STRING", description = "Connector ID such as google-drive." },
+                    return_url = new { type = "STRING", description = "Local return URL after trusted sign-in or connector setup completes." }
+                },
+                required = new[] { "connector_id" }
+            }),
             Fn("quote_register_uploads", "Register uploaded or connector-provided manufacturing files into the current Make Studio session.", new
             {
                 type = "OBJECT",

@@ -64,6 +64,7 @@ public class ToolExecutorService : IToolExecutorService
             ["quote_get_state"] = quoteEngineHandler,
             ["quote_get_project_summary"] = quoteEngineHandler,
             ["quote_get_connectors"] = quoteEngineHandler,
+            ["quote_get_connector_handoff"] = quoteEngineHandler,
             ["quote_register_uploads"] = quoteEngineHandler,
             ["quote_resume_project"] = quoteEngineHandler,
             ["quote_search_customer_data"] = quoteEngineHandler,

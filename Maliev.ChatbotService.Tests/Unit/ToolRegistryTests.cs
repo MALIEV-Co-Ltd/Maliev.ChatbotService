@@ -60,6 +60,7 @@ public class ToolRegistryTests
             "quote_get_state",
             "quote_get_project_summary",
             "quote_get_connectors",
+            "quote_get_connector_handoff",
             "quote_register_uploads",
             "quote_resume_project",
             "quote_search_customer_data",
