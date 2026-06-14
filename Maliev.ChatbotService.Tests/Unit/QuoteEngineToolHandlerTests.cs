@@ -11,6 +11,11 @@ namespace Maliev.ChatbotService.Tests.Unit;
 
 public sealed class QuoteEngineToolHandlerTests
 {
+    public static IEnumerable<object[]> DeclaredQuoteEngineTools =>
+        ToolRegistry.GetToolDeclarationsForProfile("quote-engine")
+            .SelectMany(declaration => declaration.FunctionDeclarations ?? [])
+            .Select(declaration => new object[] { declaration.Name });
+
     [Fact]
     public async Task ExecuteAsync_QuoteApproveQuote_ForwardsSignedContextToQuoteEngineBff()
     {
@@ -93,6 +98,28 @@ public sealed class QuoteEngineToolHandlerTests
         Assert.Equal("{\"ok\":true}", result);
         Assert.NotNull(handler.SentRequest);
         Assert.Equal("/quote/v1/agent/tools/quote_resume_project", handler.SentRequest.RequestUri?.PathAndQuery);
+    }
+
+    [Theory]
+    [MemberData(nameof(DeclaredQuoteEngineTools))]
+    public async Task ExecuteAsync_DeclaredQuoteEngineTool_RoutesThroughToolExecutor(string toolName)
+    {
+        var handler = new CapturingQuoteEngineHandler();
+        var factory = CreateFactory(handler);
+        var executor = new ToolExecutorService(factory.Object, NullLogger<ToolExecutorService>.Instance);
+
+        var result = await executor.ExecuteAsync(
+            toolName,
+            new Dictionary<string, object>(),
+            new ToolExecutionContext(null, "signed-context-token"),
+            CancellationToken.None);
+
+        Assert.Equal("{\"ok\":true}", result);
+        Assert.NotNull(handler.SentRequest);
+        Assert.Equal(HttpMethod.Post, handler.SentRequest.Method);
+        Assert.Equal($"/quote/v1/agent/tools/{toolName}", handler.SentRequest.RequestUri?.PathAndQuery);
+        Assert.True(handler.SentRequest.Headers.TryGetValues("X-Maliev-Agent-Context", out var values));
+        Assert.Contains("signed-context-token", values);
     }
 
     [Theory]

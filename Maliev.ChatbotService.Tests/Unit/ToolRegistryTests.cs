@@ -55,20 +55,34 @@ public class ToolRegistryTests
         var quoteDeclarations = ToolRegistry.GetToolDeclarationsForProfile("quote-engine");
         var quoteNames = quoteDeclarations[0].FunctionDeclarations!.Select(f => f.Name).ToList();
 
-        Assert.Contains("quote_get_state", quoteNames);
-        Assert.Contains("quote_get_project_summary", quoteNames);
-        Assert.Contains("quote_get_connectors", quoteNames);
-        Assert.Contains("quote_register_uploads", quoteNames);
-        Assert.Contains("quote_resume_project", quoteNames);
-        Assert.Contains("quote_search_customer_data", quoteNames);
-        Assert.Contains("quote_get_auth_handoff", quoteNames);
-        Assert.Contains("quote_duplicate_project", quoteNames);
-        Assert.Contains("quote_pin_project", quoteNames);
-        Assert.Contains("quote_archive_project", quoteNames);
-        Assert.Contains("quote_update_checkout_details", quoteNames);
-        Assert.Contains("quote_calculate_estimate", quoteNames);
-        Assert.Contains("quote_prepare_formal_quote", quoteNames);
-        Assert.Contains("quote_approve_quote", quoteNames);
+        var expectedQuoteTools = new[]
+        {
+            "quote_get_state",
+            "quote_get_project_summary",
+            "quote_get_connectors",
+            "quote_register_uploads",
+            "quote_resume_project",
+            "quote_search_customer_data",
+            "quote_get_auth_handoff",
+            "quote_get_reference_data",
+            "quote_update_part_configuration",
+            "quote_calculate_estimate",
+            "quote_update_checkout_details",
+            "quote_prepare_draft_project",
+            "quote_duplicate_project",
+            "quote_pin_project",
+            "quote_archive_project",
+            "quote_prepare_formal_quote",
+            "quote_approve_quote",
+            "quote_acknowledge_dfm",
+            "quote_create_order",
+            "quote_start_payment",
+            "quote_get_account_context"
+        };
+
+        Assert.Equal(
+            expectedQuoteTools.OrderBy(name => name, StringComparer.Ordinal),
+            quoteNames.OrderBy(name => name, StringComparer.Ordinal));
         Assert.DoesNotContain("search_customers", quoteNames);
         Assert.DoesNotContain("get_employee", quoteNames);
 
