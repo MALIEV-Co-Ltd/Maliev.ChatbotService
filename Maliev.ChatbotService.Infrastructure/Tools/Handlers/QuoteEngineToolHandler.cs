@@ -94,7 +94,8 @@ public sealed class QuoteEngineToolHandler(IHttpClientFactory httpClientFactory)
             return JsonSerializer.Serialize(new
             {
                 error = $"QuoteEngine BFF returned {(int)response.StatusCode}",
-                detail = content
+                tool = toolName,
+                status = (int)response.StatusCode
             }, JsonOptions);
         }
 

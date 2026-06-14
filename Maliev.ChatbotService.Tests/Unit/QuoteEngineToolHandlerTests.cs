@@ -220,6 +220,32 @@ public sealed class QuoteEngineToolHandlerTests
         Assert.Equal("/quote/v1/agent/tools/quote_calculate_estimate", handler.SentRequest?.RequestUri?.PathAndQuery);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_QuoteEngineBffReturnsFailure_RedactsDownstreamBody()
+    {
+        const string downstreamError = """
+            {"error":"Invalid session","debug":"user@example.com stack trace secret-token"}
+            """;
+        var handler = new CapturingQuoteEngineHandler(downstreamError, HttpStatusCode.InternalServerError);
+        var factory = CreateFactory(handler);
+        var quoteEngineToolHandler = new QuoteEngineToolHandler(factory.Object);
+
+        var result = await quoteEngineToolHandler.ExecuteAsync(
+            "quote_start_payment",
+            new Dictionary<string, object>(),
+            new ToolExecutionContext("customer-token", "signed-context-token"),
+            CancellationToken.None);
+
+        using var document = JsonDocument.Parse(result);
+        Assert.Equal("QuoteEngine BFF returned 500", document.RootElement.GetProperty("error").GetString());
+        Assert.Equal("quote_start_payment", document.RootElement.GetProperty("tool").GetString());
+        Assert.Equal(500, document.RootElement.GetProperty("status").GetInt32());
+        Assert.False(document.RootElement.TryGetProperty("detail", out _));
+        Assert.DoesNotContain("user@example.com", result);
+        Assert.DoesNotContain("secret-token", result);
+        Assert.DoesNotContain("stack trace", result);
+    }
+
     private static Mock<IHttpClientFactory> CreateFactory(HttpMessageHandler handler)
     {
         var factory = new Mock<IHttpClientFactory>();
@@ -228,7 +254,9 @@ public sealed class QuoteEngineToolHandlerTests
         return factory;
     }
 
-    private sealed class CapturingQuoteEngineHandler(string responseContent = "{\"ok\":true}") : HttpMessageHandler
+    private sealed class CapturingQuoteEngineHandler(
+        string responseContent = "{\"ok\":true}",
+        HttpStatusCode statusCode = HttpStatusCode.OK) : HttpMessageHandler
     {
         public HttpRequestMessage? SentRequest { get; private set; }
         public string? SentContent { get; private set; }
@@ -242,7 +270,7 @@ public sealed class QuoteEngineToolHandlerTests
                 ? null
                 : await request.Content.ReadAsStringAsync(cancellationToken);
 
-            return new HttpResponseMessage(HttpStatusCode.OK)
+            return new HttpResponseMessage(statusCode)
             {
                 Content = new StringContent(responseContent)
             };
