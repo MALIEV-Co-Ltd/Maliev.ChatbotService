@@ -301,6 +301,24 @@ public static class ToolRegistry
                     return_url = new { type = "STRING", description = "Local return URL after trusted authentication completes." }
                 }
             }),
+            Fn("quote_get_settings", "Get customer-safe Make Studio settings for the current quote session, including language, units, currency, interaction mode, and artifact panel preference.", new
+            {
+                type = "OBJECT",
+                properties = new { }
+            }),
+            Fn("quote_update_settings", "Update customer-safe Make Studio session settings such as language, units, currency, interaction mode, artifact panel preference, and multilingual mode.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    language = new { type = "STRING", description = "Preferred response language such as en or th." },
+                    units = new { type = "STRING", description = "Preferred dimensional units: mm or inch." },
+                    currency = new { type = "STRING", description = "Preferred quote currency such as THB or USD." },
+                    interaction_mode = new { type = "STRING", description = "Preferred Make Studio interaction mode: chat, chat-and-ui, or ui." },
+                    allow_artifact_panel = new { type = "BOOLEAN", description = "Whether the customer wants the artifact review panel available." },
+                    multilingual = new { type = "BOOLEAN", description = "Whether bilingual/multilingual responses should remain enabled." }
+                }
+            }),
             Fn("quote_get_reference_data", "Get customer-safe manufacturing reference options such as processes, materials, finishes, tolerances, quantities, and lead-time options.", new
             {
                 type = "OBJECT",

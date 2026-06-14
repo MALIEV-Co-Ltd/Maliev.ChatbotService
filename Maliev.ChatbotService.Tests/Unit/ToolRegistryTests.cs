@@ -64,6 +64,8 @@ public class ToolRegistryTests
             "quote_resume_project",
             "quote_search_customer_data",
             "quote_get_auth_handoff",
+            "quote_get_settings",
+            "quote_update_settings",
             "quote_get_reference_data",
             "quote_update_part_configuration",
             "quote_calculate_estimate",
