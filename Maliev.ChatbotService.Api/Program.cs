@@ -155,9 +155,19 @@ try
     }
     else
     {
-        builder.Services.AddHttpClient<IGeminiClient, GeminiClient>(client =>
+        builder.Services.AddScoped<IModelProviderClientFactory, ModelProviderClientFactory>();
+        builder.Services.AddScoped<IGeminiClient, ProviderRoutingGeminiClient>();
+
+        builder.Services.AddHttpClient<GeminiModelProviderClient>(client =>
         {
             client.BaseAddress = new Uri(externalClientsConfig.Gemini.BaseAddress);
+            client.Timeout = TimeSpan.FromSeconds(60);
+        })
+        .AddStandardResilienceHandler();
+
+        builder.Services.AddHttpClient<OpenAICompatibleModelProviderClient>(client =>
+        {
+            client.BaseAddress = new Uri(externalClientsConfig.OpenAICompatible.BaseAddress);
             client.Timeout = TimeSpan.FromSeconds(60);
         })
         .AddStandardResilienceHandler();

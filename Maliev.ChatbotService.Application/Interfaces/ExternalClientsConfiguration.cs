@@ -11,6 +11,11 @@ public class ExternalClientsConfiguration
     public ClientConfiguration Gemini { get; set; } = new();
 
     /// <summary>
+    /// Configuration for OpenAI-compatible model provider APIs.
+    /// </summary>
+    public ClientConfiguration OpenAICompatible { get; set; } = new();
+
+    /// <summary>
     /// Configuration for LINE API client.
     /// </summary>
     public ClientConfiguration Line { get; set; } = new();

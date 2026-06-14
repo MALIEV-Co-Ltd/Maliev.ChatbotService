@@ -1,0 +1,466 @@
+using Maliev.ChatbotService.Application.Interfaces;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using System.Runtime.CompilerServices;
+using System.Text;
+using System.Text.Json;
+
+namespace Maliev.ChatbotService.Infrastructure.AI;
+
+/// <summary>
+/// Model provider adapter for OpenAI-compatible chat completion APIs.
+/// </summary>
+public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
+{
+    private readonly HttpClient _httpClient;
+    private readonly ILogger<OpenAICompatibleModelProviderClient> _logger;
+    private readonly string _apiKey;
+    private readonly string _modelName;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="OpenAICompatibleModelProviderClient"/> class.
+    /// </summary>
+    /// <param name="httpClient">The HTTP client.</param>
+    /// <param name="configuration">The configuration.</param>
+    /// <param name="logger">The logger.</param>
+    public OpenAICompatibleModelProviderClient(
+        HttpClient httpClient,
+        IConfiguration configuration,
+        ILogger<OpenAICompatibleModelProviderClient> logger)
+    {
+        _httpClient = httpClient;
+        _logger = logger;
+        _apiKey = configuration["Llm:OpenAICompatible:ApiKey"]
+            ?? configuration["OpenAICompatible:ApiKey"]
+            ?? string.Empty;
+        _modelName = configuration["Llm:OpenAICompatible:ModelName"]
+            ?? configuration["OpenAICompatible:ModelName"]
+            ?? "openai-compatible-model";
+    }
+
+    /// <inheritdoc/>
+    public string ProviderName => "openai-compatible";
+
+    /// <inheritdoc/>
+    public async Task<GeminiResponse> SendMessageAsync(
+        GeminiRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(_apiKey))
+        {
+            throw new InvalidOperationException(
+                "OpenAI-compatible API key is not configured. Set 'Llm:OpenAICompatible:ApiKey'.");
+        }
+
+        try
+        {
+            var modelName = request.ModelName ?? _modelName;
+            var payload = BuildPayload(request, modelName, stream: false);
+            var json = JsonSerializer.Serialize(payload, JsonOptions);
+
+            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "v1/chat/completions");
+            httpRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _apiKey);
+            httpRequest.Content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(TimeSpan.FromSeconds(request.TimeoutSeconds));
+
+            using var response = await _httpClient.SendAsync(httpRequest, cts.Token);
+            var responseContent = await response.Content.ReadAsStringAsync(cts.Token);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogError(
+                    "OpenAI-compatible provider returned error: {StatusCode} - {Content}",
+                    response.StatusCode,
+                    responseContent);
+                return GetFallbackResponse(response.StatusCode == System.Net.HttpStatusCode.TooManyRequests
+                    ? "ModelProviderRateLimit"
+                    : "ModelProviderError");
+            }
+
+            using var document = JsonDocument.Parse(responseContent);
+            return ParseResponse(document.RootElement);
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning("OpenAI-compatible provider request timed out after {Timeout} seconds", request.TimeoutSeconds);
+            return GetFallbackResponse("ModelProviderTimeout");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error calling OpenAI-compatible provider");
+            return GetFallbackResponse("UnexpectedError");
+        }
+    }
+
+    /// <inheritdoc/>
+    public async IAsyncEnumerable<GeminiStreamEvent> StreamMessageAsync(
+        GeminiRequest request,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        yield return new GeminiStreamEvent { Type = "started" };
+
+        if (request.Tools is { Count: > 0 })
+        {
+            var toolResponse = await SendMessageAsync(request, cancellationToken);
+            if (!string.IsNullOrEmpty(toolResponse.Content))
+            {
+                yield return new GeminiStreamEvent { Type = "delta", Delta = toolResponse.Content };
+            }
+
+            yield return new GeminiStreamEvent { Type = "final", Response = toolResponse };
+            yield break;
+        }
+
+        if (string.IsNullOrWhiteSpace(_apiKey))
+        {
+            yield return new GeminiStreamEvent
+            {
+                Type = "final",
+                Response = GetFallbackResponse("ModelProviderMissingApiKey")
+            };
+            yield break;
+        }
+
+        var accumulatedText = new StringBuilder();
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(TimeSpan.FromSeconds(request.TimeoutSeconds));
+
+        var modelName = request.ModelName ?? _modelName;
+        var payload = BuildPayload(request, modelName, stream: true);
+        var json = JsonSerializer.Serialize(payload, JsonOptions);
+
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "v1/chat/completions");
+        httpRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _apiKey);
+        httpRequest.Content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        using var response = await _httpClient.SendAsync(
+            httpRequest,
+            HttpCompletionOption.ResponseHeadersRead,
+            cts.Token);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var responseContent = await response.Content.ReadAsStringAsync(cts.Token);
+            _logger.LogError(
+                "OpenAI-compatible streaming provider returned error: {StatusCode} - {Content}",
+                response.StatusCode,
+                responseContent);
+            yield return new GeminiStreamEvent
+            {
+                Type = "final",
+                Response = GetFallbackResponse(response.StatusCode == System.Net.HttpStatusCode.TooManyRequests
+                    ? "ModelProviderRateLimit"
+                    : "ModelProviderError")
+            };
+            yield break;
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cts.Token);
+        using var reader = new StreamReader(stream);
+        while (await reader.ReadLineAsync(cts.Token) is { } line)
+        {
+            if (!line.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var data = line["data:".Length..].Trim();
+            if (data.Length == 0)
+            {
+                continue;
+            }
+
+            if (data.Equals("[DONE]", StringComparison.OrdinalIgnoreCase))
+            {
+                break;
+            }
+
+            using var document = JsonDocument.Parse(data);
+            var delta = ParseStreamDelta(document.RootElement);
+            if (string.IsNullOrEmpty(delta))
+            {
+                continue;
+            }
+
+            accumulatedText.Append(delta);
+            yield return new GeminiStreamEvent { Type = "delta", Delta = delta };
+        }
+
+        yield return new GeminiStreamEvent
+        {
+            Type = "final",
+            Response = new GeminiResponse
+            {
+                Success = true,
+                Content = accumulatedText.ToString()
+            }
+        };
+    }
+
+    private static JsonSerializerOptions JsonOptions { get; } = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+    };
+
+    private static object BuildPayload(GeminiRequest request, string modelName, bool stream)
+    {
+        var messages = new List<object>();
+        if (!string.IsNullOrWhiteSpace(request.SystemInstruction))
+        {
+            messages.Add(new
+            {
+                role = "system",
+                content = request.SystemInstruction
+            });
+        }
+
+        foreach (var message in request.Messages)
+        {
+            messages.Add(new
+            {
+                role = message.Role == "assistant" ? "assistant" : "user",
+                content = BuildMessageContent(message)
+            });
+        }
+
+        if (request.Attachments is { Count: > 0 } && messages.Count > 0)
+        {
+            var lastMessage = request.Messages.LastOrDefault();
+            if (lastMessage is not null && lastMessage.Role != "assistant")
+            {
+                messages[^1] = new
+                {
+                    role = "user",
+                    content = BuildMessageContent(new GeminiMessage
+                    {
+                        Role = lastMessage.Role,
+                        Content = lastMessage.Content,
+                        Attachments = MergeAttachments(lastMessage.Attachments, request.Attachments)
+                    })
+                };
+            }
+        }
+
+        var payload = new Dictionary<string, object?>
+        {
+            ["model"] = modelName,
+            ["messages"] = messages,
+            ["stream"] = stream
+        };
+
+        if (request.MaxTokens is not null)
+        {
+            payload["max_tokens"] = request.MaxTokens.Value;
+        }
+
+        if (request.Temperature is not null)
+        {
+            payload["temperature"] = request.Temperature.Value;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.ResponseMimeType))
+        {
+            payload["response_format"] = request.ResponseSchema is null
+                ? new { type = "json_object" }
+                : new
+                {
+                    type = "json_schema",
+                    json_schema = new
+                    {
+                        name = "response",
+                        schema = request.ResponseSchema
+                    }
+                };
+        }
+
+        if (request.Tools is { Count: > 0 })
+        {
+            payload["tools"] = request.Tools
+                .SelectMany(tool => tool.FunctionDeclarations)
+                .Select(function => new
+                {
+                    type = "function",
+                    function = new
+                    {
+                        name = function.Name,
+                        description = function.Description,
+                        parameters = function.Parameters
+                    }
+                })
+                .ToArray();
+
+            payload["tool_choice"] = request.ToolConfig?.Mode?.ToUpperInvariant() switch
+            {
+                "ANY" => "required",
+                "NONE" => "none",
+                _ => "auto"
+            };
+        }
+
+        return payload;
+    }
+
+    private static object BuildMessageContent(GeminiMessage message)
+    {
+        if (message.Attachments is not { Count: > 0 })
+        {
+            return message.Content;
+        }
+
+        var parts = new List<object>
+        {
+            new { type = "text", text = message.Content }
+        };
+
+        foreach (var attachment in message.Attachments)
+        {
+            if (attachment.MimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            {
+                parts.Add(new
+                {
+                    type = "image_url",
+                    image_url = new { url = NormalizeImageUrl(attachment) }
+                });
+                continue;
+            }
+
+            parts.Add(new
+            {
+                type = "text",
+                text = $"Attached file available as supplemental context: {attachment.MimeType}."
+            });
+        }
+
+        return parts;
+    }
+
+    private static List<GeminiAttachment> MergeAttachments(
+        List<GeminiAttachment>? messageAttachments,
+        List<GeminiAttachment> requestAttachments)
+    {
+        var merged = new List<GeminiAttachment>();
+        if (messageAttachments is not null)
+        {
+            merged.AddRange(messageAttachments);
+        }
+
+        merged.AddRange(requestAttachments);
+        return merged;
+    }
+
+    private static string NormalizeImageUrl(GeminiAttachment attachment)
+    {
+        if (attachment.Data.StartsWith("http", StringComparison.OrdinalIgnoreCase) ||
+            attachment.Data.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+        {
+            return attachment.Data;
+        }
+
+        return $"data:{attachment.MimeType};base64,{attachment.Data}";
+    }
+
+    private static GeminiResponse ParseResponse(JsonElement root)
+    {
+        var choice = root.GetProperty("choices").EnumerateArray().FirstOrDefault();
+        var message = choice.GetProperty("message");
+        var content = message.TryGetProperty("content", out var contentElement)
+            ? contentElement.GetString() ?? string.Empty
+            : string.Empty;
+        var functionCalls = new List<GeminiFunctionCall>();
+
+        if (message.TryGetProperty("tool_calls", out var toolCalls))
+        {
+            foreach (var toolCall in toolCalls.EnumerateArray())
+            {
+                if (!toolCall.TryGetProperty("function", out var function))
+                {
+                    continue;
+                }
+
+                functionCalls.Add(new GeminiFunctionCall
+                {
+                    Name = function.TryGetProperty("name", out var name)
+                        ? name.GetString() ?? string.Empty
+                        : string.Empty,
+                    Args = ParseArguments(function.TryGetProperty("arguments", out var arguments)
+                        ? arguments.GetString()
+                        : null)
+                });
+            }
+        }
+
+        GeminiTokenUsage? tokenUsage = null;
+        if (root.TryGetProperty("usage", out var usage))
+        {
+            tokenUsage = new GeminiTokenUsage
+            {
+                PromptTokens = usage.TryGetProperty("prompt_tokens", out var promptTokens) ? promptTokens.GetInt32() : 0,
+                CompletionTokens = usage.TryGetProperty("completion_tokens", out var completionTokens) ? completionTokens.GetInt32() : 0,
+                TotalTokens = usage.TryGetProperty("total_tokens", out var totalTokens) ? totalTokens.GetInt32() : 0
+            };
+        }
+
+        return new GeminiResponse
+        {
+            Success = true,
+            Content = content,
+            FunctionCalls = functionCalls,
+            TokenUsage = tokenUsage
+        };
+    }
+
+    private static Dictionary<string, object> ParseArguments(string? arguments)
+    {
+        if (string.IsNullOrWhiteSpace(arguments))
+        {
+            return new Dictionary<string, object>();
+        }
+
+        using var document = JsonDocument.Parse(arguments);
+        return document.RootElement.EnumerateObject()
+            .ToDictionary(
+                item => item.Name,
+                item => item.Value.ValueKind switch
+                {
+                    JsonValueKind.String => (object)(item.Value.GetString() ?? string.Empty),
+                    JsonValueKind.Number => item.Value.TryGetInt64(out var longValue) ? longValue : item.Value.GetDouble(),
+                    JsonValueKind.True => true,
+                    JsonValueKind.False => false,
+                    _ => item.Value.GetRawText()
+                });
+    }
+
+    private static string ParseStreamDelta(JsonElement root)
+    {
+        var choice = root.GetProperty("choices").EnumerateArray().FirstOrDefault();
+        if (!choice.TryGetProperty("delta", out var delta) ||
+            !delta.TryGetProperty("content", out var content))
+        {
+            return string.Empty;
+        }
+
+        return content.GetString() ?? string.Empty;
+    }
+
+    private static GeminiResponse GetFallbackResponse(string errorType)
+    {
+        var message = errorType switch
+        {
+            "ModelProviderMissingApiKey" => "AI provider configuration is missing. Please contact support at info@maliev.com.",
+            "ModelProviderRateLimit" => "We have exceeded the AI processing limit for now. Please try again in a few minutes.",
+            "ModelProviderTimeout" => "I apologize, but I'm experiencing delays in processing your request. Please try again in a few moments.",
+            "ModelProviderError" => "I apologize, but I'm temporarily unable to process your request. Please try again in a few moments.",
+            _ => "I apologize for the inconvenience. Something unexpected occurred. Please try again."
+        };
+
+        return new GeminiResponse
+        {
+            Success = false,
+            Content = message,
+            ErrorMessage = message,
+            ErrorType = errorType,
+            IsFallback = true
+        };
+    }
+}
