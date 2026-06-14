@@ -101,6 +101,7 @@ public sealed class QuoteEngineToolHandlerTests
     [InlineData("quote_register_uploads", "requirements", "Quote this uploaded STEP file.")]
     [InlineData("quote_search_customer_data", "query", "fixture")]
     [InlineData("quote_get_auth_handoff", "return_url", "/quote/new?checkout=1")]
+    [InlineData("quote_calculate_estimate", "currency", "THB")]
     [InlineData("quote_duplicate_project", "title", "Duplicate from chat")]
     [InlineData("quote_pin_project", "project_id", "11111111-1111-1111-1111-111111111111")]
     [InlineData("quote_archive_project", "project_id", "11111111-1111-1111-1111-111111111111")]
@@ -141,6 +142,7 @@ public sealed class QuoteEngineToolHandlerTests
     [InlineData("quote_register_uploads")]
     [InlineData("quote_search_customer_data")]
     [InlineData("quote_get_auth_handoff")]
+    [InlineData("quote_calculate_estimate")]
     [InlineData("quote_duplicate_project")]
     [InlineData("quote_pin_project")]
     [InlineData("quote_archive_project")]
@@ -162,6 +164,26 @@ public sealed class QuoteEngineToolHandlerTests
         Assert.Equal($"/quote/v1/agent/tools/{toolName}", handler.SentRequest.RequestUri?.PathAndQuery);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_QuoteCalculateEstimate_ReturnsGateErrorPayloadUnchanged()
+    {
+        const string gateErrorJson = """
+            {"error":"Upload STEP before pricing.","requiredGateCode":"geometry_required","actionType":"calculate_estimate","state":{"estimate":null}}
+            """;
+        var handler = new CapturingQuoteEngineHandler(gateErrorJson);
+        var factory = CreateFactory(handler);
+        var quoteEngineToolHandler = new QuoteEngineToolHandler(factory.Object);
+
+        var result = await quoteEngineToolHandler.ExecuteAsync(
+            "quote_calculate_estimate",
+            new Dictionary<string, object>(),
+            new ToolExecutionContext(null, "signed-context-token"),
+            CancellationToken.None);
+
+        Assert.Equal(gateErrorJson, result);
+        Assert.Equal("/quote/v1/agent/tools/quote_calculate_estimate", handler.SentRequest?.RequestUri?.PathAndQuery);
+    }
+
     private static Mock<IHttpClientFactory> CreateFactory(HttpMessageHandler handler)
     {
         var factory = new Mock<IHttpClientFactory>();
@@ -170,7 +192,7 @@ public sealed class QuoteEngineToolHandlerTests
         return factory;
     }
 
-    private sealed class CapturingQuoteEngineHandler : HttpMessageHandler
+    private sealed class CapturingQuoteEngineHandler(string responseContent = "{\"ok\":true}") : HttpMessageHandler
     {
         public HttpRequestMessage? SentRequest { get; private set; }
         public string? SentContent { get; private set; }
@@ -186,7 +208,7 @@ public sealed class QuoteEngineToolHandlerTests
 
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = new StringContent("{\"ok\":true}")
+                Content = new StringContent(responseContent)
             };
         }
     }
