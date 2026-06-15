@@ -9,6 +9,8 @@ using Maliev.ChatbotService.Domain.Entities;
 using Maliev.ChatbotService.Domain.Enums;
 using Maliev.ChatbotService.Infrastructure.Data;
 using Maliev.ChatbotService.Tests.Infrastructure;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Maliev.ChatbotService.Tests.Integration;
@@ -165,6 +167,35 @@ What materials can you print?
     public async Task SendMessage_WithExternalCallbackUrl_ReturnsBadRequest()
     {
         var client = _factory.CreateClient();
+        var sessionId = await CreateSessionAsync(client);
+
+        var request = new SendMessageRequest
+        {
+            SessionId = sessionId,
+            Content = "Hello",
+            CallbackUrl = "https://attacker.example/callback"
+        };
+
+        var response = await client.PostAsJsonAsync("/chatbot/v1/messages", request, _factory.JsonSerializerOptions);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task SendMessage_WithConfiguredExternalCallbackOrigin_ReturnsBadRequest()
+    {
+        using var configuredFactory = _factory.WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureAppConfiguration((_, config) =>
+            {
+                config.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Chatbot:AllowedThinkingCallbackOrigins:0"] = "https://attacker.example"
+                });
+            });
+        });
+
+        var client = configuredFactory.CreateClient();
         var sessionId = await CreateSessionAsync(client);
 
         var request = new SendMessageRequest

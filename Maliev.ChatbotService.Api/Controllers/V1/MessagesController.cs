@@ -23,7 +23,6 @@ public class MessagesController : ControllerBase
     private readonly SendMessageCommandHandler _handler;
     private readonly AgentChatHandler _agentHandler;
     private readonly IHttpClientFactory _httpClientFactory;
-    private readonly IConfiguration _configuration;
     private readonly IHostEnvironment _hostEnvironment;
     private readonly ILogger<MessagesController> _logger;
 
@@ -38,21 +37,18 @@ public class MessagesController : ControllerBase
     /// <param name="handler">Command handler for sending messages.</param>
     /// <param name="agentHandler">Agent chat handler.</param>
     /// <param name="httpClientFactory">HTTP client factory.</param>
-    /// <param name="configuration">Application configuration.</param>
     /// <param name="hostEnvironment">Host environment.</param>
     /// <param name="logger">Logger instance.</param>
     public MessagesController(
         SendMessageCommandHandler handler,
         AgentChatHandler agentHandler,
         IHttpClientFactory httpClientFactory,
-        IConfiguration configuration,
         IHostEnvironment hostEnvironment,
         ILogger<MessagesController> logger)
     {
         _handler = handler;
         _agentHandler = agentHandler;
         _httpClientFactory = httpClientFactory;
-        _configuration = configuration;
         _hostEnvironment = hostEnvironment;
         _logger = logger;
     }
@@ -293,27 +289,12 @@ public class MessagesController : ControllerBase
 
         if (!string.Equals(absoluteUri.Host, Request.Host.Host, StringComparison.OrdinalIgnoreCase))
         {
-            return IsAllowedCallbackOrigin(absoluteUri) || IsNonProductionLoopbackCallback(absoluteUri);
+            return IsNonProductionLoopbackCallback(absoluteUri);
         }
 
         return !Request.Host.Port.HasValue ||
             absoluteUri.Port == Request.Host.Port.Value ||
-            IsAllowedCallbackOrigin(absoluteUri) ||
             IsNonProductionLoopbackCallback(absoluteUri);
-    }
-
-    private bool IsAllowedCallbackOrigin(Uri callbackUri)
-    {
-        var configuredOrigins = _configuration
-            .GetSection("Chatbot:AllowedThinkingCallbackOrigins")
-            .Get<string[]>() ?? [];
-
-        return configuredOrigins
-            .SelectMany(origin => origin.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-            .Any(origin => Uri.TryCreate(origin, UriKind.Absolute, out var allowed) &&
-                string.Equals(allowed.Scheme, callbackUri.Scheme, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(allowed.Host, callbackUri.Host, StringComparison.OrdinalIgnoreCase) &&
-                allowed.Port == callbackUri.Port);
     }
 
     private bool IsNonProductionLoopbackCallback(Uri callbackUri)
