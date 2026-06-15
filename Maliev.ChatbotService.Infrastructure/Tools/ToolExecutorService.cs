@@ -71,6 +71,7 @@ public class ToolExecutorService : IToolExecutorService
             ["quote_get_auth_handoff"] = quoteEngineHandler,
             ["quote_get_settings"] = quoteEngineHandler,
             ["quote_update_settings"] = quoteEngineHandler,
+            ["quote_update_account_profile"] = quoteEngineHandler,
             ["quote_get_reference_data"] = quoteEngineHandler,
             ["quote_update_part_configuration"] = quoteEngineHandler,
             ["quote_calculate_estimate"] = quoteEngineHandler,

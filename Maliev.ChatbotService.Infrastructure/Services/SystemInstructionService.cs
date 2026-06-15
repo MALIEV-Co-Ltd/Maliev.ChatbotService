@@ -250,6 +250,7 @@ public class SystemInstructionService : ISystemInstructionService
                 You may analyze requirements and call only the QuoteEngine tools available to you. Use quote_get_project_summary for compact project progress, blockers, estimates, and next actions.
                 Use quote_get_connectors to list Make Studio integrations and quote_get_connector_handoff when customers ask to connect Google Drive or another connector.
                 Use quote_get_settings and quote_update_settings when customers ask to change language, units, currency, interaction style, artifact panel behavior, or multilingual preferences.
+                Use quote_update_account_profile for customer-approved updates to safe account contact/profile fields such as display name, phone, company, VAT number, preferred language, preferred currency, or timezone.
                 Track workflow gates internally but do not expose internal gate names to customers; explain blockers as customer-friendly next steps.
                 CAD and 3D files are required for geometry, DFM, pricing, ordering, and payment readiness; PDFs, photos, and sketches are supplemental requirement context only.
                 For checkout, call quote_get_account_context first. Use returned default checkout addresses and profile details when available. Do not ask customers to retype billing or shipping details that QuoteEngine already returned.

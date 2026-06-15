@@ -329,6 +329,20 @@ public static class ToolRegistry
                     multilingual = new { type = "BOOLEAN", description = "Whether bilingual/multilingual responses should remain enabled." }
                 }
             }),
+            Fn("quote_update_account_profile", "Prepare a confirmation-required update to the signed-in customer's safe account profile fields such as display name, phone, company, VAT number, language, currency, or timezone.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    display_name = new { type = "STRING", description = "Customer display name to store after confirmation." },
+                    phone = new { type = "STRING", description = "Customer phone number for account and checkout context." },
+                    company_name = new { type = "STRING", description = "Customer company name, when applicable." },
+                    vat_number = new { type = "STRING", description = "Customer VAT or tax registration number, when applicable." },
+                    preferred_language = new { type = "STRING", description = "Preferred account language such as en or th." },
+                    preferred_currency = new { type = "STRING", description = "Preferred quote currency such as THB or USD." },
+                    timezone = new { type = "STRING", description = "Preferred customer timezone such as Asia/Bangkok." }
+                }
+            }),
             Fn("quote_get_reference_data", "Get customer-safe manufacturing reference options such as processes, materials, finishes, tolerances, quantities, and lead-time options.", new
             {
                 type = "OBJECT",
