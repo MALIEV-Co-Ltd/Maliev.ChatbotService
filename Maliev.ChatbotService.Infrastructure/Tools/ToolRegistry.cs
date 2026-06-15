@@ -335,11 +335,16 @@ public static class ToolRegistry
                 properties = new
                 {
                     display_name = new { type = "STRING", description = "Customer display name to store after confirmation." },
+                    displayName = new { type = "STRING", description = "Customer display name to store after confirmation." },
                     phone = new { type = "STRING", description = "Customer phone number for account and checkout context." },
                     company_name = new { type = "STRING", description = "Customer company name, when applicable." },
+                    companyName = new { type = "STRING", description = "Customer company name, when applicable." },
                     vat_number = new { type = "STRING", description = "Customer VAT or tax registration number, when applicable." },
+                    vatNumber = new { type = "STRING", description = "Customer VAT or tax registration number, when applicable." },
                     preferred_language = new { type = "STRING", description = "Preferred account language such as en or th." },
+                    preferredLanguage = new { type = "STRING", description = "Preferred account language such as en or th." },
                     preferred_currency = new { type = "STRING", description = "Preferred quote currency such as THB or USD." },
+                    preferredCurrency = new { type = "STRING", description = "Preferred quote currency such as THB or USD." },
                     timezone = new { type = "STRING", description = "Preferred customer timezone such as Asia/Bangkok." }
                 }
             }),

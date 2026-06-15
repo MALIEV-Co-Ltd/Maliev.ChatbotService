@@ -1,4 +1,5 @@
 using Maliev.ChatbotService.Infrastructure.Tools;
+using System.Text.Json;
 using Xunit;
 
 namespace Maliev.ChatbotService.Tests.Unit;
@@ -94,5 +95,29 @@ public class ToolRegistryTests
 
         var websiteDeclarations = ToolRegistry.GetToolDeclarationsForProfile("website");
         Assert.Empty(websiteDeclarations);
+    }
+
+    [Fact]
+    public void GetToolDeclarationsForProfile_QuoteAccountProfileToolDeclaresSnakeAndCamelCaseFields()
+    {
+        var quoteDeclarations = ToolRegistry.GetToolDeclarationsForProfile("quote-engine");
+        var tool = Assert.Single(
+            quoteDeclarations[0].FunctionDeclarations!,
+            declaration => declaration.Name == "quote_update_account_profile");
+
+        var json = JsonSerializer.Serialize(tool.Parameters);
+        using var document = JsonDocument.Parse(json);
+        var properties = document.RootElement.GetProperty("properties");
+
+        Assert.True(properties.TryGetProperty("display_name", out _));
+        Assert.True(properties.TryGetProperty("displayName", out _));
+        Assert.True(properties.TryGetProperty("company_name", out _));
+        Assert.True(properties.TryGetProperty("companyName", out _));
+        Assert.True(properties.TryGetProperty("vat_number", out _));
+        Assert.True(properties.TryGetProperty("vatNumber", out _));
+        Assert.True(properties.TryGetProperty("preferred_language", out _));
+        Assert.True(properties.TryGetProperty("preferredLanguage", out _));
+        Assert.True(properties.TryGetProperty("preferred_currency", out _));
+        Assert.True(properties.TryGetProperty("preferredCurrency", out _));
     }
 }
