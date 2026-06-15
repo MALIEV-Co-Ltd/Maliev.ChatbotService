@@ -104,7 +104,10 @@ public class ToolExecutorService : IToolExecutorService
         ToolExecutionContext context,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Executing tool: {ToolName} with args: {Args}", toolName, JsonSerializer.Serialize(args));
+        _logger.LogInformation(
+            "Executing tool: {ToolName} with {ArgumentCount} argument(s)",
+            toolName,
+            args.Count);
 
         if (!_handlers.TryGetValue(toolName, out var handler))
         {
