@@ -172,6 +172,7 @@ public class MessagesController : ControllerBase
         {
             SessionId = request.SessionId,
             Content = request.Content,
+            ModelName = request.ModelName,
             Language = request.Language,
             Attachments = request.Attachments?.Select(a => new AttachmentDto
             {

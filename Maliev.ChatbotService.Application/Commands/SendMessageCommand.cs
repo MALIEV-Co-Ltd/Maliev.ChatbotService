@@ -24,6 +24,11 @@ public class SendMessageCommand
     public string? Language { get; set; }
 
     /// <summary>
+    /// Gets or sets an optional model override for narrow utility calls.
+    /// </summary>
+    public string? ModelName { get; set; }
+
+    /// <summary>
     /// Gets or sets the list of attachments for multimodal messages.
     /// </summary>
     public List<AttachmentDto>? Attachments { get; set; }

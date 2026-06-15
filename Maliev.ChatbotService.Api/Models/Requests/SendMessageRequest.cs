@@ -27,6 +27,12 @@ public class SendMessageRequest
     public string? Language { get; set; }
 
     /// <summary>
+    /// Gets or sets an optional model override for narrow utility calls.
+    /// </summary>
+    [StringLength(80)]
+    public string? ModelName { get; set; }
+
+    /// <summary>
     /// Gets or sets the list of attachments for the message.
     /// </summary>
     public List<Attachment>? Attachments { get; set; }

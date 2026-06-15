@@ -391,6 +391,7 @@ public class SendMessageCommandHandler
             // Build Gemini request with built-in search if enabled
             var geminiRequest = new GeminiRequest
             {
+                ModelName = command.ModelName,
                 SystemInstruction = systemInstructionText,
                 Messages = conversationHistory
                     .OrderBy(m => m.CreatedAt)

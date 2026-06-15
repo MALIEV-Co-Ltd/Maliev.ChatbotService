@@ -44,4 +44,25 @@ public class QuoteEngineChannelContractTests
 
         Assert.Equal("signed-context-token", request.QuoteAgentContextToken);
     }
+
+    [Fact]
+    public void SendMessageRequest_accepts_small_model_override_for_utility_calls()
+    {
+        var request = new SendMessageRequest
+        {
+            SessionId = Guid.NewGuid(),
+            Content = "Clean dictated text.",
+            ModelName = "gemini-2.5-flash-lite"
+        };
+
+        var results = new List<ValidationResult>();
+        var valid = Validator.TryValidateObject(
+            request,
+            new ValidationContext(request),
+            results,
+            validateAllProperties: true);
+
+        Assert.True(valid, string.Join("; ", results.Select(result => result.ErrorMessage)));
+        Assert.Equal("gemini-2.5-flash-lite", request.ModelName);
+    }
 }
