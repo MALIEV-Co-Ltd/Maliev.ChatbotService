@@ -16,9 +16,10 @@ public class Attachment
 
     /// <summary>
     /// Gets or sets the file URL or base64-encoded data.
+    /// Base64-encoded sketch images from QuoteEngine can exceed 10,000 characters.
     /// </summary>
     [Required]
-    [StringLength(10000, MinimumLength = 1)]
+    [StringLength(10_000_000, MinimumLength = 1)]
     public string Url { get; set; } = string.Empty;
 
     /// <summary>
