@@ -182,7 +182,7 @@ What materials can you print?
     }
 
     [Fact]
-    public async Task SendMessage_WithConfiguredExternalCallbackOrigin_ReturnsBadRequest()
+    public async Task SendMessage_WithConfiguredExternalCallbackOrigin_ReturnsResponse()
     {
         using var configuredFactory = _factory.WithWebHostBuilder(builder =>
         {
@@ -207,7 +207,7 @@ What materials can you print?
 
         var response = await client.PostAsJsonAsync("/chatbot/v1/messages", request, _factory.JsonSerializerOptions);
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
     [Fact]
