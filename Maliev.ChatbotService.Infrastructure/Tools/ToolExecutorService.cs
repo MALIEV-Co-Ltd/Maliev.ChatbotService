@@ -35,7 +35,7 @@ public class ToolExecutorService : IToolExecutorService
         var supplierHandler = new SupplierToolHandler(httpClientFactory);
         var receiptHandler = new ReceiptToolHandler(httpClientFactory);
         var documentHandler = new DocumentToolHandler(httpClientFactory);
-        var quoteEngineHandler = new QuoteEngineToolHandler(httpClientFactory);
+        var quoteEngineHandler = new QuoteEngineToolHandler(httpClientFactory, _logger);
 
         _handlers = new Dictionary<string, IToolHandler>
         {

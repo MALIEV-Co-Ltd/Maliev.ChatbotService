@@ -2,13 +2,16 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Maliev.ChatbotService.Application.Interfaces;
+using Microsoft.Extensions.Logging;
 
 namespace Maliev.ChatbotService.Infrastructure.Tools.Handlers;
 
 /// <summary>
 /// Forwards customer-safe QuoteEngine agent tools to the QuoteEngine BFF.
 /// </summary>
-public sealed class QuoteEngineToolHandler(IHttpClientFactory httpClientFactory) : IContextualToolHandler
+public sealed class QuoteEngineToolHandler(
+    IHttpClientFactory httpClientFactory,
+    ILogger? logger = null) : IContextualToolHandler
 {
     private const string AgentContextHeader = "X-Maliev-Agent-Context";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -88,19 +91,46 @@ public sealed class QuoteEngineToolHandler(IHttpClientFactory httpClientFactory)
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", context.UserToken);
         }
 
-        using var response = await client.SendAsync(request, cancellationToken);
-        var content = await response.Content.ReadAsStringAsync(cancellationToken);
-        if (!response.IsSuccessStatusCode)
+        HttpResponseMessage response;
+        try
         {
+            response = await client.SendAsync(request, cancellationToken);
+        }
+        catch (HttpRequestException ex)
+        {
+            // A transport/DNS failure (e.g. an unresolvable QuoteEngineBff host when the tool
+            // client base address is misconfigured, or the BFF being down) must surface as a
+            // clean, actionable tool error instead of a raw exception bubbling into the
+            // customer chat as "No Such Host Is Known (...)".
+            logger?.LogWarning(
+                ex,
+                "QuoteEngine BFF unreachable at {BaseAddress} for tool {Tool}. Verify Services:QuoteEngineBff:BaseUrl or Aspire service discovery (AppHost: chatbotService.WithReference(quoteEngineBff)).",
+                client.BaseAddress,
+                toolName);
+
             return JsonSerializer.Serialize(new
             {
-                error = $"QuoteEngine BFF returned {(int)response.StatusCode}",
+                error = "The QuoteEngine workspace is temporarily unreachable. Please try again in a moment.",
                 tool = toolName,
-                status = (int)response.StatusCode
+                reason = "bff_unreachable"
             }, JsonOptions);
         }
 
-        return content;
+        using (response)
+        {
+            var content = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return JsonSerializer.Serialize(new
+                {
+                    error = $"QuoteEngine BFF returned {(int)response.StatusCode}",
+                    tool = toolName,
+                    status = (int)response.StatusCode
+                }, JsonOptions);
+            }
+
+            return content;
+        }
     }
 
     private sealed record QuoteEngineToolRequest(Dictionary<string, object> Arguments);

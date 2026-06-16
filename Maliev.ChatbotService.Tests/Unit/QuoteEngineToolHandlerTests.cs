@@ -246,12 +246,46 @@ public sealed class QuoteEngineToolHandlerTests
         Assert.DoesNotContain("stack trace", result);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_QuoteEngineBffUnreachable_ReturnsCleanToolErrorInsteadOfThrowing()
+    {
+        var handler = new ThrowingQuoteEngineHandler(
+            new HttpRequestException("No such host is known. (Quoteenginebff:443)"));
+        var factory = CreateFactory(handler);
+        var quoteEngineToolHandler = new QuoteEngineToolHandler(factory.Object);
+
+        // Must NOT throw — a transport/DNS failure has to degrade to a structured tool error.
+        var result = await quoteEngineToolHandler.ExecuteAsync(
+            "quote_get_project_summary",
+            new Dictionary<string, object>(),
+            new ToolExecutionContext(null, "signed-context-token"),
+            CancellationToken.None);
+
+        using var document = JsonDocument.Parse(result);
+        Assert.Equal("bff_unreachable", document.RootElement.GetProperty("reason").GetString());
+        Assert.Equal("quote_get_project_summary", document.RootElement.GetProperty("tool").GetString());
+        Assert.False(document.RootElement.TryGetProperty("status", out _));
+        // The raw host/exception text must not leak into the customer-facing tool result.
+        Assert.DoesNotContain("Quoteenginebff", result, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("No such host", result, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static Mock<IHttpClientFactory> CreateFactory(HttpMessageHandler handler)
     {
         var factory = new Mock<IHttpClientFactory>();
         factory.Setup(item => item.CreateClient("QuoteEngineBff"))
             .Returns(new HttpClient(handler) { BaseAddress = new Uri("http://quote-engine.test") });
         return factory;
+    }
+
+    private sealed class ThrowingQuoteEngineHandler(Exception exception) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            throw exception;
+        }
     }
 
     private sealed class CapturingQuoteEngineHandler(
