@@ -84,7 +84,8 @@ public class ToolRegistryTests
             "quote_acknowledge_dfm",
             "quote_create_order",
             "quote_start_payment",
-            "quote_get_account_context"
+            "quote_get_account_context",
+            "quote_set_ui_language"
         };
 
         Assert.Equal(

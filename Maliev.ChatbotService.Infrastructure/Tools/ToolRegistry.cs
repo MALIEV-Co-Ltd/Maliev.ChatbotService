@@ -491,6 +491,15 @@ public static class ToolRegistry
             {
                 type = "OBJECT",
                 properties = new { }
+            }),
+            Fn("quote_set_ui_language", "Switch the Make Studio UI display language. Call this when the customer requests a UI language change or when you detect the customer is writing in a language that does not match the current UI language and wants the interface to match. The new culture is applied to the browser immediately after this turn. Supported values: en-US (English) or th-TH (Thai).", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    culture = new { type = "STRING", description = "Target UI culture: en-US for English or th-TH for Thai." }
+                },
+                required = new[] { "culture" }
             })
         ];
     }
