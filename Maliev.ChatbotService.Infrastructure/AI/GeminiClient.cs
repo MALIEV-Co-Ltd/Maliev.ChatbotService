@@ -315,6 +315,7 @@ public class GeminiClient : IGeminiClient
         yield return new GeminiStreamEvent { Type = "started" };
 
         var accumulatedText = new StringBuilder();
+        var accumulatedThought = new StringBuilder();
         var functionCalls = new List<GeminiFunctionCall>();
         GeminiTokenUsage? tokenUsage = null;
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -385,6 +386,16 @@ public class GeminiClient : IGeminiClient
                 };
             }
 
+            if (!string.IsNullOrEmpty(parsed.ThoughtContent))
+            {
+                accumulatedThought.Append(parsed.ThoughtContent);
+                yield return new GeminiStreamEvent
+                {
+                    Type = "thought",
+                    Thought = parsed.ThoughtContent
+                };
+            }
+
             if (parsed.FunctionCalls.Count > 0)
             {
                 functionCalls.AddRange(parsed.FunctionCalls);
@@ -402,6 +413,7 @@ public class GeminiClient : IGeminiClient
             {
                 Success = true,
                 Content = accumulatedText.ToString(),
+                ThoughtContent = accumulatedThought.ToString(),
                 FunctionCalls = functionCalls,
                 TokenUsage = tokenUsage
             }
@@ -486,24 +498,25 @@ public class GeminiClient : IGeminiClient
             }
         }
 
-        object geminiPayload;
         var hasTools = request.Tools != null && request.Tools.Count > 0;
         var useBuiltInSearch = request.EnableWebSearch;
 
+        var payload = new Dictionary<string, object?>
+        {
+            ["systemInstruction"] = new { parts = new[] { new { text = request.SystemInstruction } } },
+            ["contents"] = contentsParts.ToArray()
+        };
+
         if (!string.IsNullOrEmpty(request.ResponseMimeType))
         {
-            geminiPayload = new
+            payload["generationConfig"] = new
             {
-                systemInstruction = new { parts = new[] { new { text = request.SystemInstruction } } },
-                contents = contentsParts.ToArray(),
-                generationConfig = new
-                {
-                    responseMimeType = request.ResponseMimeType,
-                    responseSchema = request.ResponseSchema
-                }
+                responseMimeType = request.ResponseMimeType,
+                responseSchema = request.ResponseSchema
             };
         }
-        else if (hasTools || useBuiltInSearch)
+
+        if (hasTools || useBuiltInSearch)
         {
             var toolsList = new List<object>();
             if (useBuiltInSearch)
@@ -524,27 +537,19 @@ public class GeminiClient : IGeminiClient
                 }));
             }
 
-            geminiPayload = new
+            payload["tools"] = toolsList;
+            payload["toolConfig"] = new
             {
-                systemInstruction = new { parts = new[] { new { text = request.SystemInstruction } } },
-                contents = contentsParts.ToArray(),
-                tools = toolsList,
-                toolConfig = new
-                {
-                    functionCallingConfig = new { mode = request.ToolConfig?.Mode ?? "AUTO" }
-                }
-            };
-        }
-        else
-        {
-            geminiPayload = new
-            {
-                systemInstruction = new { parts = new[] { new { text = request.SystemInstruction } } },
-                contents = contentsParts.ToArray()
+                functionCallingConfig = new { mode = request.ToolConfig?.Mode ?? "AUTO" }
             };
         }
 
-        return JsonSerializer.Serialize(geminiPayload, new JsonSerializerOptions
+        if (request.IncludeThoughts)
+        {
+            payload["thinkingConfig"] = new { includeThoughts = true };
+        }
+
+        return JsonSerializer.Serialize(payload, new JsonSerializerOptions
         {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase
         });
@@ -564,6 +569,7 @@ public class GeminiClient : IGeminiClient
         }
 
         var textParts = new List<string>();
+        var thoughtParts = new List<string>();
         var functionCalls = new List<GeminiFunctionCall>();
         if (firstCandidate.TryGetProperty("content", out var contentProp) &&
             contentProp.TryGetProperty("parts", out var parts))
@@ -572,7 +578,13 @@ public class GeminiClient : IGeminiClient
             {
                 if (part.TryGetProperty("text", out var textProp))
                 {
-                    textParts.Add(textProp.GetString() ?? string.Empty);
+                    var isThought = part.TryGetProperty("thought", out var thoughtFlag) &&
+                                    thoughtFlag.ValueKind == JsonValueKind.True &&
+                                    thoughtFlag.GetBoolean();
+                    if (isThought)
+                        thoughtParts.Add(textProp.GetString() ?? string.Empty);
+                    else
+                        textParts.Add(textProp.GetString() ?? string.Empty);
                 }
                 else if (part.TryGetProperty("functionCall", out var fcProp))
                 {
@@ -616,6 +628,7 @@ public class GeminiClient : IGeminiClient
         {
             Success = true,
             Content = string.Join("", textParts),
+            ThoughtContent = string.Join("", thoughtParts),
             FunctionCalls = functionCalls,
             TokenUsage = tokenUsage
         };

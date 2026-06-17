@@ -140,6 +140,7 @@ try
     builder.Services.AddScoped<ProcessWebhookCommandHandler>();
     builder.Services.AddScoped<ExtractCustomerCommandHandler>();
     builder.Services.AddScoped<ExtractCustomerIntentCommandHandler>();
+    builder.Services.AddScoped<CleanDictationSpeechCommandHandler>();
     builder.Services.AddScoped<AgentChatHandler>();
 
     // Service Clients

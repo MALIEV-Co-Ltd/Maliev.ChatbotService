@@ -78,6 +78,11 @@ public class GeminiRequest
     public bool EnableWebSearch { get; set; }
 
     /// <summary>
+    /// Gets or sets whether to request model thinking/reasoning blocks.
+    /// </summary>
+    public bool IncludeThoughts { get; set; }
+
+    /// <summary>
     /// Gets or sets attachments for multimodal requests.
     /// </summary>
     public List<GeminiAttachment>? Attachments { get; set; }
@@ -161,6 +166,11 @@ public class GeminiResponse
     public bool IsFallback { get; set; }
 
     /// <summary>
+    /// Gets or sets the accumulated thought/reasoning text from the model.
+    /// </summary>
+    public string? ThoughtContent { get; set; }
+
+    /// <summary>
     /// Gets or sets the function calls from the response.
     /// </summary>
     public List<GeminiFunctionCall> FunctionCalls { get; set; } = new();
@@ -185,6 +195,11 @@ public class GeminiStreamEvent
     /// Gets or sets the incremental generated text.
     /// </summary>
     public string? Delta { get; set; }
+
+    /// <summary>
+    /// Gets or sets incremental thought text (for thought-type events).
+    /// </summary>
+    public string? Thought { get; set; }
 
     /// <summary>
     /// Gets or sets the final accumulated response.

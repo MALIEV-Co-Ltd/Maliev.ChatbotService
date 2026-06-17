@@ -404,7 +404,8 @@ public class SendMessageCommandHandler
                 TimeoutSeconds = enableGeminiSearch ? 30 : 10,
                 ResponseMimeType = command.ResponseMimeType,
                 ResponseSchema = command.ResponseSchema,
-                EnableWebSearch = enableGeminiSearch
+                EnableWebSearch = enableGeminiSearch,
+                IncludeThoughts = true
             };
 
             // Use the agent loop only for channels with scoped, allowlisted tool profiles.
@@ -443,6 +444,7 @@ public class SendMessageCommandHandler
                     geminiResponse = await SendGeminiMaybeStreamingAsync(
                         geminiRequest,
                         command.TextDeltaCallback,
+                        command.ThoughtDeltaCallback,
                         cancellationToken);
                 }
             }
@@ -451,6 +453,7 @@ public class SendMessageCommandHandler
                 geminiResponse = await SendGeminiMaybeStreamingAsync(
                     geminiRequest,
                     command.TextDeltaCallback,
+                    command.ThoughtDeltaCallback,
                     cancellationToken);
             }
 
@@ -595,6 +598,7 @@ public class SendMessageCommandHandler
                 SuggestedActions = suggestedActions,
                 CreatedAt = createdAt,
                 ThinkingSteps = thinkingSteps,
+                ThoughtContent = geminiResponse.ThoughtContent,
                 SessionId = session.Id
             };
 
@@ -609,6 +613,7 @@ public class SendMessageCommandHandler
     private async Task<GeminiResponse> SendGeminiMaybeStreamingAsync(
         GeminiRequest request,
         Func<string, Task>? onTextDelta,
+        Func<string, Task>? onThoughtDelta,
         CancellationToken cancellationToken)
     {
         if (onTextDelta == null)
@@ -625,6 +630,11 @@ public class SendMessageCommandHandler
                     !string.IsNullOrEmpty(streamEvent.Delta))
                 {
                     await onTextDelta(streamEvent.Delta);
+                }
+                else if (streamEvent.Type.Equals("thought", StringComparison.OrdinalIgnoreCase) &&
+                         !string.IsNullOrEmpty(streamEvent.Thought) && onThoughtDelta != null)
+                {
+                    await onThoughtDelta(streamEvent.Thought);
                 }
                 else if (streamEvent.Type.Equals("final", StringComparison.OrdinalIgnoreCase))
                 {
@@ -909,6 +919,11 @@ public class SendMessageResult
     /// Gets or sets the thinking steps from agent processing.
     /// </summary>
     public List<Models.ThinkingStep> ThinkingSteps { get; set; } = new();
+
+    /// <summary>
+    /// Gets or sets the accumulated model thought/reasoning content.
+    /// </summary>
+    public string? ThoughtContent { get; set; }
 
     /// <summary>
     /// Gets or sets the session ID for SignalR correlation.

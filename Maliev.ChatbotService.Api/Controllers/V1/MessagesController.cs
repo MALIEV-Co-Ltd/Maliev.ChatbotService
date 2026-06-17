@@ -134,6 +134,12 @@ public class MessagesController : ControllerBase
             Delta = delta
         }, cancellationToken);
 
+        command.ThoughtDeltaCallback = thought => WriteStreamEventAsync(new MessageStreamEvent
+        {
+            Type = "thought",
+            Thought = thought
+        }, cancellationToken);
+
         try
         {
             await WriteStreamEventAsync(new MessageStreamEvent { Type = "started" }, cancellationToken);
@@ -232,6 +238,29 @@ public class MessagesController : ControllerBase
 
     private static MessageResponse MapMessageResponse(SendMessageResult result)
     {
+        var thinkingSteps = result.ThinkingSteps.Select(ts => new ThinkingStepResponse
+        {
+            StepNumber = ts.StepNumber,
+            Type = ts.Type,
+            Title = ts.Title,
+            Detail = ts.Detail,
+            Timestamp = ts.Timestamp,
+            DurationMs = ts.DurationMs
+        }).ToList();
+
+        if (!string.IsNullOrEmpty(result.ThoughtContent))
+        {
+            var maxStep = thinkingSteps.Count > 0 ? thinkingSteps.Max(s => s.StepNumber) : 0;
+            thinkingSteps.Add(new ThinkingStepResponse
+            {
+                StepNumber = maxStep + 1,
+                Type = "reasoning",
+                Title = "Model reasoning",
+                Detail = result.ThoughtContent,
+                Timestamp = DateTimeOffset.UtcNow
+            });
+        }
+
         return new MessageResponse
         {
             MessageId = result.MessageId,
@@ -246,15 +275,7 @@ public class MessagesController : ControllerBase
                 Data = sa.Data
             }).ToList(),
             CreatedAt = result.CreatedAt,
-            ThinkingSteps = result.ThinkingSteps.Select(ts => new ThinkingStepResponse
-            {
-                StepNumber = ts.StepNumber,
-                Type = ts.Type,
-                Title = ts.Title,
-                Detail = ts.Detail,
-                Timestamp = ts.Timestamp,
-                DurationMs = ts.DurationMs
-            }).ToList()
+            ThinkingSteps = thinkingSteps
         };
     }
 

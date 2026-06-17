@@ -47,7 +47,7 @@ public class MessageResponse
 public class MessageStreamEvent
 {
     /// <summary>
-    /// Gets or sets the event type: started, delta, final, or error.
+    /// Gets or sets the event type: started, delta, thought, final, or error.
     /// </summary>
     public string Type { get; set; } = "delta";
 
@@ -55,6 +55,11 @@ public class MessageStreamEvent
     /// Gets or sets the incremental assistant text for delta events.
     /// </summary>
     public string? Delta { get; set; }
+
+    /// <summary>
+    /// Gets or sets incremental thought text for thought-type events.
+    /// </summary>
+    public string? Thought { get; set; }
 
     /// <summary>
     /// Gets or sets the final persisted assistant message for final events.

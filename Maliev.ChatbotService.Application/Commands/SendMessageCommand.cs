@@ -54,6 +54,11 @@ public class SendMessageCommand
     public Func<string, Task>? TextDeltaCallback { get; set; }
 
     /// <summary>
+    /// Optional callback for streaming model thought deltas to the caller.
+    /// </summary>
+    public Func<string, Task>? ThoughtDeltaCallback { get; set; }
+
+    /// <summary>
     /// The Bearer token of the authenticated user, forwarded to downstream tool calls.
     /// </summary>
     public string? UserToken { get; set; }

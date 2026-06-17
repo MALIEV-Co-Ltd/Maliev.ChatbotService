@@ -63,7 +63,7 @@ public class AgentChatHandler
                 ToolConfig = request.ToolConfig
             };
 
-            var response = await SendGeminiMaybeStreamingAsync(iterationRequest, onTextDelta, cancellationToken);
+            var response = await SendGeminiMaybeStreamingAsync(iterationRequest, onTextDelta, null, cancellationToken);
 
             if (!response.Success)
             {
@@ -201,6 +201,7 @@ public class AgentChatHandler
     private async Task<GeminiResponse> SendGeminiMaybeStreamingAsync(
         GeminiRequest request,
         Func<string, Task>? onTextDelta,
+        Func<string, Task>? onThoughtDelta,
         CancellationToken cancellationToken)
     {
         if (onTextDelta == null)
@@ -217,6 +218,11 @@ public class AgentChatHandler
                     !string.IsNullOrEmpty(streamEvent.Delta))
                 {
                     await onTextDelta(streamEvent.Delta);
+                }
+                else if (streamEvent.Type.Equals("thought", StringComparison.OrdinalIgnoreCase) &&
+                         !string.IsNullOrEmpty(streamEvent.Thought) && onThoughtDelta != null)
+                {
+                    await onThoughtDelta(streamEvent.Thought);
                 }
                 else if (streamEvent.Type.Equals("final", StringComparison.OrdinalIgnoreCase))
                 {
