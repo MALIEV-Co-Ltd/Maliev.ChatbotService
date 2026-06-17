@@ -389,18 +389,36 @@ public class SendMessageCommandHandler
             }
 
             // Build Gemini request with built-in search if enabled
+            var geminiMessages = conversationHistory
+                .OrderBy(m => m.CreatedAt)
+                .Select(m => new GeminiMessage
+                {
+                    Role = m.Role == MessageRole.User ? "user" : "assistant",
+                    Content = m.Content
+                })
+                .ToList();
+
+            // Attach files to the current user message. The DB only stores text, so attachments
+            // must be re-attached from the command for the current turn.
+            if (command.Attachments is { Count: > 0 } &&
+                geminiMessages.Count > 0 &&
+                geminiMessages[geminiMessages.Count - 1].Role == "user")
+            {
+                geminiMessages[geminiMessages.Count - 1].Attachments = command.Attachments
+                    .Select(a => new GeminiAttachment
+                    {
+                        ContentType = a.ContentType.ToString(),
+                        Data = a.Data,
+                        MimeType = a.MimeType
+                    })
+                    .ToList();
+            }
+
             var geminiRequest = new GeminiRequest
             {
                 ModelName = command.ModelName,
                 SystemInstruction = systemInstructionText,
-                Messages = conversationHistory
-                    .OrderBy(m => m.CreatedAt)
-                    .Select(m => new GeminiMessage
-                    {
-                        Role = m.Role == MessageRole.User ? "user" : "assistant",
-                        Content = m.Content
-                    })
-                    .ToList(),
+                Messages = geminiMessages,
                 TimeoutSeconds = enableGeminiSearch ? 30 : 10,
                 ResponseMimeType = command.ResponseMimeType,
                 ResponseSchema = command.ResponseSchema,
