@@ -85,7 +85,10 @@ public class ToolRegistryTests
             "quote_create_order",
             "quote_start_payment",
             "quote_get_account_context",
-            "quote_set_ui_language"
+            "quote_set_ui_language",
+            "quote_set_project_name",
+            "quote_focus_ui",
+            "quote_ask_customer"
         };
 
         Assert.Equal(

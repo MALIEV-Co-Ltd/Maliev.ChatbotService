@@ -500,6 +500,42 @@ public static class ToolRegistry
                     culture = new { type = "STRING", description = "Target UI culture: en-US for English or th-TH for Thai." }
                 },
                 required = new[] { "culture" }
+            }),
+            Fn("quote_set_project_name", "Set a short descriptive project title derived from the part file name and inferred process or material. Call once per session after inferring manufacturing context. Never set the name to the customer's literal question.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    name = new { type = "STRING", description = "Short descriptive project title, e.g. 'Flower Oval – FDM PLA'." }
+                },
+                required = new[] { "name" }
+            }),
+            Fn("quote_focus_ui", "Highlight or focus a specific area of the Make Studio workspace to guide the customer to relevant information. Use when pointing the customer to an artifact, estimate, or configuration panel.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    panel = new { type = "STRING", description = "Target panel: artifact, estimate, config, or checkout." },
+                    target_type = new { type = "STRING", description = "Target element type such as summary, part, or artifact." },
+                    target_id = new { type = "STRING", description = "Optional target element ID." },
+                    highlight_key = new { type = "STRING", description = "Highlight key for the focus directive." },
+                    label = new { type = "STRING", description = "Customer-visible label describing what was highlighted." }
+                }
+            }),
+            Fn("quote_ask_customer", "Present a focused clarifying question with 2–4 discrete answer options to the customer. Use ONLY when the customer's intent is genuinely ambiguous and the options are mutually exclusive (e.g. choosing between FDM, SLA, and SLS when the message gives no material hint). Do NOT use for open-ended questions, inferable information, quantity, lead time, or anything answerable from context. At most once per turn.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    question = new { type = "STRING", description = "The clarifying question to present to the customer." },
+                    options = new
+                    {
+                        type = "ARRAY",
+                        items = new { type = "STRING" },
+                        description = "2 to 4 short answer options the customer can choose from."
+                    }
+                },
+                required = new[] { "question", "options" }
             })
         ];
     }

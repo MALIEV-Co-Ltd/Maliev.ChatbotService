@@ -88,7 +88,10 @@ public class ToolExecutorService : IToolExecutorService
             ["quote_create_order"] = quoteEngineHandler,
             ["quote_start_payment"] = quoteEngineHandler,
             ["quote_get_account_context"] = quoteEngineHandler,
-            ["quote_set_ui_language"] = quoteEngineHandler
+            ["quote_set_ui_language"] = quoteEngineHandler,
+            ["quote_set_project_name"] = quoteEngineHandler,
+            ["quote_focus_ui"] = quoteEngineHandler,
+            ["quote_ask_customer"] = quoteEngineHandler
         };
     }
 
