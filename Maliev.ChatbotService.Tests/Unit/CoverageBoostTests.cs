@@ -70,62 +70,6 @@ public class CoverageBoostTests
     }
 
     // ====================================================================
-    // ResponseTimeoutService - GetTimeoutAsync switch statement (lines 41-52 uncovered)
-    // ====================================================================
-
-    [Fact]
-    public async Task ResponseTimeoutService_GetTimeoutAsync_ReturnsCorrectValuesPerType()
-    {
-        var service = new ResponseTimeoutService(NullLogger<ResponseTimeoutService>.Instance);
-        Assert.Equal(30, await service.GetTimeoutAsync("ai_generation"));
-        Assert.Equal(10, await service.GetTimeoutAsync("web_search"));
-        Assert.Equal(5, await service.GetTimeoutAsync("database_query"));
-        Assert.Equal(15, await service.GetTimeoutAsync("other_operation"));
-        Assert.Equal(30, await service.GetTimeoutAsync("AI_GENERATION")); // uppercase
-    }
-
-    // ====================================================================
-    // InputValidationService - null/empty, XSS, sanitize paths (lines 27-28, 40-42, 64-80)
-    // ====================================================================
-
-    [Fact]
-    public void InputValidationService_EmptyOrWhitespace_ReturnsTrue()
-    {
-        var service = new InputValidationService(NullLogger<InputValidationService>.Instance);
-        Assert.True(service.ValidateInput(""));
-        Assert.True(service.ValidateInput("   "));
-    }
-
-    [Fact]
-    public void InputValidationService_XssInput_ReturnsFalse()
-    {
-        var service = new InputValidationService(NullLogger<InputValidationService>.Instance);
-        Assert.False(service.ValidateInput("<script>alert('xss')</script>"));
-        Assert.False(service.ValidateInput("<iframe src='x'>"));
-        Assert.False(service.ValidateInput("onerror=alert(1)"));
-    }
-
-    [Fact]
-    public void InputValidationService_SanitizeInput_HandlesAllPaths()
-    {
-        var service = new InputValidationService(NullLogger<InputValidationService>.Instance);
-
-        // Empty/whitespace → returns string.Empty
-        Assert.Equal(string.Empty, service.SanitizeInput(""));
-        Assert.Equal(string.Empty, service.SanitizeInput("   "));
-
-        // Non-empty input → removes null bytes and excessive whitespace
-        var withNullByte = service.SanitizeInput("hello\0world");
-        Assert.Equal("helloworld", withNullByte);
-
-        var withExtraSpaces = service.SanitizeInput("hello   world");
-        Assert.Equal("hello world", withExtraSpaces);
-
-        var normal = service.SanitizeInput("  hello world  ");
-        Assert.Equal("hello world", normal);
-    }
-
-    // ====================================================================
     // ChatbotSessionClosedEvent - domain event (never instantiated in tests)
     // ====================================================================
 

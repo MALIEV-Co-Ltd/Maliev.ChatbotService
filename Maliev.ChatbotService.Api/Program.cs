@@ -93,6 +93,18 @@ try
                 return RateLimitPartition.GetNoLimiter("disabled");
             }
 
+            // Exempt trusted first-party services (e.g. the QuoteEngine BFF), which authenticate with a
+            // signed service-account JWT and do their own per-visitor/IP limiting at their public
+            // ingress. They are not the anonymous-public-abuse surface this limiter targets, and keying
+            // them on their single service IP would collapse every customer behind that BFF into one
+            // shared budget. This trusts a validated JWT claim, not a spoofable header; direct public
+            // callers (website/webhook) remain IP-limited. Requires UseRateLimiter to run after
+            // UseAuthentication so the principal is populated.
+            if (httpContext.User.FindFirst("user_type")?.Value == "service")
+            {
+                return RateLimitPartition.GetNoLimiter("service-account");
+            }
+
             // RemoteIpAddress already reflects the real client IP: UseStandardMiddleware runs
             // ForwardedHeaders (X-Forwarded-For) first, so we do not parse the spoofable header here.
             var partitionKey = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
@@ -140,8 +152,6 @@ try
     builder.Services.AddScoped<IUsageBudgetService, RedisUsageBudgetService>();
     builder.Services.AddSingleton<IWebhookBufferQueue, RedisWebhookBufferQueue>();
     builder.Services.AddScoped<IWebhookBufferProcessor, WebhookBufferProcessor>();
-    builder.Services.AddScoped<IInputValidationService, InputValidationService>();
-    builder.Services.AddScoped<IResponseTimeoutService, ResponseTimeoutService>();
     builder.Services.AddScoped<ILanguageDetectionService, LanguageDetectionService>();
     builder.Services.AddScoped<IResponseFormatterService, ResponseFormatterService>();
     builder.Services.AddScoped<ISessionExpiryService, SessionExpiryService>();
@@ -279,9 +289,11 @@ try
 
     app.UseRouting();
     app.UseCors();
-    app.UseRateLimiter();
     app.UseAuthentication();
     app.UseAuthorization();
+    // After authentication so the rate-limiter partitioner can read the principal and exempt trusted
+    // service accounts (see the MessagesPerIp policy). Still after UseRouting, so endpoint policies resolve.
+    app.UseRateLimiter();
 
     app.MapControllers();
     app.MapDefaultEndpoints("chatbot");

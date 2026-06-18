@@ -22,10 +22,10 @@ public static class MessagePipelinePolicy
     /// Normalizes free-form chat content (strips null bytes) and rejects abusive lengths.
     /// </summary>
     /// <remarks>
-    /// Deliberately does NOT apply the SQL/keyword heuristics from
-    /// <see cref="IInputValidationService"/>: those reject ordinary manufacturing language such as
-    /// "create a quote", "select PLA", or "where is my order" and are unsuitable for natural-language
-    /// chat. Empty content is allowed because a message may carry only image/PDF/CAD attachments.
+    /// Deliberately does NOT apply SQL/keyword "injection" heuristics: those reject ordinary
+    /// manufacturing language such as "create a quote", "select PLA", or "where is my order" and are
+    /// unsuitable for natural-language chat. Empty content is allowed because a message may carry only
+    /// image/PDF/CAD attachments.
     /// </remarks>
     /// <param name="content">Raw customer content.</param>
     /// <param name="normalized">Normalized content when the method returns true; empty otherwise.</param>

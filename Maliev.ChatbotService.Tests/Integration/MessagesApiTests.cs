@@ -72,6 +72,40 @@ public class MessagesApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task SendMessage_TrustedServiceAccount_IsExemptFromPerIpLimit()
+    {
+        // Option A: a trusted first-party service (e.g. the QuoteEngine BFF) authenticates with a signed
+        // service-account JWT (user_type=service) and must NOT be throttled by the per-IP limiter — else
+        // every customer behind that BFF shares one IP budget. The complement of the test above: with the
+        // same tiny limit, the service account sails past it. Each request reaches the handler and 400s
+        // (unknown session), proving the limiter let it through rather than rejecting at the gate.
+        var serviceToken = _factory.CreateTestJwtToken(
+            userId: "system:service:quoteenginebff",
+            additionalClaims: new Dictionary<string, string> { ["user_type"] = "service" });
+
+        var client = _factory
+            .WithWebHostBuilder(builder => builder.UseSetting("RateLimiting:MessagesPerIpPerMinute", "3"))
+            .CreateClient();
+        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {serviceToken}");
+
+        var request = new SendMessageRequest
+        {
+            SessionId = Guid.NewGuid(),
+            Content = "spam"
+        };
+
+        var statuses = new List<HttpStatusCode>();
+        for (var i = 0; i < 6; i++)
+        {
+            var response = await client.PostAsJsonAsync("/chatbot/v1/messages", request, _factory.JsonSerializerOptions);
+            statuses.Add(response.StatusCode);
+        }
+
+        Assert.DoesNotContain(HttpStatusCode.TooManyRequests, statuses);
+        Assert.All(statuses, status => Assert.Equal(HttpStatusCode.BadRequest, status));
+    }
+
+    [Fact]
     public async Task SendMessage_ExceedingDailyTokenBudget_ReturnsGracefulLimitMessageWithoutModelCall()
     {
         // The mock Gemini client reports 100 tokens per response, so a 150-token daily budget allows

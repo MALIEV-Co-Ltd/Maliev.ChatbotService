@@ -104,8 +104,8 @@ public class MessagePipelinePolicyTests
     [InlineData("delete this part from the cart")]
     public void TryNormalizeContent_AllowsOrdinaryManufacturingLanguage(string message)
     {
-        // Regression guard: these natural-language phrases must NOT be rejected the way the
-        // SQL/keyword heuristics in IInputValidationService would reject them.
+        // Regression guard: these natural-language phrases must NOT be rejected the way naive
+        // SQL/keyword "injection" heuristics would reject them.
         var ok = MessagePipelinePolicy.TryNormalizeContent(message, out _, out var error);
 
         Assert.True(ok);
