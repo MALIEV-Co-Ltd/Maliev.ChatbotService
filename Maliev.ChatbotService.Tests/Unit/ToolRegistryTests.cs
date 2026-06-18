@@ -63,6 +63,7 @@ public class ToolRegistryTests
             "quote_get_connectors",
             "quote_get_connector_handoff",
             "quote_register_uploads",
+            "quote_generate_3d_preview",
             "quote_resume_project",
             "quote_search_customer_data",
             "quote_get_auth_handoff",
@@ -102,7 +103,7 @@ public class ToolRegistryTests
     }
 
     [Fact]
-    public void GetToolDeclarationsForProfile_QuoteAccountProfileToolDeclaresSnakeAndCamelCaseFields()
+    public void GetToolDeclarationsForProfile_QuoteAccountProfileToolDeclaresSnakeCaseFieldsOnly()
     {
         var quoteDeclarations = ToolRegistry.GetToolDeclarationsForProfile("quote-engine");
         var tool = Assert.Single(
@@ -113,15 +114,17 @@ public class ToolRegistryTests
         using var document = JsonDocument.Parse(json);
         var properties = document.RootElement.GetProperty("properties");
 
+        // Snake_case is the single canonical casing; camelCase duplicates were removed (T2).
         Assert.True(properties.TryGetProperty("display_name", out _));
-        Assert.True(properties.TryGetProperty("displayName", out _));
         Assert.True(properties.TryGetProperty("company_name", out _));
-        Assert.True(properties.TryGetProperty("companyName", out _));
         Assert.True(properties.TryGetProperty("vat_number", out _));
-        Assert.True(properties.TryGetProperty("vatNumber", out _));
         Assert.True(properties.TryGetProperty("preferred_language", out _));
-        Assert.True(properties.TryGetProperty("preferredLanguage", out _));
         Assert.True(properties.TryGetProperty("preferred_currency", out _));
-        Assert.True(properties.TryGetProperty("preferredCurrency", out _));
+
+        Assert.False(properties.TryGetProperty("displayName", out _));
+        Assert.False(properties.TryGetProperty("companyName", out _));
+        Assert.False(properties.TryGetProperty("vatNumber", out _));
+        Assert.False(properties.TryGetProperty("preferredLanguage", out _));
+        Assert.False(properties.TryGetProperty("preferredCurrency", out _));
     }
 }

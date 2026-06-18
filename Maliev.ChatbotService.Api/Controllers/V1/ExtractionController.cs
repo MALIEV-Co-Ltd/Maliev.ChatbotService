@@ -33,16 +33,19 @@ public class ExtractionController : ControllerBase
 
     private readonly ExtractCustomerCommandHandler _handler;
     private readonly ExtractCustomerIntentCommandHandler _intentHandler;
+    private readonly CleanDictationSpeechCommandHandler _speechHandler;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ExtractionController"/> class.
     /// </summary>
     /// <param name="handler">The extract customer command handler.</param>
     /// <param name="intentHandler">The extract customer intent command handler.</param>
-    public ExtractionController(ExtractCustomerCommandHandler handler, ExtractCustomerIntentCommandHandler intentHandler)
+    /// <param name="speechHandler">The clean dictation speech command handler.</param>
+    public ExtractionController(ExtractCustomerCommandHandler handler, ExtractCustomerIntentCommandHandler intentHandler, CleanDictationSpeechCommandHandler speechHandler)
     {
         _handler = handler;
         _intentHandler = intentHandler;
+        _speechHandler = speechHandler;
     }
 
     /// <summary>
@@ -135,6 +138,38 @@ public class ExtractionController : ControllerBase
             CustomerSearchTerm = result.CustomerSearchTerm,
             NeedsHistory = result.NeedsHistory
         });
+    }
+
+    /// <summary>
+    /// Cleans up raw dictated speech text using Gemini directly, bypassing the agent pipeline.
+    /// </summary>
+    /// <param name="request">The speech cleanup request.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The cleaned speech text.</returns>
+    [HttpPost("clean-speech")]
+    [RequirePermission(ChatbotPermissions.ExtractionsRun)]
+    [ProducesResponseType(typeof(CleanDictationSpeechResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<CleanDictationSpeechResponse>> CleanSpeech(
+        [FromBody] CleanDictationSpeechRequest request,
+        CancellationToken ct)
+    {
+        var command = new Application.Commands.CleanDictationSpeechCommand
+        {
+            Speech = request.Speech,
+            Language = request.Language
+        };
+
+        var result = await _speechHandler.HandleAsync(command, ct);
+
+        if (!result.Success)
+        {
+            return StatusCode(500, result.ErrorMessage);
+        }
+
+        return Ok(new CleanDictationSpeechResponse { CleanedText = result.CleanedText });
     }
 
     private static string? ValidateExtractionRequest(ExtractCustomerRequest request)

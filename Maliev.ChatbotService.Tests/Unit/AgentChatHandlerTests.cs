@@ -285,6 +285,124 @@ public class AgentChatHandlerTests
         Assert.Equal("The assistant is temporarily unavailable.", result.Content);
     }
 
+    /// <summary>
+    /// Verifies that a model repeatedly requesting the same tool stops being executed after the
+    /// per-turn call limit, bounding downstream cost (C5).
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_RepeatedSameTool_StopsExecutingAfterPerTurnLimit()
+    {
+        var initialRequest = new GeminiRequest
+        {
+            Messages = new List<GeminiMessage> { new GeminiMessage { Role = "user", Content = "loop" } }
+        };
+
+        // The model always asks for the same tool and never returns final text, so the loop runs to
+        // its max iterations (10). The executor must still only be hit up to the per-tool limit.
+        _geminiClientMock.Setup(x => x.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GeminiResponse
+            {
+                Success = true,
+                FunctionCalls = new List<GeminiFunctionCall>
+                {
+                    new GeminiFunctionCall { Name = "quote_get_state", Args = new Dictionary<string, object>() }
+                }
+            });
+
+        var executionCount = 0;
+        _toolExecutorMock.Setup(x => x.ExecuteAsync(
+                "quote_get_state",
+                It.IsAny<Dictionary<string, object>>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .Callback(() => executionCount++)
+            .ReturnsAsync("{}");
+
+        var result = await _handler.ExecuteAsync(initialRequest);
+
+        Assert.Equal(3, executionCount);
+        _toolExecutorMock.Verify(x => x.ExecuteAsync(
+            "quote_get_state",
+            It.IsAny<Dictionary<string, object>>(),
+            It.IsAny<string?>(),
+            It.IsAny<CancellationToken>()), Times.Exactly(3));
+    }
+
+    /// <summary>
+    /// Verifies that token usage is summed across every iteration of the agent loop, not just the
+    /// final call — otherwise the daily token budget (S2) would grossly undercount multi-call turns.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_MultiIterationTurn_AccumulatesTokenUsageAcrossIterations()
+    {
+        var initialRequest = new GeminiRequest
+        {
+            Messages = new List<GeminiMessage> { new GeminiMessage { Role = "user", Content = "Price this part" } }
+        };
+
+        var callCount = 0;
+        _geminiClientMock.Setup(x => x.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() =>
+            {
+                callCount++;
+                if (callCount == 1)
+                {
+                    return new GeminiResponse
+                    {
+                        Success = true,
+                        TokenUsage = new GeminiTokenUsage { PromptTokens = 80, CompletionTokens = 20, TotalTokens = 100 },
+                        FunctionCalls = new List<GeminiFunctionCall>
+                        {
+                            new GeminiFunctionCall { Name = "quote_get_state", Args = new Dictionary<string, object>() }
+                        }
+                    };
+                }
+
+                return new GeminiResponse
+                {
+                    Success = true,
+                    Content = "Here is your quote.",
+                    TokenUsage = new GeminiTokenUsage { PromptTokens = 120, CompletionTokens = 30, TotalTokens = 150 }
+                };
+            });
+
+        _toolExecutorMock.Setup(x => x.ExecuteAsync(
+                "quote_get_state",
+                It.IsAny<Dictionary<string, object>>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync("{}");
+
+        var result = await _handler.ExecuteAsync(initialRequest);
+
+        Assert.True(result.Success);
+        Assert.NotNull(result.TokenUsage);
+        Assert.Equal(250, result.TokenUsage!.TotalTokens);
+        Assert.Equal(200, result.TokenUsage.PromptTokens);
+        Assert.Equal(50, result.TokenUsage.CompletionTokens);
+    }
+
+    /// <summary>
+    /// Verifies that when the provider reports no token usage, the accumulated usage stays null rather
+    /// than collapsing to a zero-valued object.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_NoProviderUsage_LeavesTokenUsageNull()
+    {
+        var initialRequest = new GeminiRequest
+        {
+            Messages = new List<GeminiMessage> { new GeminiMessage { Role = "user", Content = "Hello" } }
+        };
+
+        _geminiClientMock.Setup(x => x.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GeminiResponse { Success = true, Content = "Hi there." });
+
+        var result = await _handler.ExecuteAsync(initialRequest);
+
+        Assert.True(result.Success);
+        Assert.Null(result.TokenUsage);
+    }
+
     private static async IAsyncEnumerable<GeminiStreamEvent> CreateStream(IEnumerable<GeminiStreamEvent> events)
     {
         foreach (var streamEvent in events)

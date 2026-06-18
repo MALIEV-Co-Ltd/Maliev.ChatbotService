@@ -26,6 +26,7 @@ public sealed class QuoteEngineToolHandler(
         "quote_get_connectors",
         "quote_get_connector_handoff",
         "quote_register_uploads",
+        "quote_generate_3d_preview",
         "quote_resume_project",
         "quote_search_customer_data",
         "quote_get_auth_handoff",

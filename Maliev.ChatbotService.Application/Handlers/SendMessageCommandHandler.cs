@@ -21,6 +21,7 @@ public class SendMessageCommandHandler
     private readonly IKnowledgeBaseRepository _knowledgeBaseRepository;
     private readonly IConversationSummaryService _summaryService;
     private readonly IRateLimitService _rateLimitService;
+    private readonly IUsageBudgetService _usageBudgetService;
     private readonly IGeminiClient _geminiClient;
     private readonly ISystemInstructionService _systemInstructionService;
     private readonly IIntentClassificationService _intentClassificationService;
@@ -38,6 +39,11 @@ public class SendMessageCommandHandler
     private readonly StackExchange.Redis.IConnectionMultiplexer _redis;
     private readonly ILogger<SendMessageCommandHandler> _logger;
 
+    // Must exceed the worst-case agent loop so the per-session lock cannot expire mid-turn and let a
+    // concurrent message interleave (C2). AgentChatHandler runs up to MaxIterations (10) iterations,
+    // each with a per-call timeout of 30s, so the worst case is ~300s; 330s adds a safety margin.
+    private const int SessionLockSeconds = 330;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="SendMessageCommandHandler"/> class.
     /// </summary>
@@ -47,6 +53,7 @@ public class SendMessageCommandHandler
     /// <param name="knowledgeBaseRepository">The knowledge base repository.</param>
     /// <param name="summaryService">The conversation summary service.</param>
     /// <param name="rateLimitService">The rate limit service.</param>
+    /// <param name="usageBudgetService">The daily token budget service.</param>
     /// <param name="geminiClient">The Gemini API client.</param>
     /// <param name="systemInstructionService">The system instruction service.</param>
     /// <param name="intentClassificationService">The intent classification service.</param>
@@ -70,6 +77,7 @@ public class SendMessageCommandHandler
         IKnowledgeBaseRepository knowledgeBaseRepository,
         IConversationSummaryService summaryService,
         IRateLimitService rateLimitService,
+        IUsageBudgetService usageBudgetService,
         IGeminiClient geminiClient,
         ISystemInstructionService systemInstructionService,
         IIntentClassificationService intentClassificationService,
@@ -93,6 +101,7 @@ public class SendMessageCommandHandler
         _knowledgeBaseRepository = knowledgeBaseRepository;
         _summaryService = summaryService;
         _rateLimitService = rateLimitService;
+        _usageBudgetService = usageBudgetService;
         _geminiClient = geminiClient;
         _systemInstructionService = systemInstructionService;
         _intentClassificationService = intentClassificationService;
@@ -127,8 +136,8 @@ public class SendMessageCommandHandler
         var lockKey = $"chatbot:lock:{command.SessionId}";
         var lockValue = Guid.NewGuid().ToString();
 
-        // Try to acquire lock for 30 seconds (Gemini timeout max)
-        if (!await db.LockTakeAsync(lockKey, lockValue, TimeSpan.FromSeconds(35)))
+        // Hold the lock long enough to cover the worst-case agent loop (see SessionLockSeconds).
+        if (!await db.LockTakeAsync(lockKey, lockValue, TimeSpan.FromSeconds(SessionLockSeconds)))
         {
             _logger.LogWarning("Could not acquire lock for session {SessionId}. System busy.", command.SessionId);
             throw new InvalidOperationException("System is busy processing your previous message. Please wait a moment.");
@@ -172,6 +181,15 @@ public class SendMessageCommandHandler
                 throw new InvalidOperationException("Rate limit exceeded. Please try again later.");
             }
 
+            // Validate and normalize customer input (S3): length guard + null-byte strip. Runs after
+            // the rate-limit increment so abuse attempts still count against the budget.
+            if (!MessagePipelinePolicy.TryNormalizeContent(command.Content, out var normalizedContent, out var contentError))
+            {
+                _logger.LogWarning("Rejected oversized message content for session {SessionId}", session.Id);
+                throw new InvalidOperationException(contentError);
+            }
+            command.Content = normalizedContent;
+
             // Validate attachment sizes
             if (command.Attachments != null && command.Attachments.Count > 0)
             {
@@ -196,6 +214,16 @@ public class SendMessageCommandHandler
                         throw new InvalidOperationException($"Attachment size exceeds the maximum allowed size of {maxSizeMB}MB for {attachment.ContentType} files.");
                     }
                 }
+
+                // Cap attachment count and combined size to bound per-message cost (S2).
+                if (!MessagePipelinePolicy.TryValidateAttachmentBudget(
+                        command.Attachments.Count,
+                        command.Attachments.Sum(a => a.SizeBytes),
+                        out var attachmentBudgetError))
+                {
+                    _logger.LogWarning("Rejected message with excessive attachments for session {SessionId}", session.Id);
+                    throw new InvalidOperationException(attachmentBudgetError);
+                }
             }
 
             // Prefer an explicit caller-selected response language; fall back to message detection for
@@ -210,7 +238,28 @@ public class SendMessageCommandHandler
                 _logger.LogInformation("Updated session {SessionId} language to {Language}", session.Id, detectedLanguage);
             }
 
-            // Save user message
+            // Daily token/cost budget (S2): a soft, per-user rolling-24h ceiling on model tokens that
+            // bounds cost where the hourly message count can't (one turn can fan out to many model
+            // calls with large payloads). Checked after the hourly increment — so refused attempts
+            // still consume that quota — but before any model call, so an over-budget user costs
+            // nothing further. Refused gracefully in-band (no model call, no message persisted).
+            if (await _usageBudgetService.IsDailyTokenBudgetExceededAsync(session.UserProfileId, cancellationToken))
+            {
+                _logger.LogWarning("Daily token budget exceeded for user {UserProfileId} in session {SessionId}",
+                    session.UserProfileId, session.Id);
+
+                return new SendMessageResult
+                {
+                    MessageId = Guid.NewGuid(),
+                    Content = MessagePipelinePolicy.BuildDailyBudgetExceededMessage(detectedLanguage),
+                    Role = MessageRole.Assistant,
+                    Language = detectedLanguage,
+                    CreatedAt = DateTimeOffset.UtcNow,
+                    SessionId = session.Id
+                };
+            }
+
+            // Save user message, persisting URL/GCS attachment references so later turns keep context (C3).
             var userMessage = new Message
             {
                 Id = Guid.NewGuid(),
@@ -218,7 +267,9 @@ public class SendMessageCommandHandler
                 Role = MessageRole.User,
                 Content = command.Content,
                 ContentType = ContentType.Text,
-                CreatedAt = DateTimeOffset.UtcNow
+                CreatedAt = DateTimeOffset.UtcNow,
+                MetadataJson = MessagePipelinePolicy.BuildAttachmentMetadataJson(
+                    command.Attachments?.Select(a => (a.MimeType, a.Data)).ToList())
             };
 
             await _messageRepository.CreateAsync(userMessage, cancellationToken);
@@ -315,19 +366,13 @@ public class SendMessageCommandHandler
             var classification = await _intentClassificationService.ClassifyIntentAsync(command.Content, cancellationToken);
             _metrics.RecordIntentClassification(classification.Intent, classification.Confidence);
 
-            var topicKeys = new List<string>();
-            if (classification.Intent != "General" && classification.Confidence > 0.7)
+            // Channel-scoped topic injection (P1): customer-facing channels (Website/QuoteEngine/social)
+            // must never receive intranet domain topic prompts or knowledge-base facts. The intent
+            // classifier is intranet-oriented, so its topics are only injected for the intranet channel.
+            var topicKeys = MessagePipelinePolicy.BuildInjectableTopicKeys(session.Channel, classification);
+            foreach (var topic in topicKeys)
             {
-                topicKeys.Add(classification.Intent);
-                _metrics.RecordContextInjection("Topic", classification.Intent);
-            }
-            if (classification.AdditionalTopics != null)
-            {
-                foreach (var topic in classification.AdditionalTopics)
-                {
-                    topicKeys.Add(topic);
-                    _metrics.RecordContextInjection("Topic", topic);
-                }
+                _metrics.RecordContextInjection("Topic", topic);
             }
 
             // 2. Get merged instructions using the channel-specific core prompt profile.
@@ -388,18 +433,25 @@ public class SendMessageCommandHandler
                 }
             }
 
-            // Build Gemini request with built-in search if enabled
+            // Build Gemini request, re-hydrating persisted attachment references for prior user turns (C3).
             var geminiMessages = conversationHistory
                 .OrderBy(m => m.CreatedAt)
-                .Select(m => new GeminiMessage
+                .Select(m =>
                 {
-                    Role = m.Role == MessageRole.User ? "user" : "assistant",
-                    Content = m.Content
+                    var persistedAttachments = m.Role == MessageRole.User
+                        ? MessagePipelinePolicy.ParsePersistedAttachments(m.MetadataJson)
+                        : [];
+                    return new GeminiMessage
+                    {
+                        Role = m.Role == MessageRole.User ? "user" : "assistant",
+                        Content = m.Content,
+                        Attachments = persistedAttachments.Count > 0 ? persistedAttachments : null
+                    };
                 })
                 .ToList();
 
-            // Attach files to the current user message. The DB only stores text, so attachments
-            // must be re-attached from the command for the current turn.
+            // Attach files to the current user message. Persisted refs cover prior turns; the current
+            // turn's full attachments (including inline data) are re-attached from the command.
             if (command.Attachments is { Count: > 0 } &&
                 geminiMessages.Count > 0 &&
                 geminiMessages[geminiMessages.Count - 1].Role == "user")
@@ -544,6 +596,16 @@ public class SendMessageCommandHandler
             }
 
 
+
+            // Record token consumption against the user's rolling daily budget (S2). On the agent path
+            // this is the sum across all loop iterations; null/zero usage is a no-op.
+            if (geminiResponse.Success)
+            {
+                await _usageBudgetService.RecordTokenUsageAsync(
+                    session.UserProfileId,
+                    geminiResponse.TokenUsage?.TotalTokens ?? 0,
+                    cancellationToken);
+            }
 
             // Update session last activity
 

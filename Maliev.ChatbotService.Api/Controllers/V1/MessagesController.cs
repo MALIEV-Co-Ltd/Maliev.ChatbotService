@@ -1,6 +1,8 @@
 using Asp.Versioning;
 using Maliev.ChatbotService.Api.Models.Requests;
 using Maliev.ChatbotService.Api.Models.Responses;
+using Maliev.ChatbotService.Api.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
 using Maliev.ChatbotService.Application.Commands;
 using Maliev.ChatbotService.Application.Handlers;
 using Maliev.ChatbotService.Application.Models;
@@ -18,6 +20,7 @@ namespace Maliev.ChatbotService.Api.Controllers.V1;
 [ApiController]
 [ApiVersion("1")]
 [Route("chatbot/v{version:apiVersion}/messages")]
+[EnableRateLimiting(ChatbotRateLimiterPolicies.MessagesPerIp)]
 public class MessagesController : ControllerBase
 {
     private readonly SendMessageCommandHandler _handler;

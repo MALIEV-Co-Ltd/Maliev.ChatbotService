@@ -217,6 +217,43 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
 
         foreach (var message in request.Messages)
         {
+            // Model turn that issued tool calls -> assistant message with tool_calls.
+            if (message.FunctionCalls is { Count: > 0 })
+            {
+                messages.Add(new
+                {
+                    role = "assistant",
+                    content = (string?)null,
+                    tool_calls = message.FunctionCalls.Select(fc => new
+                    {
+                        id = ToolCallId(fc.Id, fc.Name),
+                        type = "function",
+                        function = new
+                        {
+                            name = fc.Name,
+                            arguments = JsonSerializer.Serialize(fc.Args, JsonOptions)
+                        }
+                    }).ToArray()
+                });
+                continue;
+            }
+
+            // Turn that returns tool results -> one "tool" role message per response.
+            if (message.FunctionResponses is { Count: > 0 })
+            {
+                foreach (var fr in message.FunctionResponses)
+                {
+                    messages.Add(new
+                    {
+                        role = "tool",
+                        tool_call_id = ToolCallId(fr.Id, fr.Name),
+                        content = fr.ResponseJson
+                    });
+                }
+
+                continue;
+            }
+
             messages.Add(new
             {
                 role = message.Role == "assistant" ? "assistant" : "user",
@@ -227,7 +264,10 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
         if (request.Attachments is { Count: > 0 } && messages.Count > 0)
         {
             var lastMessage = request.Messages.LastOrDefault();
-            if (lastMessage is not null && lastMessage.Role != "assistant")
+            if (lastMessage is not null &&
+                lastMessage.Role != "assistant" &&
+                lastMessage.FunctionCalls is null &&
+                lastMessage.FunctionResponses is null)
             {
                 messages[^1] = new
                 {
@@ -360,6 +400,11 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
         return $"data:{attachment.MimeType};base64,{attachment.Data}";
     }
 
+    // OpenAI requires a tool message's tool_call_id to match the assistant tool_call id. Real
+    // responses always carry an id; the name-based fallback only guards the degenerate id-less case.
+    private static string ToolCallId(string? id, string name) =>
+        string.IsNullOrWhiteSpace(id) ? $"call_{name}" : id;
+
     private static GeminiResponse ParseResponse(JsonElement root)
     {
         var choice = root.GetProperty("choices").EnumerateArray().FirstOrDefault();
@@ -383,6 +428,9 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
                     Name = function.TryGetProperty("name", out var name)
                         ? name.GetString() ?? string.Empty
                         : string.Empty,
+                    Id = toolCall.TryGetProperty("id", out var idElement)
+                        ? idElement.GetString()
+                        : null,
                     Args = ParseArguments(function.TryGetProperty("arguments", out var arguments)
                         ? arguments.GetString()
                         : null)

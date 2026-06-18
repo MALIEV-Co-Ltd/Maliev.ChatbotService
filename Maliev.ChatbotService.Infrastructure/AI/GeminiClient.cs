@@ -55,58 +55,8 @@ public class GeminiClient : IGeminiClient
             var modelName = request.ModelName ?? _modelName;
             var url = $"v1beta/models/{modelName}:generateContent";
 
-            // Build contents with multimodal support
-            var contentsParts = new List<object>();
-
-            foreach (var message in request.Messages)
-            {
-                var messageParts = new List<object>
-                {
-                    new { text = message.Content }
-                };
-
-                if (message.Attachments != null)
-                {
-                    foreach (var attachment in message.Attachments)
-                    {
-                        messageParts.Add(GetAttachmentPart(attachment));
-                    }
-                }
-
-                contentsParts.Add(new
-                {
-                    role = message.Role == "assistant" ? "model" : "user",
-                    parts = messageParts.ToArray()
-                });
-            }
-
-            // Add top-level request attachments to the last user message if present (legacy support)
-            if (request.Attachments != null && request.Attachments.Count > 0 && contentsParts.Count > 0)
-            {
-                var lastPart = contentsParts.Last();
-                // This is a bit complex due to anonymous types, so we'll just handle it by ensuring 
-                // we don't duplicate if possible. For simplicity in this refactor, we prefer message-level attachments.
-                // But to maintain compatibility:
-                var lastMessage = request.Messages.Last();
-                if (lastMessage.Role != "assistant")
-                {
-                    var attachmentParts = request.Attachments.Select(GetAttachmentPart).ToList();
-
-                    // Re-create the last entry with merged parts
-                    var existingParts = new List<object> { new { text = lastMessage.Content } };
-                    if (lastMessage.Attachments != null)
-                    {
-                        existingParts.AddRange(lastMessage.Attachments.Select(GetAttachmentPart));
-                    }
-                    existingParts.AddRange(attachmentParts);
-
-                    contentsParts[contentsParts.Count - 1] = new
-                    {
-                        role = "user",
-                        parts = existingParts.ToArray()
-                    };
-                }
-            }
+            // Build contents with multimodal + native function-call/response support.
+            var contentsParts = BuildContents(request);
 
             object geminiPayload;
             var hasTools = request.Tools != null && request.Tools.Count > 0;
@@ -247,6 +197,7 @@ public class GeminiClient : IGeminiClient
                     var fc = new GeminiFunctionCall
                     {
                         Name = fcProp.GetProperty("name").GetString() ?? string.Empty,
+                        Id = fcProp.TryGetProperty("id", out var idProp) ? idProp.GetString() : null,
                         Args = new Dictionary<string, object>()
                     };
                     if (fcProp.TryGetProperty("args", out var argsProp))
@@ -259,7 +210,13 @@ public class GeminiClient : IGeminiClient
                                 JsonValueKind.Number => arg.Value.GetDouble(),
                                 JsonValueKind.True => true,
                                 JsonValueKind.False => false,
-                                _ => arg.Value.GetRawText()
+                                // Arrays/objects: keep the structured value (cloned so it outlives
+                                // the JsonDocument) so it re-serializes as a real JSON array/object
+                                // when forwarded to a tool. GetRawText() would flatten it to a JSON
+                                // string, which breaks array/object params downstream — e.g. the
+                                // BFF rejects a stringified cad_commands as "At least one CAD command
+                                // is required." It also keeps the multi-turn functionCall echo intact.
+                                _ => arg.Value.Clone()
                             };
                         }
                     }
@@ -452,36 +409,25 @@ public class GeminiClient : IGeminiClient
         }
     }
 
-    private static string BuildGeminiPayloadJson(GeminiRequest request)
+    /// <summary>
+    /// Builds the Gemini <c>contents</c> array, emitting native functionCall/functionResponse parts
+    /// for tool turns and text/media parts otherwise. Shared by the sync and streaming payloads.
+    /// </summary>
+    private static List<object> BuildContents(GeminiRequest request)
     {
         var contentsParts = new List<object>();
-
         foreach (var message in request.Messages)
         {
-            var messageParts = new List<object>
-            {
-                new { text = message.Content }
-            };
-
-            if (message.Attachments != null)
-            {
-                foreach (var attachment in message.Attachments)
-                {
-                    messageParts.Add(GetAttachmentPart(attachment));
-                }
-            }
-
-            contentsParts.Add(new
-            {
-                role = message.Role == "assistant" ? "model" : "user",
-                parts = messageParts.ToArray()
-            });
+            contentsParts.Add(BuildContentEntry(message));
         }
 
-        if (request.Attachments != null && request.Attachments.Count > 0 && contentsParts.Count > 0)
+        // Legacy: merge top-level request attachments into the last plain-text user message.
+        if (request.Attachments is { Count: > 0 } && contentsParts.Count > 0)
         {
-            var lastMessage = request.Messages.Last();
-            if (lastMessage.Role != "assistant")
+            var lastMessage = request.Messages[^1];
+            if (lastMessage.Role != "assistant" &&
+                lastMessage.FunctionCalls is null &&
+                lastMessage.FunctionResponses is null)
             {
                 var existingParts = new List<object> { new { text = lastMessage.Content } };
                 if (lastMessage.Attachments != null)
@@ -490,13 +436,81 @@ public class GeminiClient : IGeminiClient
                 }
 
                 existingParts.AddRange(request.Attachments.Select(GetAttachmentPart));
-                contentsParts[contentsParts.Count - 1] = new
-                {
-                    role = "user",
-                    parts = existingParts.ToArray()
-                };
+                contentsParts[^1] = new { role = "user", parts = existingParts.ToArray() };
             }
         }
+
+        return contentsParts;
+    }
+
+    private static object BuildContentEntry(GeminiMessage message)
+    {
+        // Model turn that issued tool calls.
+        if (message.FunctionCalls is { Count: > 0 })
+        {
+            var callParts = message.FunctionCalls
+                .Select(fc => fc.Id is { Length: > 0 }
+                    ? (object)new { functionCall = new { name = fc.Name, args = fc.Args, id = fc.Id } }
+                    : new { functionCall = new { name = fc.Name, args = fc.Args } })
+                .ToArray();
+            return new { role = "model", parts = callParts };
+        }
+
+        // Turn that returns tool results.
+        if (message.FunctionResponses is { Count: > 0 })
+        {
+            var responseParts = new List<object>();
+            foreach (var fr in message.FunctionResponses)
+            {
+                var responseValue = BuildFunctionResponseValue(fr.ResponseJson);
+                responseParts.Add(fr.Id is { Length: > 0 }
+                    ? (object)new { functionResponse = new { name = fr.Name, id = fr.Id, response = responseValue } }
+                    : new { functionResponse = new { name = fr.Name, response = responseValue } });
+            }
+
+            if (message.Attachments != null)
+            {
+                responseParts.AddRange(message.Attachments.Select(GetAttachmentPart));
+            }
+
+            return new { role = "user", parts = responseParts.ToArray() };
+        }
+
+        // Plain text (+ optional attachments) turn.
+        var messageParts = new List<object> { new { text = message.Content } };
+        if (message.Attachments != null)
+        {
+            messageParts.AddRange(message.Attachments.Select(GetAttachmentPart));
+        }
+
+        return new { role = message.Role == "assistant" ? "model" : "user", parts = messageParts.ToArray() };
+    }
+
+    /// <summary>
+    /// Parses a raw tool-result string into a JSON object for the Gemini <c>functionResponse.response</c>
+    /// field (which must be an object); non-object or invalid JSON is wrapped as <c>{ "result": ... }</c>.
+    /// </summary>
+    private static object BuildFunctionResponseValue(string responseJson)
+    {
+        if (string.IsNullOrWhiteSpace(responseJson))
+        {
+            return new { };
+        }
+
+        try
+        {
+            var node = System.Text.Json.Nodes.JsonNode.Parse(responseJson);
+            return node is System.Text.Json.Nodes.JsonObject ? node : new { result = node };
+        }
+        catch
+        {
+            return new { result = responseJson };
+        }
+    }
+
+    private static string BuildGeminiPayloadJson(GeminiRequest request)
+    {
+        var contentsParts = BuildContents(request);
 
         var hasTools = request.Tools != null && request.Tools.Count > 0;
         var useBuiltInSearch = request.EnableWebSearch;
@@ -591,6 +605,7 @@ public class GeminiClient : IGeminiClient
                     var fc = new GeminiFunctionCall
                     {
                         Name = fcProp.GetProperty("name").GetString() ?? string.Empty,
+                        Id = fcProp.TryGetProperty("id", out var idProp) ? idProp.GetString() : null,
                         Args = new Dictionary<string, object>()
                     };
                     if (fcProp.TryGetProperty("args", out var argsProp))
@@ -603,7 +618,13 @@ public class GeminiClient : IGeminiClient
                                 JsonValueKind.Number => arg.Value.GetDouble(),
                                 JsonValueKind.True => true,
                                 JsonValueKind.False => false,
-                                _ => arg.Value.GetRawText()
+                                // Arrays/objects: keep the structured value (cloned so it outlives
+                                // the JsonDocument) so it re-serializes as a real JSON array/object
+                                // when forwarded to a tool. GetRawText() would flatten it to a JSON
+                                // string, which breaks array/object params downstream — e.g. the
+                                // BFF rejects a stringified cad_commands as "At least one CAD command
+                                // is required." It also keeps the multi-turn functionCall echo intact.
+                                _ => arg.Value.Clone()
                             };
                         }
                     }

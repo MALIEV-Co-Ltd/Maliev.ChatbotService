@@ -3,27 +3,21 @@ using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Domain.Entities;
 using Maliev.ChatbotService.Domain.Enums;
 using Microsoft.Extensions.Logging;
-using StackExchange.Redis;
 
 namespace Maliev.ChatbotService.Application.Handlers;
 
 /// <summary>
-/// Handler for processing webhook events from messaging platforms.
+/// Handler for processing webhook events from messaging platforms. Resolves the user/session, then
+/// hands the message to the durable webhook buffer (S6) for debounced, restart-safe processing by the
+/// background poller — it no longer processes inline on a fire-and-forget task.
 /// </summary>
 public class ProcessWebhookCommandHandler
 {
     private readonly IUserProfileRepository _userProfileRepository;
     private readonly IIdentityLinkRepository _identityLinkRepository;
     private readonly IConversationSessionRepository _sessionRepository;
-    private readonly SendMessageCommandHandler _sendMessageHandler;
-    private readonly ILineClient _lineClient;
-    private readonly IMetaClient _metaClient;
-    private readonly IConnectionMultiplexer _redis;
+    private readonly IWebhookBufferQueue _bufferQueue;
     private readonly ILogger<ProcessWebhookCommandHandler> _logger;
-
-    private const string BufferKeyPrefix = "chatbot:buffer:";
-    private const string TimerKeyPrefix = "chatbot:timer:";
-    private static readonly TimeSpan DebounceWindow = TimeSpan.FromSeconds(2);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ProcessWebhookCommandHandler"/> class.
@@ -31,28 +25,19 @@ public class ProcessWebhookCommandHandler
     /// <param name="userProfileRepository">The user profile repository.</param>
     /// <param name="identityLinkRepository">The identity link repository.</param>
     /// <param name="sessionRepository">The conversation session repository.</param>
-    /// <param name="sendMessageHandler">The send message handler.</param>
-    /// <param name="lineClient">The LINE client.</param>
-    /// <param name="metaClient">The Meta client.</param>
-    /// <param name="redis">The Redis connection multiplexer.</param>
+    /// <param name="bufferQueue">The durable webhook buffer queue.</param>
     /// <param name="logger">The logger.</param>
     public ProcessWebhookCommandHandler(
         IUserProfileRepository userProfileRepository,
         IIdentityLinkRepository identityLinkRepository,
         IConversationSessionRepository sessionRepository,
-        SendMessageCommandHandler sendMessageHandler,
-        ILineClient lineClient,
-        IMetaClient metaClient,
-        IConnectionMultiplexer redis,
+        IWebhookBufferQueue bufferQueue,
         ILogger<ProcessWebhookCommandHandler> logger)
     {
         _userProfileRepository = userProfileRepository;
         _identityLinkRepository = identityLinkRepository;
         _sessionRepository = sessionRepository;
-        _sendMessageHandler = sendMessageHandler;
-        _lineClient = lineClient;
-        _metaClient = metaClient;
-        _redis = redis;
+        _bufferQueue = bufferQueue;
         _logger = logger;
     }
 
@@ -138,127 +123,9 @@ public class ProcessWebhookCommandHandler
                 activeSession.Id, userProfile.Id);
         }
 
-        // Buffer message for debouncing
-        await BufferMessageAndProcessAsync(activeSession.Id, command, cancellationToken);
-    }
-
-    private async Task BufferMessageAndProcessAsync(Guid sessionId, ProcessWebhookCommand command, CancellationToken cancellationToken)
-    {
-        var db = _redis.GetDatabase();
-        var bufferKey = $"{BufferKeyPrefix}{sessionId}";
-        var timerKey = $"{TimerKeyPrefix}{sessionId}";
-
-        // Push current message to buffer
-        await db.ListRightPushAsync(bufferKey, command.MessageText);
-
-        // Try to set a timer key with NX (only if not exists)
-        // If it succeeds, this task becomes the 'worker' that will process the buffer after delay
-        var isTimerStarter = await db.StringSetAsync(timerKey, "active", DebounceWindow, When.NotExists);
-
-        if (isTimerStarter)
-        {
-            // Background task to wait and then process
-            // Note: In production, consider using a dedicated scheduler or queue with delayed visibility
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    // Wait for the debounce window to pass
-                    // We check KeyExists repeatedly to allow other requests to 'refresh' the timer
-                    while (true)
-                    {
-                        await Task.Delay(500);
-                        if (!await db.KeyExistsAsync(timerKey))
-                        {
-                            break;
-                        }
-                    }
-
-                    // Use Lua script to fetch and clear atomically
-                    // This ensures only one 'worker' can ever process a specific set of messages
-                    var result = await db.ScriptEvaluateAsync(@"
-                        local msgs = redis.call('LRANGE', KEYS[1], 0, -1)
-                        if #msgs > 0 then
-                            redis.call('DEL', KEYS[1])
-                            return msgs
-                        end
-                        return nil",
-                        [bufferKey]);
-
-                    if (result.IsNull) return;
-
-                    var messages = (RedisValue[])result!;
-                    var combinedContent = string.Join("\n", messages.Select(m => m.ToString()));
-                    _logger.LogInformation("Processing {Count} buffered messages for session {SessionId}", messages.Length, sessionId);
-
-                    // Process combined message
-                    var sendMessageCommand = new SendMessageCommand
-                    {
-                        SessionId = sessionId,
-                        Content = combinedContent
-                    };
-
-                    var sendMessageResult = await _sendMessageHandler.HandleAsync(sendMessageCommand, CancellationToken.None);
-
-                    // Send response back to platform
-                    await SendResponseToPlatformAsync(command, sendMessageResult, CancellationToken.None);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error processing buffered messages for session {SessionId}", sessionId);
-                }
-            }, CancellationToken.None);
-        }
-        else
-        {
-            // refresh timer to extend the window if messages keep coming
-            await db.KeyExpireAsync(timerKey, DebounceWindow);
-            _logger.LogDebug("Extended debounce window for session {SessionId}", sessionId);
-        }
-    }
-
-    /// <summary>
-    /// Sends the response back to the messaging platform.
-    /// </summary>
-    /// <param name="command">The webhook command.</param>
-    /// <param name="result">The message result.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>A task representing the asynchronous operation.</returns>
-    private async Task SendResponseToPlatformAsync(
-        ProcessWebhookCommand command,
-        SendMessageResult result,
-        CancellationToken cancellationToken)
-    {
-        switch (command.Channel)
-        {
-            case Channel.Line:
-                if (string.IsNullOrEmpty(command.ReplyToken))
-                {
-                    _logger.LogWarning("LINE reply token is missing");
-                    return;
-                }
-
-                // For LINE, send as text message (Flex Message could be implemented later)
-                await _lineClient.SendTextMessageAsync(command.ReplyToken, result.Content, cancellationToken);
-                break;
-
-            case Channel.Facebook:
-            case Channel.Instagram:
-            case Channel.WhatsApp:
-                if (string.IsNullOrEmpty(command.RecipientId))
-                {
-                    _logger.LogWarning("Meta recipient ID is missing");
-                    return;
-                }
-
-                var platform = command.Channel.ToString();
-                await _metaClient.SendTextMessageAsync(command.RecipientId, result.Content, platform, cancellationToken);
-                break;
-
-            default:
-                _logger.LogWarning("Unsupported channel for webhook response: {Channel}", command.Channel);
-                break;
-        }
+        // Hand the message to the durable buffer (debounced, restart-safe). The background poller
+        // processes the buffered turn and replies on the originating platform (S6).
+        await _bufferQueue.EnqueueAsync(activeSession.Id, command, cancellationToken);
     }
 
     /// <summary>

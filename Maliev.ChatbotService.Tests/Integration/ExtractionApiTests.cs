@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using Maliev.ChatbotService.Api.Models.Requests;
 using Maliev.ChatbotService.Api.Models.Responses;
 using Maliev.ChatbotService.Tests.Infrastructure;
+using Xunit;
 
 namespace Maliev.ChatbotService.Tests.Integration;
 
@@ -153,6 +154,63 @@ public class ExtractionApiTests : IAsyncLifetime
         };
 
         var response = await client.PostAsJsonAsync("/chatbot/v1/extraction/customer", request, _factory.JsonSerializerOptions);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    /// <summary>
+    /// Tests that CleanSpeech returns cleaned text.
+    /// </summary>
+    [Fact]
+    public async Task CleanSpeech_WithText_ReturnsCleanedText()
+    {
+        var client = CreateAuthenticatedClient();
+        var request = new CleanDictationSpeechRequest
+        {
+            Speech = "um hello test hello test",
+            Language = "en"
+        };
+
+        var response = await client.PostAsJsonAsync("/chatbot/v1/extraction/clean-speech", request, _factory.JsonSerializerOptions);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<CleanDictationSpeechResponse>(_factory.JsonSerializerOptions);
+        Assert.NotNull(result);
+        Assert.NotNull(result?.CleanedText);
+    }
+
+    /// <summary>
+    /// Tests that CleanSpeech requires authentication.
+    /// </summary>
+    [Fact]
+    public async Task CleanSpeech_WithoutAuthentication_ReturnsUnauthorized()
+    {
+        var client = _factory.CreateClient();
+        var request = new CleanDictationSpeechRequest
+        {
+            Speech = "hello test",
+            Language = "en"
+        };
+
+        var response = await client.PostAsJsonAsync("/chatbot/v1/extraction/clean-speech", request, _factory.JsonSerializerOptions);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    /// <summary>
+    /// Tests that CleanSpeech rejects empty speech text.
+    /// </summary>
+    [Fact]
+    public async Task CleanSpeech_EmptySpeech_Returns400()
+    {
+        var client = CreateAuthenticatedClient();
+        var request = new CleanDictationSpeechRequest
+        {
+            Speech = "",
+            Language = "en"
+        };
+
+        var response = await client.PostAsJsonAsync("/chatbot/v1/extraction/clean-speech", request, _factory.JsonSerializerOptions);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }

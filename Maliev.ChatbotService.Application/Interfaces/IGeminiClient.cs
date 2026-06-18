@@ -128,6 +128,20 @@ public class GeminiMessage
     /// Gets or sets attachments for this specific message.
     /// </summary>
     public List<GeminiAttachment>? Attachments { get; set; }
+
+    /// <summary>
+    /// When set, this message represents a model turn that issued one or more tool calls. Providers
+    /// must serialize these as native function-call parts (Gemini <c>functionCall</c> / OpenAI
+    /// <c>tool_calls</c>) rather than as plain text.
+    /// </summary>
+    public List<GeminiFunctionCall>? FunctionCalls { get; set; }
+
+    /// <summary>
+    /// When set, this message represents a turn that returns tool results. Providers must serialize
+    /// these as native function-response parts (Gemini <c>functionResponse</c> / OpenAI <c>tool</c>
+    /// role messages) rather than as plain text.
+    /// </summary>
+    public List<GeminiFunctionResponse>? FunctionResponses { get; set; }
 }
 
 /// <summary>
@@ -311,4 +325,28 @@ public class GeminiFunctionCall
     /// Gets or sets the function arguments.
     /// </summary>
     public Dictionary<string, object> Args { get; set; } = new();
+
+    /// <summary>
+    /// Gets or sets the provider-assigned call id. Gemini 3.x and OpenAI require the matching id to
+    /// be echoed back on the corresponding function response; may be null for models that omit it.
+    /// </summary>
+    public string? Id { get; set; }
+}
+
+/// <summary>
+/// Represents a tool result to send back to the model as a native function-response part.
+/// </summary>
+public class GeminiFunctionResponse
+{
+    /// <summary>Gets or sets the name of the function that produced this result.</summary>
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the matching call id, when the model provided one.</summary>
+    public string? Id { get; set; }
+
+    /// <summary>
+    /// Gets or sets the raw tool result as a JSON string. Providers parse this into a JSON object
+    /// for the response field; non-object JSON is wrapped as <c>{ "result": ... }</c>.
+    /// </summary>
+    public string ResponseJson { get; set; } = string.Empty;
 }

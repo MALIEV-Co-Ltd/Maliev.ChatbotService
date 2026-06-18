@@ -284,6 +284,62 @@ public static class ToolRegistry
                 },
                 required = new[] { "files" }
             }),
+            Fn("quote_generate_3d_preview", "Generate an interactive 3D preview of a part you inferred from the customer's description, photo, sketch, or drawing so they can verify the shape and dimensions before providing a CAD file. Never ask for a CAD file as your first or only response — if you can infer shape and size, build the preview instead. Construct the part as an ordered cad_commands sequence: create primitives, position with translate, combine with cut/fuse, then apply fillet edge ops last.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    description = new { type = "STRING", description = "Short description of the inferred part, e.g. 'L-bracket 50x30mm with two M3 holes'." },
+                    process_hint = new { type = "STRING", description = "Optional inferred process code such as fdm, sla, sls, or cnc." },
+                    cad_commands = new
+                    {
+                        type = "ARRAY",
+                        description = "Ordered build commands. Primitives: box params [w,d,h]; cylinder [radius,height]; sphere [radius]; cone [radiusBottom,radiusTop,height]. Boolean: cut/fuse with target_id+tool_id+result_id. Edge: fillet with target_id+radius+result_id. Move: translate with target_id+offset+result_id.",
+                        items = new
+                        {
+                            type = "OBJECT",
+                            properties = new
+                            {
+                                op = new { type = "STRING", description = "box, cylinder, sphere, cone, cut, fuse, fillet, translate, extrude, or revolve." },
+                                id = new { type = "STRING", description = "Identifier for a primitive body." },
+                                @params = new { type = "ARRAY", items = new { type = "NUMBER" }, description = "Op-specific numeric parameters in millimetres." },
+                                target_id = new { type = "STRING", description = "Target body id for boolean, edge, or translate ops." },
+                                tool_id = new { type = "STRING", description = "Tool body id for cut or fuse." },
+                                result_id = new { type = "STRING", description = "Result body id produced by this op." },
+                                radius = new { type = "NUMBER", description = "Fillet radius in millimetres." },
+                                offset = new { type = "ARRAY", items = new { type = "NUMBER" }, description = "Translate offset [x,y,z] in millimetres." },
+                                axis = new { type = "ARRAY", items = new { type = "NUMBER" }, description = "Revolve axis vector [x,y,z]." },
+                                angle = new { type = "NUMBER", description = "Revolve angle in radians (2*pi is a full revolution)." },
+                                profile = new
+                                {
+                                    type = "OBJECT",
+                                    description = "Sketch profile for extrude or revolve.",
+                                    properties = new
+                                    {
+                                        plane = new { type = "STRING", description = "Sketch plane such as XY." },
+                                        segments = new
+                                        {
+                                            type = "ARRAY",
+                                            description = "Ordered sketch segments forming a closed profile.",
+                                            items = new
+                                            {
+                                                type = "OBJECT",
+                                                properties = new
+                                                {
+                                                    type = new { type = "STRING", description = "Segment type such as line." },
+                                                    @params = new { type = "ARRAY", items = new { type = "NUMBER" }, description = "Segment coordinates." }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            required = new[] { "op" }
+                        }
+                    }
+                },
+                required = new[] { "description", "cad_commands" }
+            }),
             Fn("quote_resume_project", "Resume an existing customer-owned QuoteEngine project into the current Make Studio session.", new
             {
                 type = "OBJECT",
@@ -334,17 +390,15 @@ public static class ToolRegistry
                 type = "OBJECT",
                 properties = new
                 {
+                    // Snake_case only: the QuoteEngine BFF reads snake_case first
+                    // (QuoteAgentService ReadString "display_name" ?? "displayName"), so declaring a
+                    // single canonical casing keeps the schema clean without breaking the handler.
                     display_name = new { type = "STRING", description = "Customer display name to store after confirmation." },
-                    displayName = new { type = "STRING", description = "Customer display name to store after confirmation." },
                     phone = new { type = "STRING", description = "Customer phone number for account and checkout context." },
                     company_name = new { type = "STRING", description = "Customer company name, when applicable." },
-                    companyName = new { type = "STRING", description = "Customer company name, when applicable." },
                     vat_number = new { type = "STRING", description = "Customer VAT or tax registration number, when applicable." },
-                    vatNumber = new { type = "STRING", description = "Customer VAT or tax registration number, when applicable." },
                     preferred_language = new { type = "STRING", description = "Preferred account language such as en or th." },
-                    preferredLanguage = new { type = "STRING", description = "Preferred account language such as en or th." },
                     preferred_currency = new { type = "STRING", description = "Preferred quote currency such as THB or USD." },
-                    preferredCurrency = new { type = "STRING", description = "Preferred quote currency such as THB or USD." },
                     timezone = new { type = "STRING", description = "Preferred customer timezone such as Asia/Bangkok." }
                 }
             }),

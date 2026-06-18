@@ -42,6 +42,69 @@ public class MessagesApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task SendMessage_ExceedingPerIpLimit_ReturnsTooManyRequests()
+    {
+        // The per-IP limiter is disabled by default under Testing; enable it with a small limit for
+        // this server only. Re-using a fresh (unknown) session id proves the limit is keyed on the
+        // caller, not on UserProfileId, so a new session cannot reset the budget (S1).
+        var client = _factory
+            .WithWebHostBuilder(builder => builder.UseSetting("RateLimiting:MessagesPerIpPerMinute", "3"))
+            .CreateClient();
+
+        var request = new SendMessageRequest
+        {
+            SessionId = Guid.NewGuid(),
+            Content = "spam"
+        };
+
+        var statuses = new List<HttpStatusCode>();
+        for (var i = 0; i < 6; i++)
+        {
+            var response = await client.PostAsJsonAsync("/chatbot/v1/messages", request, _factory.JsonSerializerOptions);
+            statuses.Add(response.StatusCode);
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                break;
+            }
+        }
+
+        Assert.Contains(HttpStatusCode.TooManyRequests, statuses);
+    }
+
+    [Fact]
+    public async Task SendMessage_ExceedingDailyTokenBudget_ReturnsGracefulLimitMessageWithoutModelCall()
+    {
+        // The mock Gemini client reports 100 tokens per response, so a 150-token daily budget allows
+        // two full turns and refuses the third — gracefully, in-band (200 with a limit message), not
+        // a hard error. This proves S2 short-circuits before the model once the rolling budget is hit.
+        var client = _factory
+            .WithWebHostBuilder(builder => builder.UseSetting("UsageBudget:DailyTokenBudget", "150"))
+            .CreateClient();
+        var sessionId = await CreateSessionAsync(client);
+
+        var request = new SendMessageRequest
+        {
+            SessionId = sessionId,
+            Content = "I need pricing for FDM printing"
+        };
+
+        var contents = new List<string>();
+        for (var i = 0; i < 3; i++)
+        {
+            var response = await client.PostAsJsonAsync("/chatbot/v1/messages", request, _factory.JsonSerializerOptions);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var result = await response.Content.ReadFromJsonAsync<MessageResponse>(_factory.JsonSerializerOptions);
+            Assert.NotNull(result);
+            contents.Add(result!.Content);
+        }
+
+        // First two turns are real answers; the third is the budget-limit message.
+        Assert.DoesNotContain("usage limit", contents[0], StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("usage limit", contents[1], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("usage limit", contents[2], StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task SendMessage_WithValidSession_ReturnsResponse()
     {
         var client = _factory.CreateClient();

@@ -15,6 +15,7 @@ public class AgentChatHandler
     private readonly IToolExecutorService _toolExecutor;
     private readonly ILogger<AgentChatHandler> _logger;
     private const int MaxIterations = 10;
+    private const int MaxCallsPerTool = 3;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AgentChatHandler"/> class.
@@ -51,6 +52,16 @@ public class AgentChatHandler
         var stepNumber = 0;
         var messages = new List<GeminiMessage>(request.Messages);
 
+        // Per-turn guard against a model repeatedly calling the same tool (C5). Persists across
+        // iterations of this turn so a confused model cannot burn downstream calls/cost.
+        var toolCallCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+
+        // Accumulate token usage across every iteration of the loop, not just the last call. One agent
+        // turn can fan out to MaxIterations model calls, so reporting only the final call's usage would
+        // grossly undercount the turn and defeat the daily token budget (S2) on the agent path.
+        var accumulatedUsage = new GeminiTokenUsage();
+        var sawUsage = false;
+
         for (var iteration = 0; iteration < MaxIterations; iteration++)
         {
             var iterationRequest = new GeminiRequest
@@ -65,6 +76,14 @@ public class AgentChatHandler
 
             var response = await SendGeminiMaybeStreamingAsync(iterationRequest, onTextDelta, null, cancellationToken);
 
+            if (response.TokenUsage is { } usage)
+            {
+                accumulatedUsage.PromptTokens += usage.PromptTokens;
+                accumulatedUsage.CompletionTokens += usage.CompletionTokens;
+                accumulatedUsage.TotalTokens += usage.TotalTokens;
+                sawUsage = true;
+            }
+
             if (!response.Success)
             {
                 return new AgentChatResult
@@ -74,7 +93,7 @@ public class AgentChatHandler
                     ErrorMessage = response.ErrorMessage,
                     IsFallback = response.IsFallback,
                     ThinkingSteps = thinkingSteps,
-                    TokenUsage = response.TokenUsage
+                    TokenUsage = sawUsage ? accumulatedUsage : null
                 };
             }
 
@@ -86,16 +105,19 @@ public class AgentChatHandler
                     Success = true,
                     Content = response.Content,
                     ThinkingSteps = thinkingSteps,
-                    TokenUsage = response.TokenUsage
+                    TokenUsage = sawUsage ? accumulatedUsage : null
                 };
             }
 
-            // Add model's function call turn as an assistant message
+            // Add the model's tool-call turn as native function-call parts (not serialized text).
             messages.Add(new GeminiMessage
             {
                 Role = "assistant",
-                Content = JsonSerializer.Serialize(response.FunctionCalls.Select(fc => new { functionCall = new { name = fc.Name, args = fc.Args } }))
+                FunctionCalls = response.FunctionCalls
             });
+
+            var functionResponses = new List<GeminiFunctionResponse>();
+            List<GeminiAttachment>? resultAttachments = null;
 
             // Process each function call
             foreach (var functionCall in response.FunctionCalls)
@@ -112,25 +134,42 @@ public class AgentChatHandler
                 thinkingSteps.Add(callStep);
                 if (onThinkingStep != null) await onThinkingStep(callStep);
 
-                // Execute the tool
+                // Execute the tool, unless this tool already hit its per-turn call limit (C5).
                 var sw = Stopwatch.StartNew();
                 string toolResult;
-                try
+                toolCallCounts.TryGetValue(functionCall.Name, out var priorCalls);
+                if (priorCalls >= MaxCallsPerTool)
                 {
-                    if (string.IsNullOrWhiteSpace(quoteAgentContextToken))
+                    _logger.LogWarning(
+                        "Tool {ToolName} reached its per-turn call limit ({Max}); skipping execution.",
+                        functionCall.Name,
+                        MaxCallsPerTool);
+                    toolResult = JsonSerializer.Serialize(new
                     {
-                        toolResult = await _toolExecutor.ExecuteAsync(functionCall.Name, functionCall.Args, userToken, cancellationToken);
-                    }
-                    else
-                    {
-                        var context = new ToolExecutionContext(userToken, quoteAgentContextToken);
-                        toolResult = await _toolExecutor.ExecuteAsync(functionCall.Name, functionCall.Args, context, cancellationToken);
-                    }
+                        error = $"Tool '{functionCall.Name}' has already been called {priorCalls} times in this turn. " +
+                            "Do not call it again; use the information you already have to answer the customer."
+                    });
                 }
-                catch (Exception ex)
+                else
                 {
-                    _logger.LogError(ex, "Tool execution failed for {ToolName}", functionCall.Name);
-                    toolResult = JsonSerializer.Serialize(new { error = $"Tool execution failed: {ex.Message}" });
+                    toolCallCounts[functionCall.Name] = priorCalls + 1;
+                    try
+                    {
+                        if (string.IsNullOrWhiteSpace(quoteAgentContextToken))
+                        {
+                            toolResult = await _toolExecutor.ExecuteAsync(functionCall.Name, functionCall.Args, userToken, cancellationToken);
+                        }
+                        else
+                        {
+                            var context = new ToolExecutionContext(userToken, quoteAgentContextToken);
+                            toolResult = await _toolExecutor.ExecuteAsync(functionCall.Name, functionCall.Args, context, cancellationToken);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Tool execution failed for {ToolName}", functionCall.Name);
+                        toolResult = JsonSerializer.Serialize(new { error = $"Tool execution failed: {ex.Message}" });
+                    }
                 }
                 sw.Stop();
 
@@ -148,53 +187,58 @@ public class AgentChatHandler
                 thinkingSteps.Add(resultStep);
                 if (onThinkingStep != null) await onThinkingStep(resultStep);
 
-                // Add function response as user message for next iteration
-                var functionResultMessage = new GeminiMessage
-                {
-                    Role = "user",
-                    Content = $"[Function result for {functionCall.Name}]: {toolResult}"
-                };
-
-                // Check for file attachments in tool result
+                // Move any file payload out of the function response and into a media attachment so
+                // the next turn carries the document/image as a real part, not heavy inline JSON.
+                var responseJson = toolResult;
                 try
                 {
                     using var doc = JsonDocument.Parse(toolResult);
-                    if (doc.RootElement.TryGetProperty("_metadata", out var metadata))
+                    if (doc.RootElement.TryGetProperty("_metadata", out var metadata) &&
+                        metadata.TryGetProperty("is_file", out var isFile) && isFile.GetBoolean())
                     {
-                        if (metadata.TryGetProperty("is_file", out var isFile) && isFile.GetBoolean())
+                        var mimeType = metadata.GetProperty("mime_type").GetString() ?? "application/octet-stream";
+                        var data = metadata.GetProperty("data").GetString() ?? string.Empty;
+
+                        resultAttachments ??= new List<GeminiAttachment>();
+                        resultAttachments.Add(new GeminiAttachment
                         {
-                            var mimeType = metadata.GetProperty("mime_type").GetString() ?? "application/octet-stream";
-                            var data = metadata.GetProperty("data").GetString() ?? string.Empty;
+                            ContentType = mimeType,
+                            MimeType = mimeType,
+                            Data = data
+                        });
 
-                            functionResultMessage.Attachments ??= new List<GeminiAttachment>();
-                            functionResultMessage.Attachments.Add(new GeminiAttachment
-                            {
-                                ContentType = mimeType,
-                                MimeType = mimeType,
-                                Data = data
-                            });
-
-                            // Update content to not include the heavy base64 data in the text part if possible,
-                            // or just keep it minimal.
-                            functionResultMessage.Content = $"[Function result for {functionCall.Name}]: Document data attached.";
-                        }
+                        responseJson = JsonSerializer.Serialize(new { status = "ok", message = "Document data attached as a separate part." });
                     }
                 }
                 catch
                 {
-                    // Not a JSON or doesn't have metadata, ignore
+                    // Not JSON or no metadata; send the raw tool result as the response.
                 }
 
-                messages.Add(functionResultMessage);
+                functionResponses.Add(new GeminiFunctionResponse
+                {
+                    Name = functionCall.Name,
+                    Id = functionCall.Id,
+                    ResponseJson = responseJson
+                });
             }
+
+            // Send all tool results back in a single function-response turn.
+            messages.Add(new GeminiMessage
+            {
+                Role = "user",
+                FunctionResponses = functionResponses,
+                Attachments = resultAttachments
+            });
         }
 
         _logger.LogWarning("Agent loop reached maximum iterations ({Max})", MaxIterations);
         return new AgentChatResult
         {
             Success = true,
-            Content = "I apologize, but I was unable to complete the research within the allowed number of steps. Please try a more specific question.",
-            ThinkingSteps = thinkingSteps
+            Content = "I wasn't able to fully work through that request in the steps available. Could you share a bit more detail, or break it into a smaller step? You can also reach the MALIEV team at info@maliev.com.",
+            ThinkingSteps = thinkingSteps,
+            TokenUsage = sawUsage ? accumulatedUsage : null
         };
     }
 
@@ -270,6 +314,6 @@ public class AgentChatResult
     public bool IsFallback { get; set; }
     /// <summary>Accumulated thinking steps from the agent loop.</summary>
     public List<ThinkingStep> ThinkingSteps { get; set; } = new();
-    /// <summary>Token usage from the last Gemini call.</summary>
+    /// <summary>Token usage summed across every Gemini call made during the agent loop, or null if the provider reported none.</summary>
     public GeminiTokenUsage? TokenUsage { get; set; }
 }

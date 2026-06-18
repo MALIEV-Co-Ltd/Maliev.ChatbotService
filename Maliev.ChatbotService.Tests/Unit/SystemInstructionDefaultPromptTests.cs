@@ -45,6 +45,8 @@ public sealed class SystemInstructionDefaultPromptTests
         Assert.Contains("quote_update_settings", prompt, StringComparison.Ordinal);
         Assert.Contains("quote_get_account_context", prompt, StringComparison.Ordinal);
         Assert.Contains("quote_update_account_profile", prompt, StringComparison.Ordinal);
+        Assert.Contains("quote_generate_3d_preview", prompt, StringComparison.Ordinal);
+        Assert.Contains("never paste raw tool JSON", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("default checkout addresses", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Do not ask customers to retype billing or shipping details", prompt, StringComparison.Ordinal);
         Assert.Contains("sign-in or sign-up", prompt, StringComparison.OrdinalIgnoreCase);
@@ -102,6 +104,7 @@ public sealed class SystemInstructionDefaultPromptTests
 
         Assert.Contains("internal", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("customer-friendly next steps", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("quote_generate_3d_preview", prompt, StringComparison.Ordinal);
         Assert.DoesNotContain("state which gate is blocking", prompt, StringComparison.OrdinalIgnoreCase);
     }
 }

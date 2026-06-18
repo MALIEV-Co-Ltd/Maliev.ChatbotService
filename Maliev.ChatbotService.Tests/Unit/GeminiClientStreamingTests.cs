@@ -1,6 +1,7 @@
 using System.Net;
 using System.Diagnostics.Metrics;
 using System.Text;
+using System.Text.Json;
 using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Infrastructure.AI;
 using Maliev.ChatbotService.Infrastructure.Metrics;
@@ -58,6 +59,59 @@ public sealed class GeminiClientStreamingTests
         Assert.Equal(5, final.Response.TokenUsage.TotalTokens);
         Assert.EndsWith("v1beta/models/gemini-test:streamGenerateContent?alt=sse", handler.RequestUri?.ToString());
         Assert.Equal("test-key", handler.ApiKey);
+    }
+
+    [Fact]
+    public async Task StreamMessageAsync_FunctionCallWithArrayArg_PreservesArrayStructureForToolForwarding()
+    {
+        // Gemini returns an array-of-object argument (cad_commands) on a tool call.
+        var handler = new GeminiStreamingHandler([
+            """
+            data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"quote_generate_3d_preview","args":{"description":"Rectangular part 30x50x100mm","cad_commands":[{"op":"box","id":"part","params":[30,50,100]}]}}}]},"finishReason":"STOP"}]}
+            """
+        ]);
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Gemini:ApiKey"] = "test-key",
+                ["Gemini:MainModelName"] = "gemini-test"
+            })
+            .Build();
+        var client = new GeminiClient(
+            new HttpClient(handler) { BaseAddress = new Uri("https://generativelanguage.googleapis.com/") },
+            configuration,
+            new ConversationMetrics(CreateMeterFactory(), configuration),
+            NullLogger<GeminiClient>.Instance);
+
+        var events = new List<GeminiStreamEvent>();
+        await foreach (var streamEvent in client.StreamMessageAsync(new GeminiRequest
+        {
+            SystemInstruction = "You are a test assistant.",
+            Messages = [new GeminiMessage { Role = "user", Content = "How much for a 30x50x100mm part?" }]
+        }))
+        {
+            events.Add(streamEvent);
+        }
+
+        var final = Assert.Single(events, item => item.Type == "final");
+        Assert.NotNull(final.Response);
+        var call = Assert.Single(final.Response.FunctionCalls);
+        Assert.Equal("quote_generate_3d_preview", call.Name);
+        Assert.True(call.Args.ContainsKey("cad_commands"));
+
+        // QuoteEngineToolHandler forwards these args to the BFF using Web + SnakeCaseLower.
+        // The BFF requires cad_commands to arrive as a JSON array (ValueKind.Array); if the
+        // parser flattens the array to a raw JSON string, the BFF rejects it with
+        // "At least one CAD command is required." Assert the array survives serialization.
+        var forwardingOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+        };
+        var forwardedJson = JsonSerializer.Serialize(call.Args, forwardingOptions);
+        using var forwarded = JsonDocument.Parse(forwardedJson);
+        Assert.Equal(
+            JsonValueKind.Array,
+            forwarded.RootElement.GetProperty("cad_commands").ValueKind);
     }
 
     private static IMeterFactory CreateMeterFactory()

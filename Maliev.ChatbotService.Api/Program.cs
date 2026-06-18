@@ -1,3 +1,5 @@
+using System.Threading.RateLimiting;
+using Maliev.ChatbotService.Api.RateLimiting;
 using Maliev.ChatbotService.Application.Handlers;
 using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Application.Validators;
@@ -70,6 +72,40 @@ try
     builder.AddStandardCors(); // CORS with fail-fast validation
     builder.AddDefaultApiVersioning();
 
+    // Per-IP rate limit on message sends, independent of UserProfileId, so an anonymous caller
+    // cannot reset their budget by initiating a fresh session (S1). Production default is 60/min
+    // (override via RateLimiting:MessagesPerIpPerMinute, e.g. an env var); disabled (0) under
+    // integration tests unless a test sets the value explicitly.
+    var messagesPerIpPerMinute = builder.Configuration.GetValue<int?>("RateLimiting:MessagesPerIpPerMinute")
+        ?? (isIntegrationTest ? 0 : 60);
+    builder.Services.AddRateLimiter(options =>
+    {
+        options.RejectionStatusCode = 429;
+        options.OnRejected = (context, _) =>
+        {
+            context.HttpContext.Response.Headers["Retry-After"] = "60";
+            return ValueTask.CompletedTask;
+        };
+        options.AddPolicy(ChatbotRateLimiterPolicies.MessagesPerIp, httpContext =>
+        {
+            if (messagesPerIpPerMinute <= 0)
+            {
+                return RateLimitPartition.GetNoLimiter("disabled");
+            }
+
+            // RemoteIpAddress already reflects the real client IP: UseStandardMiddleware runs
+            // ForwardedHeaders (X-Forwarded-For) first, so we do not parse the spoofable header here.
+            var partitionKey = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
+            return RateLimitPartition.GetFixedWindowLimiter(partitionKey, _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = messagesPerIpPerMinute,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            });
+        });
+    });
+
     if (!builder.Environment.IsProduction())
     {
         builder.AddStandardOpenApi(
@@ -101,6 +137,9 @@ try
     builder.Services.AddScoped<ISystemInstructionService, SystemInstructionService>();
     builder.Services.AddScoped<IConversationSummaryService, ConversationSummaryService>();
     builder.Services.AddScoped<IRateLimitService, RateLimitService>();
+    builder.Services.AddScoped<IUsageBudgetService, RedisUsageBudgetService>();
+    builder.Services.AddSingleton<IWebhookBufferQueue, RedisWebhookBufferQueue>();
+    builder.Services.AddScoped<IWebhookBufferProcessor, WebhookBufferProcessor>();
     builder.Services.AddScoped<IInputValidationService, InputValidationService>();
     builder.Services.AddScoped<IResponseTimeoutService, ResponseTimeoutService>();
     builder.Services.AddScoped<ILanguageDetectionService, LanguageDetectionService>();
@@ -118,6 +157,14 @@ try
     // Background Services
     builder.Services.AddHostedService<Maliev.ChatbotService.Infrastructure.BackgroundServices.SessionExpiryBackgroundService>();
     builder.Services.AddHostedService<Maliev.ChatbotService.Infrastructure.Services.PromptFileLoaderService>();
+
+    // The webhook buffer poller is disabled under integration tests (a 1s loop racing the per-test
+    // Redis flush would intermittently fail unrelated tests); the queue + processor stay registered so
+    // tests can drive them deterministically.
+    if (!isIntegrationTest)
+    {
+        builder.Services.AddHostedService<Maliev.ChatbotService.Infrastructure.BackgroundServices.WebhookBufferProcessorBackgroundService>();
+    }
 
     // IAM Registration (skip in integration tests to avoid service discovery delays)
     if (!isIntegrationTest)
@@ -232,6 +279,7 @@ try
 
     app.UseRouting();
     app.UseCors();
+    app.UseRateLimiter();
     app.UseAuthentication();
     app.UseAuthorization();
 
