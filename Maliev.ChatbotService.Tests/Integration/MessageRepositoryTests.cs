@@ -318,5 +318,65 @@ public class MessageRepositoryTests : IAsyncLifetime
         Assert.Equal(10, firstPage.Count);
         Assert.Equal(10, secondPage.Count);
     }
+
+    [Fact]
+    public async Task DeleteLastTurnAsync_WhenSessionHasMultipleTurns_RemovesLatestUserTurnAndFollowingMessages()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var messageRepo = scope.ServiceProvider.GetRequiredService<IMessageRepository>();
+        var sessionRepo = scope.ServiceProvider.GetRequiredService<IConversationSessionRepository>();
+        var userRepo = scope.ServiceProvider.GetRequiredService<IUserProfileRepository>();
+        var now = DateTimeOffset.UtcNow;
+        var userProfile = new UserProfile
+        {
+            Id = Guid.NewGuid(),
+            Role = UserRole.Customer,
+            CreatedAt = now,
+            LastActiveAt = now
+        };
+        await userRepo.CreateAsync(userProfile);
+        var session = new ConversationSession
+        {
+            Id = Guid.NewGuid(),
+            UserProfileId = userProfile.Id,
+            Channel = Channel.Website,
+            StartTime = now.AddMinutes(-10),
+            LastActivityAt = now,
+            ExpiresAt = now.AddHours(1),
+            Language = Language.English,
+            Status = SessionStatus.Active
+        };
+        await sessionRepo.CreateAsync(session);
+        await CreateMessageAsync(messageRepo, session.Id, MessageRole.User, "first user", now.AddMinutes(-4));
+        await CreateMessageAsync(messageRepo, session.Id, MessageRole.Assistant, "first assistant", now.AddMinutes(-3));
+        await CreateMessageAsync(messageRepo, session.Id, MessageRole.User, "edited user", now.AddMinutes(-2));
+        await CreateMessageAsync(messageRepo, session.Id, MessageRole.Assistant, "stale assistant", now.AddMinutes(-1));
+
+        var removed = await messageRepo.DeleteLastTurnAsync(session.Id);
+        var remaining = await messageRepo.GetMessagesBySessionIdAsync(session.Id);
+
+        Assert.Equal(2, removed);
+        Assert.Equal(2, remaining.Count);
+        Assert.Equal("first user", remaining[0].Content);
+        Assert.Equal("first assistant", remaining[1].Content);
+    }
+
+    private static async Task CreateMessageAsync(
+        IMessageRepository messageRepo,
+        Guid sessionId,
+        MessageRole role,
+        string content,
+        DateTimeOffset createdAt)
+    {
+        await messageRepo.CreateAsync(new Message
+        {
+            Id = Guid.NewGuid(),
+            SessionId = sessionId,
+            Role = role,
+            Content = content,
+            ContentType = ContentType.Text,
+            CreatedAt = createdAt
+        });
+    }
 }
 

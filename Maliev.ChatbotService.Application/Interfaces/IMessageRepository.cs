@@ -63,4 +63,14 @@ public interface IMessageRepository
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>List of messages ordered by creation time.</returns>
     Task<List<Message>> GetMessagesBySessionIdAsync(Guid sessionId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Deletes the most recent customer turn for a session: the last user message and every message
+    /// that followed it (assistant reply, tool messages). Used to roll back the last turn so an edited
+    /// message can be resubmitted as a clean correction.
+    /// </summary>
+    /// <param name="sessionId">The conversation session ID.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The number of messages removed.</returns>
+    Task<int> DeleteLastTurnAsync(Guid sessionId, CancellationToken cancellationToken = default);
 }

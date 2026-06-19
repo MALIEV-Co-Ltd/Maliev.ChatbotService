@@ -1,5 +1,6 @@
 using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Domain.Entities;
+using Maliev.ChatbotService.Domain.Enums;
 using Maliev.ChatbotService.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -78,5 +79,26 @@ public class MessageRepository : IMessageRepository
     public async Task<List<Message>> GetMessagesBySessionIdAsync(Guid sessionId, CancellationToken cancellationToken = default)
     {
         return await GetBySessionIdAsync(sessionId, cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public async Task<int> DeleteLastTurnAsync(Guid sessionId, CancellationToken cancellationToken = default)
+    {
+        var messages = await _context.Messages
+            .Where(x => x.SessionId == sessionId)
+            .OrderBy(x => x.CreatedAt)
+            .ToListAsync(cancellationToken);
+
+        // The "last turn" is the most recent user message plus everything that followed it.
+        var lastUserIndex = messages.FindLastIndex(x => x.Role == MessageRole.User);
+        if (lastUserIndex < 0)
+        {
+            return 0;
+        }
+
+        var toRemove = messages.GetRange(lastUserIndex, messages.Count - lastUserIndex);
+        _context.Messages.RemoveRange(toRemove);
+        await _context.SaveChangesAsync(cancellationToken);
+        return toRemove.Count;
     }
 }

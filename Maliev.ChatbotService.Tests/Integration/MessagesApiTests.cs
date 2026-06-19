@@ -559,4 +559,92 @@ What materials can you print?
         Assert.Equal("Can you help with my quote?", result.Messages[0].Content);
         Assert.Equal("assistant", result.Messages[1].Role);
     }
+
+    [Fact]
+    public async Task DeleteInternalSessionLastTurn_WithSessionReadPermission_RemovesLastTurn()
+    {
+        var employeeId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var userRepo = scope.ServiceProvider.GetRequiredService<IUserProfileRepository>();
+            var sessionRepo = scope.ServiceProvider.GetRequiredService<IConversationSessionRepository>();
+            var messageRepo = scope.ServiceProvider.GetRequiredService<IMessageRepository>();
+
+            await userRepo.CreateAsync(new UserProfile
+            {
+                Id = employeeId,
+                Role = UserRole.InternalAgent,
+                CreatedAt = now,
+                LastActiveAt = now
+            });
+            await userRepo.CreateAsync(new UserProfile
+            {
+                Id = customerId,
+                Role = UserRole.Customer,
+                CreatedAt = now,
+                LastActiveAt = now
+            });
+            await sessionRepo.CreateAsync(new ConversationSession
+            {
+                Id = sessionId,
+                UserProfileId = customerId,
+                Channel = Channel.QuoteEngine,
+                StartTime = now.AddMinutes(-15),
+                LastActivityAt = now.AddMinutes(-1),
+                ExpiresAt = now.AddHours(23),
+                Language = Language.English,
+                Status = SessionStatus.Active
+            });
+            await CreateMessageAsync(messageRepo, sessionId, MessageRole.User, "first user", now.AddMinutes(-4));
+            await CreateMessageAsync(messageRepo, sessionId, MessageRole.Assistant, "first assistant", now.AddMinutes(-3));
+            await CreateMessageAsync(messageRepo, sessionId, MessageRole.User, "edited user", now.AddMinutes(-2));
+            await CreateMessageAsync(messageRepo, sessionId, MessageRole.Assistant, "stale assistant", now.AddMinutes(-1));
+        }
+
+        var client = _factory.CreateAuthenticatedClient([ChatbotPermissions.SessionRead], employeeId.ToString());
+        var response = await client.DeleteAsync($"/chatbot/v1/internal/sessions/{sessionId}/messages/last-turn");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(2, document.RootElement.GetProperty("removed").GetInt32());
+
+        using var verificationScope = _factory.Services.CreateScope();
+        var verificationMessageRepo = verificationScope.ServiceProvider.GetRequiredService<IMessageRepository>();
+        var remaining = await verificationMessageRepo.GetMessagesBySessionIdAsync(sessionId);
+        Assert.Equal(2, remaining.Count);
+        Assert.Equal("first user", remaining[0].Content);
+        Assert.Equal("first assistant", remaining[1].Content);
+    }
+
+    [Fact]
+    public async Task DeleteInternalSessionLastTurn_WhenSessionMissing_ReturnsNotFound()
+    {
+        var client = _factory.CreateAuthenticatedClient([ChatbotPermissions.SessionRead], Guid.NewGuid().ToString());
+
+        var response = await client.DeleteAsync($"/chatbot/v1/internal/sessions/{Guid.NewGuid()}/messages/last-turn");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    private static async Task CreateMessageAsync(
+        IMessageRepository messageRepo,
+        Guid sessionId,
+        MessageRole role,
+        string content,
+        DateTimeOffset createdAt)
+    {
+        await messageRepo.CreateAsync(new Message
+        {
+            Id = Guid.NewGuid(),
+            SessionId = sessionId,
+            Role = role,
+            Content = content,
+            ContentType = ContentType.Text,
+            CreatedAt = createdAt
+        });
+    }
 }

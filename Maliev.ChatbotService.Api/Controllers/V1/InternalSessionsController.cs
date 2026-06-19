@@ -55,6 +55,32 @@ public sealed class InternalSessionsController(
         });
     }
 
+    /// <summary>
+    /// Deletes the last turn (most recent user message and everything after it) for a session, so an
+    /// edited message can be resubmitted as a clean correction. Internal BFF-only; guarded by the same
+    /// session permission the BFF already holds for reading internal session history.
+    /// </summary>
+    /// <param name="sessionId">The session ID.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    [HttpDelete("{sessionId:guid}/messages/last-turn")]
+    [RequirePermission(ChatbotPermissions.SessionRead)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> DeleteLastTurn(
+        Guid sessionId,
+        CancellationToken cancellationToken = default)
+    {
+        var session = await sessionRepository.GetByIdAsync(sessionId, cancellationToken);
+        if (session is null)
+        {
+            return NotFound();
+        }
+
+        var removed = await messageRepository.DeleteLastTurnAsync(session.Id, cancellationToken);
+        return Ok(new { removed });
+    }
+
     private static ConversationMessageResponse MapMessage(Message message)
     {
         return new ConversationMessageResponse
