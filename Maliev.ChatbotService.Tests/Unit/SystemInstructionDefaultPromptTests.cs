@@ -46,6 +46,13 @@ public sealed class SystemInstructionDefaultPromptTests
         Assert.Contains("quote_get_account_context", prompt, StringComparison.Ordinal);
         Assert.Contains("quote_update_account_profile", prompt, StringComparison.Ordinal);
         Assert.Contains("quote_generate_3d_preview", prompt, StringComparison.Ordinal);
+        Assert.Contains("quote_request_employee_review", prompt, StringComparison.Ordinal);
+        Assert.Contains("MALIEV project review queue", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("quote_prepare_formal_quote", prompt, StringComparison.Ordinal);
+        Assert.Contains("quote_approve_quote", prompt, StringComparison.Ordinal);
+        Assert.Contains("quote_create_order", prompt, StringComparison.Ordinal);
+        Assert.Contains("quote_start_payment", prompt, StringComparison.Ordinal);
+        Assert.Contains("confirmation-gated", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("supersedes_part_id", prompt, StringComparison.Ordinal);
         Assert.Contains("corrected CAD/3D revision", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("never paste raw tool JSON", prompt, StringComparison.OrdinalIgnoreCase);
@@ -111,6 +118,13 @@ public sealed class SystemInstructionDefaultPromptTests
         Assert.Contains("internal", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("customer-friendly next steps", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("quote_generate_3d_preview", prompt, StringComparison.Ordinal);
+        Assert.Contains("quote_request_employee_review", prompt, StringComparison.Ordinal);
+        Assert.Contains("MALIEV project review queue", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("quote_prepare_formal_quote", prompt, StringComparison.Ordinal);
+        Assert.Contains("quote_approve_quote", prompt, StringComparison.Ordinal);
+        Assert.Contains("quote_create_order", prompt, StringComparison.Ordinal);
+        Assert.Contains("quote_start_payment", prompt, StringComparison.Ordinal);
+        Assert.Contains("confirmation-gated", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("supersedes_part_id", prompt, StringComparison.Ordinal);
         Assert.Contains("duplicate the project", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("fresh Make Studio session", prompt, StringComparison.OrdinalIgnoreCase);
