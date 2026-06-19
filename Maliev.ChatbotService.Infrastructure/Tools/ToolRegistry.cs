@@ -533,7 +533,7 @@ public static class ToolRegistry
                 type = "OBJECT",
                 properties = new
                 {
-                    purchase_order = new { type = "STRING", description = "Optional customer PO number." },
+                    customer_po_number = new { type = "STRING", description = "Optional customer PO number." },
                     requirements = new { type = "STRING", description = "Order requirements summary." }
                 }
             }),

@@ -148,4 +148,20 @@ public class ToolRegistryTests
         Assert.True(fileProperties.TryGetProperty("supersedes_upload_id", out _));
         Assert.True(fileProperties.TryGetProperty("supersedes_file_name", out _));
     }
+
+    [Fact]
+    public void GetToolDeclarationsForProfile_QuoteCreateOrderDeclaresQuoteEnginePoField()
+    {
+        var quoteDeclarations = ToolRegistry.GetToolDeclarationsForProfile("quote-engine");
+        var tool = Assert.Single(
+            quoteDeclarations[0].FunctionDeclarations!,
+            declaration => declaration.Name == "quote_create_order");
+
+        var json = JsonSerializer.Serialize(tool.Parameters);
+        using var document = JsonDocument.Parse(json);
+        var properties = document.RootElement.GetProperty("properties");
+
+        Assert.True(properties.TryGetProperty("customer_po_number", out _));
+        Assert.False(properties.TryGetProperty("purchase_order", out _));
+    }
 }
