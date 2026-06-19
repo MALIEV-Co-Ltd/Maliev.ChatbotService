@@ -243,7 +243,8 @@ public class SendMessageCommandHandler
             // calls with large payloads). Checked after the hourly increment — so refused attempts
             // still consume that quota — but before any model call, so an over-budget user costs
             // nothing further. Refused gracefully in-band (no model call, no message persisted).
-            if (await _usageBudgetService.IsDailyTokenBudgetExceededAsync(session.UserProfileId, cancellationToken))
+            var usageSnapshot = await _usageBudgetService.GetDailyTokenUsageSnapshotAsync(session.UserProfileId, cancellationToken);
+            if (usageSnapshot.IsExceeded)
             {
                 _logger.LogWarning("Daily token budget exceeded for user {UserProfileId} in session {SessionId}",
                     session.UserProfileId, session.Id);
@@ -255,7 +256,8 @@ public class SendMessageCommandHandler
                     Role = MessageRole.Assistant,
                     Language = detectedLanguage,
                     CreatedAt = DateTimeOffset.UtcNow,
-                    SessionId = session.Id
+                    SessionId = session.Id,
+                    UsageSnapshot = usageSnapshot
                 };
             }
 
@@ -605,6 +607,7 @@ public class SendMessageCommandHandler
                     session.UserProfileId,
                     geminiResponse.TokenUsage?.TotalTokens ?? 0,
                     cancellationToken);
+                usageSnapshot = await _usageBudgetService.GetDailyTokenUsageSnapshotAsync(session.UserProfileId, cancellationToken);
             }
 
             // Update session last activity
@@ -679,7 +682,8 @@ public class SendMessageCommandHandler
                 CreatedAt = createdAt,
                 ThinkingSteps = thinkingSteps,
                 ThoughtContent = geminiResponse.ThoughtContent,
-                SessionId = session.Id
+                SessionId = session.Id,
+                UsageSnapshot = usageSnapshot
             };
 
 
@@ -1009,4 +1013,9 @@ public class SendMessageResult
     /// Gets or sets the session ID for SignalR correlation.
     /// </summary>
     public Guid? SessionId { get; set; }
+
+    /// <summary>
+    /// Gets or sets the current daily token usage snapshot.
+    /// </summary>
+    public UsageBudgetSnapshot? UsageSnapshot { get; set; }
 }

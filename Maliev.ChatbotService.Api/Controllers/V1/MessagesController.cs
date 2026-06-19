@@ -278,7 +278,18 @@ public class MessagesController : ControllerBase
                 Data = sa.Data
             }).ToList(),
             CreatedAt = result.CreatedAt,
-            ThinkingSteps = thinkingSteps
+            ThinkingSteps = thinkingSteps,
+            UsageSnapshot = result.UsageSnapshot is null
+                ? null
+                : new UsageSnapshotResponse
+                {
+                    IsEnabled = result.UsageSnapshot.IsEnabled,
+                    UsedTokens = result.UsageSnapshot.UsedTokens,
+                    DailyTokenBudget = result.UsageSnapshot.DailyTokenBudget,
+                    RemainingTokens = result.UsageSnapshot.RemainingTokens,
+                    UsedRatio = result.UsageSnapshot.UsedRatio,
+                    IsExceeded = result.UsageSnapshot.IsExceeded
+                }
         };
     }
 

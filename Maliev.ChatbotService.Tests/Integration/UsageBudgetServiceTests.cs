@@ -45,6 +45,13 @@ public class UsageBudgetServiceTests : IAsyncLifetime
         Assert.Equal(350, await service.RecordTokenUsageAsync(userId, 250));
         Assert.Equal(350, await service.GetDailyTokenUsageAsync(userId));
         Assert.False(await service.IsDailyTokenBudgetExceededAsync(userId));
+        var snapshot = await service.GetDailyTokenUsageSnapshotAsync(userId);
+        Assert.True(snapshot.IsEnabled);
+        Assert.Equal(350, snapshot.UsedTokens);
+        Assert.Equal(DefaultBudget, snapshot.DailyTokenBudget);
+        Assert.Equal(DefaultBudget - 350, snapshot.RemainingTokens);
+        Assert.Equal(350d / DefaultBudget, snapshot.UsedRatio);
+        Assert.False(snapshot.IsExceeded);
     }
 
     [Fact]
@@ -58,6 +65,11 @@ public class UsageBudgetServiceTests : IAsyncLifetime
 
         Assert.Equal(DefaultBudget + 1, total);
         Assert.True(await service.IsDailyTokenBudgetExceededAsync(userId));
+        var snapshot = await service.GetDailyTokenUsageSnapshotAsync(userId);
+        Assert.True(snapshot.IsExceeded);
+        Assert.Equal(DefaultBudget + 1, snapshot.UsedTokens);
+        Assert.Equal(0, snapshot.RemainingTokens);
+        Assert.Equal(1, snapshot.UsedRatio);
     }
 
     [Fact]

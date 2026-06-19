@@ -129,7 +129,22 @@ public class MessagesApiTests : IAsyncLifetime
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             var result = await response.Content.ReadFromJsonAsync<MessageResponse>(_factory.JsonSerializerOptions);
             Assert.NotNull(result);
+            Assert.NotNull(result!.UsageSnapshot);
             contents.Add(result!.Content);
+
+            if (i == 0)
+            {
+                Assert.Equal(100, result.UsageSnapshot!.UsedTokens);
+                Assert.Equal(150, result.UsageSnapshot.DailyTokenBudget);
+                Assert.Equal(50, result.UsageSnapshot.RemainingTokens);
+                Assert.False(result.UsageSnapshot.IsExceeded);
+            }
+            else if (i == 2)
+            {
+                Assert.Equal(200, result.UsageSnapshot!.UsedTokens);
+                Assert.Equal(0, result.UsageSnapshot.RemainingTokens);
+                Assert.True(result.UsageSnapshot.IsExceeded);
+            }
         }
 
         // First two turns are real answers; the third is the budget-limit message.

@@ -106,5 +106,35 @@ public class RedisUsageBudgetService : IUsageBudgetService
         return value.HasValue && value.TryParse(out long usage) ? usage : 0;
     }
 
+    /// <inheritdoc/>
+    public async Task<UsageBudgetSnapshot> GetDailyTokenUsageSnapshotAsync(
+        Guid userProfileId,
+        CancellationToken cancellationToken = default)
+    {
+        var usage = await GetDailyTokenUsageAsync(userProfileId, cancellationToken);
+        if (_dailyTokenBudget <= 0)
+        {
+            return new UsageBudgetSnapshot
+            {
+                IsEnabled = false,
+                UsedTokens = usage,
+                DailyTokenBudget = 0,
+                RemainingTokens = 0,
+                UsedRatio = 0,
+                IsExceeded = false
+            };
+        }
+
+        return new UsageBudgetSnapshot
+        {
+            IsEnabled = true,
+            UsedTokens = usage,
+            DailyTokenBudget = _dailyTokenBudget,
+            RemainingTokens = Math.Max(0, _dailyTokenBudget - usage),
+            UsedRatio = Math.Clamp((double)usage / _dailyTokenBudget, 0, 1),
+            IsExceeded = usage >= _dailyTokenBudget
+        };
+    }
+
     private static RedisKey GetKey(Guid userProfileId) => $"{KeyPrefix}{userProfileId}";
 }

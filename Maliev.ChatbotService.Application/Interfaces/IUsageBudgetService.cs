@@ -31,4 +31,37 @@ public interface IUsageBudgetService
     /// <param name="userProfileId">The user profile ID.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     Task<long> GetDailyTokenUsageAsync(Guid userProfileId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets a customer-safe snapshot of the user's rolling-24h token budget state.
+    /// </summary>
+    /// <param name="userProfileId">The user profile ID.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<UsageBudgetSnapshot> GetDailyTokenUsageSnapshotAsync(
+        Guid userProfileId,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Customer-safe rolling daily token budget state.
+/// </summary>
+public sealed class UsageBudgetSnapshot
+{
+    /// <summary>Gets or sets whether the daily token budget is enabled.</summary>
+    public bool IsEnabled { get; set; }
+
+    /// <summary>Gets or sets the number of tokens used in the current rolling window.</summary>
+    public long UsedTokens { get; set; }
+
+    /// <summary>Gets or sets the configured daily token budget.</summary>
+    public long DailyTokenBudget { get; set; }
+
+    /// <summary>Gets or sets the number of tokens remaining in the current rolling window.</summary>
+    public long RemainingTokens { get; set; }
+
+    /// <summary>Gets or sets the used-to-budget ratio from 0 to 1.</summary>
+    public double UsedRatio { get; set; }
+
+    /// <summary>Gets or sets whether the user has reached the budget.</summary>
+    public bool IsExceeded { get; set; }
 }
