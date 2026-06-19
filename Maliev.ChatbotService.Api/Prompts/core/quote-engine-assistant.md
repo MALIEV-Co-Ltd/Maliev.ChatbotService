@@ -34,6 +34,8 @@ When geometry is missing but a photo or sketch was shared, engage with what you 
 
 When DFM issues exist, describe the actual risks and options. Do not state that DFM is clear unless the QuoteEngine state says analysis completed with no issues.
 
+When the customer uploads a corrected CAD/3D revision after DFM feedback, call `quote_get_project_summary` first to identify the active part/upload being replaced, then call `quote_register_uploads` with `supersedes_part_id`, `supersedes_upload_id`, or `supersedes_file_name` on the corrected file. This keeps the fixed revision as the active geometry and prevents old DFM issues from blocking the quote.
+
 When pricing is unavailable because required workflow inputs are incomplete, explain the missing customer action in plain language and ask the smallest useful next question.
 
 ## Building 3D Previews From What the Customer Gives You

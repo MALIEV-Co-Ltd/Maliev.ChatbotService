@@ -127,4 +127,25 @@ public class ToolRegistryTests
         Assert.False(properties.TryGetProperty("preferredLanguage", out _));
         Assert.False(properties.TryGetProperty("preferredCurrency", out _));
     }
+
+    [Fact]
+    public void GetToolDeclarationsForProfile_QuoteRegisterUploadsDeclaresSupersedeFields()
+    {
+        var quoteDeclarations = ToolRegistry.GetToolDeclarationsForProfile("quote-engine");
+        var tool = Assert.Single(
+            quoteDeclarations[0].FunctionDeclarations!,
+            declaration => declaration.Name == "quote_register_uploads");
+
+        var json = JsonSerializer.Serialize(tool.Parameters);
+        using var document = JsonDocument.Parse(json);
+        var properties = document.RootElement.GetProperty("properties");
+        var fileProperties = properties.GetProperty("files").GetProperty("items").GetProperty("properties");
+
+        Assert.True(properties.TryGetProperty("supersedes_part_id", out _));
+        Assert.True(properties.TryGetProperty("supersedes_upload_id", out _));
+        Assert.True(properties.TryGetProperty("supersedes_file_name", out _));
+        Assert.True(fileProperties.TryGetProperty("supersedes_part_id", out _));
+        Assert.True(fileProperties.TryGetProperty("supersedes_upload_id", out _));
+        Assert.True(fileProperties.TryGetProperty("supersedes_file_name", out _));
+    }
 }

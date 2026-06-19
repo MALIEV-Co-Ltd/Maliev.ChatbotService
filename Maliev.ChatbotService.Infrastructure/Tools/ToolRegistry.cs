@@ -276,11 +276,17 @@ public static class ToolRegistry
                                 kind = new { type = "STRING", description = "cad, drawing, photo, sketch, or supplemental." },
                                 upload_id = new { type = "STRING", description = "Existing upload identifier when available." },
                                 storage_path = new { type = "STRING", description = "Existing storage path when available." },
-                                url = new { type = "STRING", description = "Browser-visible URL for image or PDF context when available." }
+                                url = new { type = "STRING", description = "Browser-visible URL for image or PDF context when available." },
+                                supersedes_part_id = new { type = "STRING", description = "Optional active QuoteEngine part UUID this corrected geometry replaces." },
+                                supersedes_upload_id = new { type = "STRING", description = "Optional previous upload ID this corrected geometry replaces." },
+                                supersedes_file_name = new { type = "STRING", description = "Optional previous file name this corrected geometry replaces." }
                             },
                             required = new[] { "file_name", "content_type", "file_size_bytes" }
                         }
-                    }
+                    },
+                    supersedes_part_id = new { type = "STRING", description = "Optional active QuoteEngine part UUID replaced by this upload when only one corrected geometry file is provided." },
+                    supersedes_upload_id = new { type = "STRING", description = "Optional previous upload ID replaced by this upload when only one corrected geometry file is provided." },
+                    supersedes_file_name = new { type = "STRING", description = "Optional previous file name replaced by this upload when only one corrected geometry file is provided." }
                 },
                 required = new[] { "files" }
             }),
