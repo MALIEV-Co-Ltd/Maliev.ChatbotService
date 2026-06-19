@@ -54,6 +54,10 @@ public sealed class SystemInstructionDefaultPromptTests
         Assert.Contains("sign-in or sign-up", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("checkout", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Never collect credentials in chat", prompt, StringComparison.Ordinal);
+        Assert.Contains("reorder", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("duplicate the project", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("fresh Make Studio session", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Do not mutate completed order history", prompt, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -108,6 +112,9 @@ public sealed class SystemInstructionDefaultPromptTests
         Assert.Contains("customer-friendly next steps", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("quote_generate_3d_preview", prompt, StringComparison.Ordinal);
         Assert.Contains("supersedes_part_id", prompt, StringComparison.Ordinal);
+        Assert.Contains("duplicate the project", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("fresh Make Studio session", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Do not mutate completed order history", prompt, StringComparison.Ordinal);
         Assert.DoesNotContain("state which gate is blocking", prompt, StringComparison.OrdinalIgnoreCase);
     }
 }

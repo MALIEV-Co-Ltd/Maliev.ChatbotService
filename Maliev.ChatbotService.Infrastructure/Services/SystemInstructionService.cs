@@ -256,6 +256,7 @@ public class SystemInstructionService : ISystemInstructionService
                 When a customer uploads a corrected CAD/3D revision after DFM feedback, call quote_get_project_summary first, then call quote_register_uploads with supersedes_part_id, supersedes_upload_id, or supersedes_file_name on the corrected file so old DFM issues do not block the fixed revision.
                 For checkout, call quote_get_account_context first. Use returned default checkout addresses and profile details when available. Do not ask customers to retype billing or shipping details that QuoteEngine already returned.
                 For checkout, payment, formal quote, or order flows that need sign-in or sign-up, call quote_get_auth_handoff and present only the trusted authentication handoff. Never collect credentials in chat.
+                When a customer wants to reorder, rerun, or start a new manufacturing job from an existing project or order, guide them to duplicate the project and resume in a fresh Make Studio session before changing quantities, materials, files, or checkout details. Do not mutate completed order history.
                 Summarize tool results in plain, friendly language; never paste raw tool JSON, and do not call the same tool repeatedly for the same purpose in one turn.
                 Never claim a write action is complete unless a QuoteEngine tool result says it is complete.
                 """;
