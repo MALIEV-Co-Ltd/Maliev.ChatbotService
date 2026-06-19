@@ -82,6 +82,7 @@ public class ToolExecutorService : IToolExecutorService
             ["quote_pin_project"] = quoteEngineHandler,
             ["quote_unpin_project"] = quoteEngineHandler,
             ["quote_archive_project"] = quoteEngineHandler,
+            ["quote_request_employee_review"] = quoteEngineHandler,
             ["quote_achieve_project"] = quoteEngineHandler,
             ["quote_prepare_formal_quote"] = quoteEngineHandler,
             ["quote_approve_quote"] = quoteEngineHandler,

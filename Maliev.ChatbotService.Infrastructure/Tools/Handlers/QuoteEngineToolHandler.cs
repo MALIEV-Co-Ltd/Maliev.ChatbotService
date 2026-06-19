@@ -42,6 +42,7 @@ public sealed class QuoteEngineToolHandler(
         "quote_pin_project",
         "quote_unpin_project",
         "quote_archive_project",
+        "quote_request_employee_review",
         "quote_achieve_project",
         "quote_prepare_formal_quote",
         "quote_approve_quote",

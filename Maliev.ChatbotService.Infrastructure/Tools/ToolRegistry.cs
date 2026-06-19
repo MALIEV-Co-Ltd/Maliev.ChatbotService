@@ -495,6 +495,15 @@ public static class ToolRegistry
                     project_id = new { type = "STRING", description = "Optional project UUID. Omit to use the current draft project." }
                 }
             }),
+            Fn("quote_request_employee_review", "Prepare a request for a MALIEV employee to review the current Make Studio project. Use this when the customer asks staff to check DFM risks, manufacturability, pricing assumptions, or a design concern before continuing. The BFF returns a confirmation card before routing the project to employee review.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    project_id = new { type = "STRING", description = "Optional project UUID. Omit to use the current draft project." },
+                    note = new { type = "STRING", description = "Customer-visible review question or concern for the MALIEV employee." }
+                }
+            }),
             Fn("quote_achieve_project", "Prepare marking a customer Make Studio project as achieved or completed. The BFF returns a confirmation card before changing project state.", new
             {
                 type = "OBJECT",
