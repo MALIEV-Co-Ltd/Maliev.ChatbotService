@@ -347,10 +347,12 @@ public static class ToolRegistry
                                 result = new { type = "STRING", description = "Result body id alias produced by this op." },
                                 radius = new { type = "NUMBER", description = "Fillet radius in millimetres." },
                                 offset = new { type = "ARRAY", items = new { type = "NUMBER" }, description = "Translate offset [x,y,z] in millimetres." },
+                                translation = new { type = "ARRAY", items = new { type = "NUMBER" }, description = "Translate offset alias [x,y,z] in millimetres." },
                                 x = new { type = "NUMBER", description = "Translate X component in millimetres when offset is omitted." },
                                 y = new { type = "NUMBER", description = "Translate Y component in millimetres when offset is omitted." },
                                 z = new { type = "NUMBER", description = "Translate Z component in millimetres when offset is omitted." },
                                 axis = new { type = "ARRAY", items = new { type = "NUMBER" }, description = "Revolve axis vector [x,y,z]." },
+                                rotationAxis = new { type = "ARRAY", items = new { type = "NUMBER" }, description = "Rotate/revolve axis alias [x,y,z]." },
                                 axisX = new { type = "NUMBER", description = "Axis X component for rotate or revolve when axis is omitted." },
                                 axisY = new { type = "NUMBER", description = "Axis Y component for rotate or revolve when axis is omitted." },
                                 axisZ = new { type = "NUMBER", description = "Axis Z component for rotate or revolve when axis is omitted." },
@@ -596,7 +598,8 @@ public static class ToolRegistry
                 {
                     order_number = new { type = "STRING", description = "Manufacturing order number." },
                     amount = new { type = "NUMBER", description = "Amount expected by the customer." },
-                    currency = new { type = "STRING", description = "Currency code." }
+                    currency = new { type = "STRING", description = "Currency code." },
+                    checkout_attempt_id = new { type = "STRING", description = "Stable UUID for this payment attempt. Reuse the same value when retrying the same handoff so PaymentService idempotency can deduplicate safely." }
                 }
             }),
             Fn("quote_get_account_context", "Get customer sign-in state and safe account context for deciding whether to show sign-in, sign-up, or continuation prompts.", new

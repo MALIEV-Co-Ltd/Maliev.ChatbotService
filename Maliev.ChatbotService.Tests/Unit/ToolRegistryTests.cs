@@ -181,12 +181,14 @@ public class ToolRegistryTests
         Assert.True(commandProperties.TryGetProperty("target", out _));
         Assert.True(commandProperties.TryGetProperty("tool", out _));
         Assert.True(commandProperties.TryGetProperty("result", out _));
+        Assert.True(commandProperties.TryGetProperty("translation", out _));
         Assert.True(commandProperties.TryGetProperty("x", out _));
         Assert.True(commandProperties.TryGetProperty("y", out _));
         Assert.True(commandProperties.TryGetProperty("z", out _));
         Assert.True(commandProperties.TryGetProperty("axisX", out _));
         Assert.True(commandProperties.TryGetProperty("axisY", out _));
         Assert.True(commandProperties.TryGetProperty("axisZ", out _));
+        Assert.True(commandProperties.TryGetProperty("rotationAxis", out _));
 
         Assert.True(dimensions.TryGetProperty("x", out _));
         Assert.True(dimensions.TryGetProperty("y", out _));
@@ -224,5 +226,21 @@ public class ToolRegistryTests
 
         Assert.True(properties.TryGetProperty("customer_po_number", out _));
         Assert.False(properties.TryGetProperty("purchase_order", out _));
+    }
+
+    [Fact]
+    public void GetToolDeclarationsForProfile_QuoteStartPaymentDeclaresCheckoutAttemptId()
+    {
+        var quoteDeclarations = ToolRegistry.GetToolDeclarationsForProfile("quote-engine");
+        var tool = Assert.Single(
+            quoteDeclarations[0].FunctionDeclarations!,
+            declaration => declaration.Name == "quote_start_payment");
+
+        var json = JsonSerializer.Serialize(tool.Parameters);
+        using var document = JsonDocument.Parse(json);
+        var properties = document.RootElement.GetProperty("properties");
+
+        Assert.True(properties.TryGetProperty("checkout_attempt_id", out var checkoutAttemptId));
+        Assert.Equal("STRING", checkoutAttemptId.GetProperty("type").GetString());
     }
 }
