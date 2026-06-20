@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Maliev.ChatbotService.Application.Handlers;
 
 namespace Maliev.ChatbotService.Api.Models.Requests;
 
@@ -17,7 +18,7 @@ public class SendMessageRequest
     /// Gets or sets the message content.
     /// </summary>
     [Required]
-    [StringLength(4000, MinimumLength = 1, ErrorMessage = "Content must be between 1 and 4000 characters")]
+    [StringLength(MessagePipelinePolicy.MaxContentCharacters, MinimumLength = 1, ErrorMessage = "Content must be between {2} and {1} characters")]
     public string Content { get; set; } = string.Empty;
 
     /// <summary>
