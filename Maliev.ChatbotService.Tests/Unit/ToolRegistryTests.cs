@@ -150,6 +150,67 @@ public class ToolRegistryTests
     }
 
     [Fact]
+    public void GetToolDeclarationsForProfile_QuoteGenerate3dPreviewDeclaresNormalizedCommandAliases()
+    {
+        var quoteDeclarations = ToolRegistry.GetToolDeclarationsForProfile("quote-engine");
+        var tool = Assert.Single(
+            quoteDeclarations[0].FunctionDeclarations!,
+            declaration => declaration.Name == "quote_generate_3d_preview");
+
+        var json = JsonSerializer.Serialize(tool.Parameters);
+        using var document = JsonDocument.Parse(json);
+        var commandProperties = document.RootElement
+            .GetProperty("properties")
+            .GetProperty("cad_commands")
+            .GetProperty("items")
+            .GetProperty("properties");
+        var dimensions = commandProperties.GetProperty("dimensions").GetProperty("properties");
+        var profile = commandProperties.GetProperty("profile").GetProperty("properties");
+        var segment = profile
+            .GetProperty("segments")
+            .GetProperty("items")
+            .GetProperty("properties");
+
+        Assert.True(commandProperties.TryGetProperty("operation", out _));
+        Assert.True(commandProperties.TryGetProperty("shape", out _));
+        Assert.True(commandProperties.TryGetProperty("parameters", out _));
+        Assert.True(commandProperties.TryGetProperty("dimensions", out _));
+        Assert.True(commandProperties.TryGetProperty("width", out _));
+        Assert.True(commandProperties.TryGetProperty("height", out _));
+        Assert.True(commandProperties.TryGetProperty("diameter", out _));
+        Assert.True(commandProperties.TryGetProperty("target", out _));
+        Assert.True(commandProperties.TryGetProperty("tool", out _));
+        Assert.True(commandProperties.TryGetProperty("result", out _));
+        Assert.True(commandProperties.TryGetProperty("x", out _));
+        Assert.True(commandProperties.TryGetProperty("y", out _));
+        Assert.True(commandProperties.TryGetProperty("z", out _));
+        Assert.True(commandProperties.TryGetProperty("axisX", out _));
+        Assert.True(commandProperties.TryGetProperty("axisY", out _));
+        Assert.True(commandProperties.TryGetProperty("axisZ", out _));
+
+        Assert.True(dimensions.TryGetProperty("x", out _));
+        Assert.True(dimensions.TryGetProperty("y", out _));
+        Assert.True(dimensions.TryGetProperty("z", out _));
+        Assert.True(dimensions.TryGetProperty("diameter", out _));
+        Assert.True(dimensions.TryGetProperty("d", out _));
+        Assert.True(dimensions.TryGetProperty("radiusBottom", out _));
+        Assert.True(dimensions.TryGetProperty("radiusTop", out _));
+
+        Assert.True(profile.TryGetProperty("type", out _));
+        Assert.True(profile.TryGetProperty("parameters", out _));
+        Assert.True(profile.TryGetProperty("width", out _));
+        Assert.True(profile.TryGetProperty("height", out _));
+        Assert.True(profile.TryGetProperty("radius", out _));
+
+        Assert.True(segment.TryGetProperty("parameters", out _));
+        Assert.True(segment.TryGetProperty("x", out _));
+        Assert.True(segment.TryGetProperty("y", out _));
+        Assert.True(segment.TryGetProperty("dx", out _));
+        Assert.True(segment.TryGetProperty("dy", out _));
+        Assert.True(segment.TryGetProperty("length", out _));
+    }
+
+    [Fact]
     public void GetToolDeclarationsForProfile_QuoteCreateOrderDeclaresQuoteEnginePoField()
     {
         var quoteDeclarations = ToolRegistry.GetToolDeclarationsForProfile("quote-engine");
