@@ -1,4 +1,5 @@
 using System.Net;
+using System.Reflection;
 using System.Text.Json;
 using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Infrastructure.Tools;
@@ -120,6 +121,24 @@ public sealed class QuoteEngineToolHandlerTests
         Assert.Equal($"/quote/v1/agent/tools/{toolName}", handler.SentRequest.RequestUri?.PathAndQuery);
         Assert.True(handler.SentRequest.Headers.TryGetValues("X-Maliev-Agent-Context", out var values));
         Assert.Contains("signed-context-token", values);
+    }
+
+    [Fact]
+    public void QuoteEngineToolHandler_AllowListMatchesDeclaredQuoteEngineTools()
+    {
+        var declaredTools = ToolRegistry.GetToolDeclarationsForProfile("quote-engine")
+            .SelectMany(declaration => declaration.FunctionDeclarations ?? [])
+            .Select(declaration => declaration.Name)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToArray();
+        var field = typeof(QuoteEngineToolHandler).GetField(
+            "AllowedTools",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        var allowedTools = Assert.IsType<HashSet<string>>(field?.GetValue(null))
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(declaredTools, allowedTools);
     }
 
     [Theory]
