@@ -65,6 +65,10 @@ public sealed class SystemInstructionDefaultPromptTests
         Assert.Contains("duplicate the project", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("fresh Make Studio session", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Do not mutate completed order history", prompt, StringComparison.Ordinal);
+        Assert.Contains("ask for one focused dimension confirmation instead of generating a 3D preview", prompt, StringComparison.Ordinal);
+        Assert.Contains("Do not generate a 3D preview from an unlabeled sketch or photo with no scale reference", prompt, StringComparison.Ordinal);
+        Assert.Contains("Do not ask for quantity, lead time, finish, tolerance", prompt, StringComparison.Ordinal);
+        Assert.Contains("state the assumption and continue", prompt, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -129,6 +133,10 @@ public sealed class SystemInstructionDefaultPromptTests
         Assert.Contains("duplicate the project", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("fresh Make Studio session", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Do not mutate completed order history", prompt, StringComparison.Ordinal);
+        Assert.Contains("ask for one focused dimension confirmation instead of generating a 3D preview", prompt, StringComparison.Ordinal);
+        Assert.Contains("Do not generate a 3D preview from an unlabeled sketch or photo with no scale reference", prompt, StringComparison.Ordinal);
+        Assert.Contains("Do not ask for quantity, lead time, finish, tolerance", prompt, StringComparison.Ordinal);
+        Assert.Contains("state the assumption and continue", prompt, StringComparison.Ordinal);
         Assert.DoesNotContain("state which gate is blocking", prompt, StringComparison.OrdinalIgnoreCase);
     }
 }
