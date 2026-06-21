@@ -4,8 +4,6 @@ using Maliev.ChatbotService.Domain.Enums;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using System.Security.Cryptography;
-using System.Text;
 
 namespace Maliev.ChatbotService.Infrastructure.Services;
 
@@ -133,24 +131,22 @@ public class PromptFileLoaderService : BackgroundService
         // Split body into PersonaDefinition and BusinessConstraints by "## Business Constraints" heading
         var (personaDefinition, businessConstraints) = SplitBody(body);
 
-        // Compute content hash to detect changes
-        var contentHash = ComputeHash(personaDefinition + businessConstraints);
-
         // Look for existing instruction by name
-        var (existingInstructions, _) = await repository.GetAllAsync(1, 100, category, topicKey, ct);
+        var (existingInstructions, _) = await repository.GetAllAsync(1, 1000, cancellationToken: ct);
         var existing = existingInstructions.FirstOrDefault(i =>
             i.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
 
         if (existing != null)
         {
-            var existingHash = ComputeHash(existing.PersonaDefinition + existing.BusinessConstraints);
-            if (existingHash == contentHash)
+            if (PromptMatchesFile(existing, category, topicKey, priority, personaDefinition, businessConstraints, allowedTopics, isActive, enableWebSearch))
             {
                 _logger.LogDebug("Prompt '{Name}' unchanged. Skipping.", name);
                 return false;
             }
 
             // Update existing instruction
+            existing.Category = category;
+            existing.TopicKey = topicKey;
             existing.PersonaDefinition = personaDefinition;
             existing.BusinessConstraints = businessConstraints;
             existing.AllowedTopics = allowedTopics;
@@ -236,9 +232,24 @@ public class PromptFileLoaderService : BackgroundService
         return (persona, constraints);
     }
 
-    private static string ComputeHash(string content)
+    private static bool PromptMatchesFile(
+        SystemInstruction existing,
+        SystemInstructionCategory category,
+        string? topicKey,
+        int priority,
+        string personaDefinition,
+        string businessConstraints,
+        string allowedTopics,
+        bool isActive,
+        bool enableWebSearch)
     {
-        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(content));
-        return Convert.ToHexStringLower(bytes);
+        return existing.Category == category
+            && string.Equals(existing.TopicKey, topicKey, StringComparison.Ordinal)
+            && existing.Priority == priority
+            && string.Equals(existing.PersonaDefinition, personaDefinition, StringComparison.Ordinal)
+            && string.Equals(existing.BusinessConstraints, businessConstraints, StringComparison.Ordinal)
+            && string.Equals(existing.AllowedTopics, allowedTopics, StringComparison.Ordinal)
+            && existing.IsActive == isActive
+            && existing.EnableWebSearch == enableWebSearch;
     }
 }
