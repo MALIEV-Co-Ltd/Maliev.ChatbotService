@@ -176,16 +176,28 @@ public class ToolRegistryTests
             .GetProperty("properties");
 
         Assert.True(commandProperties.TryGetProperty("operation", out _));
+        Assert.True(commandProperties.TryGetProperty("type", out _));
         Assert.True(commandProperties.TryGetProperty("shape", out _));
+        Assert.True(commandProperties.TryGetProperty("name", out _));
+        Assert.True(commandProperties.TryGetProperty("shape_id", out _));
         Assert.True(commandProperties.TryGetProperty("parameters", out _));
         Assert.True(commandProperties.TryGetProperty("dimensions", out _));
         Assert.True(commandProperties.TryGetProperty("width", out _));
         Assert.True(commandProperties.TryGetProperty("height", out _));
+        Assert.True(commandProperties.TryGetProperty("thickness", out _));
         Assert.True(commandProperties.TryGetProperty("diameter", out _));
         Assert.True(commandProperties.TryGetProperty("target", out _));
+        Assert.True(commandProperties.TryGetProperty("target_shape_id", out _));
         Assert.True(commandProperties.TryGetProperty("tool", out _));
+        Assert.True(commandProperties.TryGetProperty("tool_shape_id", out _));
         Assert.True(commandProperties.TryGetProperty("result", out _));
+        Assert.True(commandProperties.TryGetProperty("result_shape_id", out _));
+        Assert.True(commandProperties.TryGetProperty("size", out _));
+        Assert.True(commandProperties.TryGetProperty("cornerRadius", out _));
+        Assert.True(commandProperties.TryGetProperty("edgeRadius", out _));
         Assert.True(commandProperties.TryGetProperty("translation", out _));
+        Assert.True(commandProperties.TryGetProperty("position", out _));
+        Assert.True(commandProperties.TryGetProperty("location", out _));
         Assert.True(commandProperties.TryGetProperty("x", out _));
         Assert.True(commandProperties.TryGetProperty("y", out _));
         Assert.True(commandProperties.TryGetProperty("z", out _));
@@ -193,10 +205,13 @@ public class ToolRegistryTests
         Assert.True(commandProperties.TryGetProperty("axisY", out _));
         Assert.True(commandProperties.TryGetProperty("axisZ", out _));
         Assert.True(commandProperties.TryGetProperty("rotationAxis", out _));
+        Assert.True(commandProperties.TryGetProperty("angleDegrees", out _));
+        Assert.True(commandProperties.TryGetProperty("degrees", out _));
 
         Assert.True(dimensions.TryGetProperty("x", out _));
         Assert.True(dimensions.TryGetProperty("y", out _));
         Assert.True(dimensions.TryGetProperty("z", out _));
+        Assert.True(dimensions.TryGetProperty("thickness", out _));
         Assert.True(dimensions.TryGetProperty("diameter", out _));
         Assert.True(dimensions.TryGetProperty("d", out _));
         Assert.True(dimensions.TryGetProperty("radiusBottom", out _));
@@ -204,9 +219,14 @@ public class ToolRegistryTests
 
         Assert.True(profile.TryGetProperty("type", out _));
         Assert.True(profile.TryGetProperty("parameters", out _));
+        Assert.True(profile.TryGetProperty("size", out _));
         Assert.True(profile.TryGetProperty("width", out _));
         Assert.True(profile.TryGetProperty("height", out _));
         Assert.True(profile.TryGetProperty("radius", out _));
+        Assert.True(profile.TryGetProperty("diameter", out _));
+        Assert.True(profile.TryGetProperty("points", out _));
+        Assert.True(profile.TryGetProperty("polyline", out _));
+        Assert.True(profile.TryGetProperty("vertices", out _));
 
         Assert.True(segment.TryGetProperty("parameters", out _));
         Assert.True(segment.TryGetProperty("x", out _));
@@ -214,6 +234,21 @@ public class ToolRegistryTests
         Assert.True(segment.TryGetProperty("dx", out _));
         Assert.True(segment.TryGetProperty("dy", out _));
         Assert.True(segment.TryGetProperty("length", out _));
+
+        var cadCommandsDescription = document.RootElement
+            .GetProperty("properties")
+            .GetProperty("cad_commands")
+            .GetProperty("description")
+            .GetString();
+        Assert.Contains("plate/slot/cutout", cadCommandsDescription, StringComparison.Ordinal);
+        Assert.Contains("hole/boss/standoff", cadCommandsDescription, StringComparison.Ordinal);
+
+        var opDescription = commandProperties.GetProperty("op").GetProperty("description").GetString();
+        Assert.Contains("plate", opDescription, StringComparison.Ordinal);
+        Assert.Contains("standoff", opDescription, StringComparison.Ordinal);
+
+        var profileTypeDescription = profile.GetProperty("type").GetProperty("description").GetString();
+        Assert.Contains("square", profileTypeDescription, StringComparison.Ordinal);
     }
 
     [Fact]

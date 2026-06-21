@@ -300,28 +300,32 @@ public static class ToolRegistry
                     cad_commands = new
                     {
                         type = "ARRAY",
-                        description = "Ordered build commands. Primitives: box params [w,d,h]; cylinder [radius,height]; sphere [radius]; cone [radiusBottom,radiusTop,height]. Boolean: cut/fuse with target_id+tool_id+result_id. Edge: fillet with target_id+radius+result_id. Move: translate with target_id+offset+result_id.",
+                        description = "Ordered build commands. Primitives: box params [w,d,h] and aliases plate/slot/cutout; cylinder [radius,height] and aliases hole/boss/standoff; sphere [radius]; cone [radiusBottom,radiusTop,height]. Boolean: cut/fuse with target_id+tool_id+result_id. Edge: fillet with target_id+radius+result_id. Move: translate with target_id+offset+result_id.",
                         items = new
                         {
                             type = "OBJECT",
                             properties = new
                             {
-                                op = new { type = "STRING", description = "box, cylinder, sphere, cone, cut, fuse, fillet, translate, extrude, or revolve." },
+                                op = new { type = "STRING", description = "box, cylinder, sphere, cone, cut, fuse, fillet, translate, rotate, extrude, revolve, or accepted aliases such as plate, slot, hole, boss, or standoff." },
                                 operation = new { type = "STRING", description = "Operation alias for op when the model uses operation." },
+                                type = new { type = "STRING", description = "Operation type alias for op when the model uses type." },
                                 shape = new { type = "STRING", description = "Shape alias for primitive op, such as box, cylinder, sphere, or cone." },
                                 id = new { type = "STRING", description = "Identifier for a primitive body." },
-                                @params = new { type = "ARRAY", items = new { type = "NUMBER" }, description = "Op-specific numeric parameters in millimetres." },
-                                parameters = new { type = "ARRAY", items = new { type = "NUMBER" }, description = "Alias for params when the model emits parameters." },
+                                name = new { type = "STRING", description = "Identifier alias normalized into id." },
+                                shape_id = new { type = "STRING", description = "Shape identifier alias normalized into id." },
+                                @params = new { type = "ARRAY", items = new { type = "NUMBER" }, description = "Op-specific numeric parameters in millimetres; QuoteEngine also accepts scalar numeric values and named objects." },
+                                parameters = new { type = "ARRAY", items = new { type = "NUMBER" }, description = "Alias for params when the model emits parameters; scalar numeric values are accepted for single-value params." },
                                 dimensions = new
                                 {
                                     type = "OBJECT",
-                                    description = "Named primitive dimensions normalized by QuoteEngine. Box accepts width/depth/length/height or x/y/z. Cylinder and sphere accept radius, diameter, or d. Cone accepts radiusBottom/radiusTop or bottomRadius/topRadius plus height.",
+                                    description = "Named primitive dimensions normalized by QuoteEngine. Box accepts width/depth/length/height/thickness or x/y/z. Cylinder and sphere accept radius, diameter, or d. Cone accepts radiusBottom/radiusTop or bottomRadius/topRadius plus height.",
                                     properties = new
                                     {
                                         width = new { type = "NUMBER", description = "Box width in millimetres." },
                                         depth = new { type = "NUMBER", description = "Box depth in millimetres." },
                                         length = new { type = "NUMBER", description = "Box depth/length alias in millimetres." },
                                         height = new { type = "NUMBER", description = "Primitive height in millimetres." },
+                                        thickness = new { type = "NUMBER", description = "Plate/sheet thickness alias for primitive height in millimetres." },
                                         x = new { type = "NUMBER", description = "Box X dimension alias in millimetres." },
                                         y = new { type = "NUMBER", description = "Box Y dimension alias in millimetres." },
                                         z = new { type = "NUMBER", description = "Box Z dimension alias in millimetres." },
@@ -338,16 +342,25 @@ public static class ToolRegistry
                                 depth = new { type = "NUMBER", description = "Named box depth in millimetres; normalized into params." },
                                 length = new { type = "NUMBER", description = "Named box length/depth alias in millimetres; normalized into params." },
                                 height = new { type = "NUMBER", description = "Named primitive height in millimetres; normalized into params." },
+                                thickness = new { type = "NUMBER", description = "Plate/sheet thickness alias for box, cylinder, cone, or extrude height in millimetres." },
                                 diameter = new { type = "NUMBER", description = "Cylinder or sphere diameter shorthand in millimetres." },
                                 target_id = new { type = "STRING", description = "Target body id for boolean, edge, or translate ops." },
                                 target = new { type = "STRING", description = "Target body id alias for boolean, edge, or translate ops." },
+                                target_shape_id = new { type = "STRING", description = "Target shape identifier alias for boolean, edge, or transform ops." },
                                 tool_id = new { type = "STRING", description = "Tool body id for cut or fuse." },
                                 tool = new { type = "STRING", description = "Tool body id alias for cut or fuse." },
+                                tool_shape_id = new { type = "STRING", description = "Tool shape identifier alias for cut or fuse." },
                                 result_id = new { type = "STRING", description = "Result body id produced by this op." },
                                 result = new { type = "STRING", description = "Result body id alias produced by this op." },
+                                result_shape_id = new { type = "STRING", description = "Result shape identifier alias produced by this op." },
+                                size = new { type = "ARRAY", items = new { type = "NUMBER" }, description = "Box size vector [width, depth, height] or profile square/rectangle size alias." },
                                 radius = new { type = "NUMBER", description = "Fillet radius in millimetres." },
+                                cornerRadius = new { type = "NUMBER", description = "Fillet or chamfer radius alias in millimetres." },
+                                edgeRadius = new { type = "NUMBER", description = "Fillet or chamfer radius alias in millimetres." },
                                 offset = new { type = "ARRAY", items = new { type = "NUMBER" }, description = "Translate offset [x,y,z] in millimetres." },
                                 translation = new { type = "ARRAY", items = new { type = "NUMBER" }, description = "Translate offset alias [x,y,z] in millimetres." },
+                                position = new { type = "ARRAY", items = new { type = "NUMBER" }, description = "Translate offset alias [x,y,z] in millimetres." },
+                                location = new { type = "ARRAY", items = new { type = "NUMBER" }, description = "Translate offset alias [x,y,z] in millimetres." },
                                 x = new { type = "NUMBER", description = "Translate X component in millimetres when offset is omitted." },
                                 y = new { type = "NUMBER", description = "Translate Y component in millimetres when offset is omitted." },
                                 z = new { type = "NUMBER", description = "Translate Z component in millimetres when offset is omitted." },
@@ -357,19 +370,26 @@ public static class ToolRegistry
                                 axisY = new { type = "NUMBER", description = "Axis Y component for rotate or revolve when axis is omitted." },
                                 axisZ = new { type = "NUMBER", description = "Axis Z component for rotate or revolve when axis is omitted." },
                                 angle = new { type = "NUMBER", description = "Revolve angle in radians (2*pi is a full revolution)." },
+                                angleDegrees = new { type = "NUMBER", description = "Rotate or revolve angle in degrees; normalized into radians." },
+                                degrees = new { type = "NUMBER", description = "Short degree angle alias; normalized into radians." },
                                 profile = new
                                 {
                                     type = "OBJECT",
-                                    description = "Sketch profile for extrude or revolve.",
+                                    description = "Sketch profile for extrude or revolve. Use rectangle/rect/square for rectangular profiles and circle/circular/round for circular profiles.",
                                     properties = new
                                     {
                                         plane = new { type = "STRING", description = "Sketch plane such as XY." },
-                                        type = new { type = "STRING", description = "Profile shorthand such as rectangle or circle." },
-                                        @params = new { type = "ARRAY", items = new { type = "NUMBER" }, description = "Profile shorthand params, e.g. rectangle [width,height] or circle [radius]." },
-                                        parameters = new { type = "ARRAY", items = new { type = "NUMBER" }, description = "Alias for profile params." },
+                                        type = new { type = "STRING", description = "Profile shorthand such as rectangle, rect, square, circle, circular, or round." },
+                                        @params = new { type = "ARRAY", items = new { type = "NUMBER" }, description = "Profile shorthand params, e.g. rectangle [width,height] or circle [radius]; scalar number accepted for circle radius or square size." },
+                                        parameters = new { type = "ARRAY", items = new { type = "NUMBER" }, description = "Alias for profile params; scalar number accepted for single-value params." },
+                                        size = new { type = "ARRAY", items = new { type = "NUMBER" }, description = "Rectangle size [width,height] or square size [side]." },
                                         width = new { type = "NUMBER", description = "Rectangle profile width." },
                                         height = new { type = "NUMBER", description = "Rectangle profile height." },
                                         radius = new { type = "NUMBER", description = "Circle profile radius." },
+                                        diameter = new { type = "NUMBER", description = "Circle profile diameter alias." },
+                                        points = new { type = "ARRAY", items = new { type = "ARRAY", items = new { type = "NUMBER" } }, description = "Point-list sketch alias normalized into move/line segments." },
+                                        polyline = new { type = "ARRAY", items = new { type = "ARRAY", items = new { type = "NUMBER" } }, description = "Polyline sketch alias normalized into move/line segments." },
+                                        vertices = new { type = "ARRAY", items = new { type = "ARRAY", items = new { type = "NUMBER" } }, description = "Vertex-list sketch alias normalized into move/line segments." },
                                         segments = new
                                         {
                                             type = "ARRAY",
