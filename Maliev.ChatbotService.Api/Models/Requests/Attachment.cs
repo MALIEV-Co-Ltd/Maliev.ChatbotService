@@ -8,6 +8,11 @@ namespace Maliev.ChatbotService.Api.Models.Requests;
 public class Attachment
 {
     /// <summary>
+    /// Maximum data URL length accepted for inline image/PDF payloads.
+    /// </summary>
+    public const int MaxUrlCharacters = 30_000_000;
+
+    /// <summary>
     /// Gets or sets the attachment type (image, document, etc.).
     /// </summary>
     [Required]
@@ -18,7 +23,7 @@ public class Attachment
     /// Gets or sets the file URL or base64-encoded data.
     /// </summary>
     [Required]
-    [StringLength(10000, MinimumLength = 1)]
+    [StringLength(MaxUrlCharacters, MinimumLength = 1)]
     public string Url { get; set; } = string.Empty;
 
     /// <summary>

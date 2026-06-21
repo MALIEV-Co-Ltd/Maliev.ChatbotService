@@ -65,4 +65,28 @@ public class QuoteEngineChannelContractTests
         Assert.True(valid, string.Join("; ", results.Select(result => result.ErrorMessage)));
         Assert.Equal("gemini-2.5-flash-lite", request.ModelName);
     }
+
+    [Fact]
+    public void Attachment_accepts_realistic_quote_engine_inline_image_payload()
+    {
+        var attachment = new Attachment
+        {
+            Type = "image",
+            Url = $"data:image/png;base64,{new string('A', 64 * 1024)}",
+            MimeType = "image/png",
+            Filename = "hand-sketch.png",
+            SizeBytes = 48 * 1024
+        };
+
+        var results = new List<ValidationResult>();
+        var valid = Validator.TryValidateObject(
+            attachment,
+            new ValidationContext(attachment),
+            results,
+            validateAllProperties: true);
+
+        Assert.True(valid, string.Join("; ", results.Select(result => result.ErrorMessage)));
+        Assert.True(attachment.Url.Length > 10_000);
+        Assert.True(attachment.Url.Length < Attachment.MaxUrlCharacters);
+    }
 }
