@@ -115,6 +115,79 @@ public sealed class GeminiClientFunctionCallSerializationTests
         Assert.Equal("plain string", responseObj.GetProperty("result").GetString());
     }
 
+    [Fact]
+    public async Task SendMessageAsync_ExternalHttpsAttachment_SerializesAsTextReferenceNotFileData()
+    {
+        var handler = new CapturingHandler("""{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}""");
+        var client = CreateClient(handler);
+
+        var request = new GeminiRequest
+        {
+            Messages =
+            [
+                new GeminiMessage
+                {
+                    Role = "user",
+                    Content = "Review this sketch.",
+                    Attachments =
+                    [
+                        new GeminiAttachment
+                        {
+                            MimeType = "image/png",
+                            Data = "https://signed.example.test/sketch.png?token=abc"
+                        }
+                    ]
+                }
+            ]
+        };
+
+        await client.SendMessageAsync(request);
+
+        using var doc = JsonDocument.Parse(handler.RequestBody!);
+        var parts = doc.RootElement.GetProperty("contents")[0].GetProperty("parts").EnumerateArray().ToArray();
+        Assert.Equal("Review this sketch.", parts[0].GetProperty("text").GetString());
+        Assert.True(parts[1].TryGetProperty("text", out var referenceText));
+        Assert.Contains("https://signed.example.test/sketch.png?token=abc", referenceText.GetString(), StringComparison.Ordinal);
+        Assert.False(parts[1].TryGetProperty("fileData", out _));
+        Assert.DoesNotContain("fileData", handler.RequestBody);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_GcsAttachment_SerializesAsGeminiFileData()
+    {
+        var handler = new CapturingHandler("""{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}""");
+        var client = CreateClient(handler);
+
+        var request = new GeminiRequest
+        {
+            Messages =
+            [
+                new GeminiMessage
+                {
+                    Role = "user",
+                    Content = "Review this drawing.",
+                    Attachments =
+                    [
+                        new GeminiAttachment
+                        {
+                            MimeType = "application/pdf",
+                            Data = "gs://maliev-bucket/drawing.pdf"
+                        }
+                    ]
+                }
+            ]
+        };
+
+        await client.SendMessageAsync(request);
+
+        using var doc = JsonDocument.Parse(handler.RequestBody!);
+        var fileData = doc.RootElement.GetProperty("contents")[0]
+            .GetProperty("parts")[1]
+            .GetProperty("fileData");
+        Assert.Equal("gs://maliev-bucket/drawing.pdf", fileData.GetProperty("fileUri").GetString());
+        Assert.Equal("application/pdf", fileData.GetProperty("mimeType").GetString());
+    }
+
     private static GeminiClient CreateClient(HttpMessageHandler handler)
     {
         var configuration = new ConfigurationBuilder()

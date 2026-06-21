@@ -379,8 +379,7 @@ public class GeminiClient : IGeminiClient
 
     private static object GetAttachmentPart(GeminiAttachment attachment)
     {
-        if (attachment.Data.StartsWith("http", StringComparison.OrdinalIgnoreCase) ||
-            attachment.Data.StartsWith("gs://", StringComparison.OrdinalIgnoreCase))
+        if (IsGeminiFileUri(attachment.Data))
         {
             return new
             {
@@ -389,6 +388,15 @@ public class GeminiClient : IGeminiClient
                     fileUri = attachment.Data,
                     mimeType = attachment.MimeType
                 }
+            };
+        }
+
+        if (attachment.Data.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            attachment.Data.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            return new
+            {
+                text = $"Attached file reference ({attachment.MimeType}): {attachment.Data}"
             };
         }
         else
@@ -407,6 +415,12 @@ public class GeminiClient : IGeminiClient
                 }
             };
         }
+    }
+
+    private static bool IsGeminiFileUri(string data)
+    {
+        return data.StartsWith("gs://", StringComparison.OrdinalIgnoreCase) ||
+            data.StartsWith("https://generativelanguage.googleapis.com/", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
