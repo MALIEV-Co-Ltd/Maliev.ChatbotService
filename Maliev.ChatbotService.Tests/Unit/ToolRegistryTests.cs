@@ -157,6 +157,10 @@ public class ToolRegistryTests
             quoteDeclarations[0].FunctionDeclarations!,
             declaration => declaration.Name == "quote_generate_3d_preview");
 
+        Assert.Contains("only when the part shape and dimensions are explicit", tool.Description, StringComparison.Ordinal);
+        Assert.Contains("Do not use this tool for an unlabeled sketch or photo with no scale reference", tool.Description, StringComparison.Ordinal);
+        Assert.Contains("ask for one focused dimension confirmation first", tool.Description, StringComparison.Ordinal);
+
         var json = JsonSerializer.Serialize(tool.Parameters);
         using var document = JsonDocument.Parse(json);
         var commandProperties = document.RootElement

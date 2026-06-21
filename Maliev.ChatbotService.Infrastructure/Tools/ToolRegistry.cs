@@ -290,7 +290,7 @@ public static class ToolRegistry
                 },
                 required = new[] { "files" }
             }),
-            Fn("quote_generate_3d_preview", "Generate an interactive 3D preview of a part you inferred from the customer's description, photo, sketch, or drawing so they can verify the shape and dimensions before providing a CAD file. Never ask for a CAD file as your first or only response — if you can infer shape and size, build the preview instead. Construct the part as an ordered cad_commands sequence: create primitives, position with translate, combine with cut/fuse, then apply fillet edge ops last.", new
+            Fn("quote_generate_3d_preview", "Generate an interactive 3D preview only when the part shape and dimensions are explicit, readable from an attached drawing/PDF, CAD-derived, or confirmed by the customer. Do not use this tool for an unlabeled sketch or photo with no scale reference; ask for one focused dimension confirmation first. Never ask for a CAD file as your first or only response. Construct the part as an ordered cad_commands sequence: create primitives, position with translate, combine with cut/fuse, then apply fillet edge ops last.", new
             {
                 type = "OBJECT",
                 properties = new
