@@ -221,6 +221,12 @@ public class MessagesController : ControllerBase
                 return null;
             }
 
+            if (!callbackUri.IsAbsoluteUri)
+            {
+                _logger.LogWarning("Rejected non-absolute thinking-step callback URL for session {SessionId}", request.SessionId);
+                return null;
+            }
+
             var client = _httpClientFactory.CreateClient("ThinkingCallback");
             thinkingCallback = async step =>
             {
@@ -304,23 +310,41 @@ public class MessagesController : ControllerBase
     {
         callbackUri = null!;
 
-        if (Uri.TryCreate(callbackUrl, UriKind.Relative, out var relativeUri))
+        if (Uri.TryCreate(callbackUrl, UriKind.Absolute, out var absoluteUri))
         {
-            if (!callbackUrl.StartsWith("/", StringComparison.Ordinal) ||
-                callbackUrl.StartsWith("//", StringComparison.Ordinal))
+            if (!IsSafeAbsoluteCallbackUri(absoluteUri))
             {
                 return false;
             }
 
-            callbackUri = new Uri(new Uri($"{Request.Scheme}://{Request.Host}"), relativeUri);
+            callbackUri = absoluteUri;
             return true;
         }
 
-        if (!Uri.TryCreate(callbackUrl, UriKind.Absolute, out var absoluteUri))
+        if (Uri.TryCreate(callbackUrl, UriKind.Relative, out var relativeUri))
         {
-            return false;
+            if (!callbackUrl.StartsWith("/", StringComparison.Ordinal) ||
+                callbackUrl.StartsWith("//", StringComparison.Ordinal) ||
+                !Request.Host.HasValue)
+            {
+                return false;
+            }
+
+            var resolvedUri = new Uri(new Uri($"{Request.Scheme}://{Request.Host}"), relativeUri);
+            if (!resolvedUri.IsAbsoluteUri || !IsSafeAbsoluteCallbackUri(resolvedUri))
+            {
+                return false;
+            }
+
+            callbackUri = resolvedUri;
+            return true;
         }
 
+        return false;
+    }
+
+    private bool IsSafeAbsoluteCallbackUri(Uri absoluteUri)
+    {
         if (!string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) &&
             !IsNonProductionLoopbackCallback(absoluteUri))
         {

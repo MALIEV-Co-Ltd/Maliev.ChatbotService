@@ -31,6 +31,35 @@ public sealed class ModelProviderConfigurationTests
         Assert.Contains("\"BaseAddress\"", appsettings, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void MessagesController_PostsOnlyAbsoluteThinkingCallbackUris()
+    {
+        var controller = File.ReadAllText(Path.Combine(
+            GetRepositoryRoot(),
+            "Maliev.ChatbotService.Api",
+            "Controllers",
+            "V1",
+            "MessagesController.cs"));
+
+        var validationBlock = ExtractSourceBlock(
+            controller,
+            "private bool TryBuildSafeCallbackUri",
+            "private bool IsAllowedCallbackOrigin");
+        var postBlock = ExtractSourceBlock(
+            controller,
+            "if (!string.IsNullOrEmpty(request.CallbackUrl))",
+            "command.ThinkingStepCallback = thinkingCallback;");
+
+        Assert.True(
+            validationBlock.IndexOf("UriKind.Absolute", StringComparison.Ordinal) <
+            validationBlock.IndexOf("UriKind.Relative", StringComparison.Ordinal),
+            "Absolute callback URLs must be validated before relative paths.");
+        Assert.Contains("callbackUri = absoluteUri;", validationBlock, StringComparison.Ordinal);
+        Assert.Contains("callbackUri = resolvedUri;", validationBlock, StringComparison.Ordinal);
+        Assert.Contains("!callbackUri.IsAbsoluteUri", postBlock, StringComparison.Ordinal);
+        Assert.Contains("PostAsJsonAsync(callbackUri", postBlock, StringComparison.Ordinal);
+    }
+
     private static string GetRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
@@ -40,5 +69,16 @@ public sealed class ModelProviderConfigurationTests
         }
 
         return directory?.FullName ?? throw new InvalidOperationException("Repository root was not found.");
+    }
+
+    private static string ExtractSourceBlock(string source, string startMarker, string endMarker)
+    {
+        var start = source.IndexOf(startMarker, StringComparison.Ordinal);
+        Assert.True(start >= 0, $"Could not find source marker: {startMarker}");
+
+        var end = source.IndexOf(endMarker, start, StringComparison.Ordinal);
+        Assert.True(end > start, $"Could not find source marker: {endMarker}");
+
+        return source[start..end];
     }
 }
