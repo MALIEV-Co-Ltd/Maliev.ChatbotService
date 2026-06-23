@@ -256,6 +256,54 @@ public class AgentChatHandlerTests
     }
 
     /// <summary>
+    /// Verifies that streamed model reasoning is forwarded as thought deltas from the agent loop, and
+    /// that the per-iteration request preserves IncludeThoughts so the provider actually emits thoughts.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_WithThoughtDeltaCallback_StreamsModelReasoning()
+    {
+        var initialRequest = new GeminiRequest
+        {
+            IncludeThoughts = true,
+            Messages = new List<GeminiMessage> { new GeminiMessage { Role = "user", Content = "Quote this part" } }
+        };
+        var thoughts = new List<string>();
+        GeminiRequest? capturedRequest = null;
+
+        _geminiClientMock.Setup(x => x.StreamMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<GeminiRequest, CancellationToken>((req, _) => capturedRequest = req)
+            .Returns(CreateStream([
+                new GeminiStreamEvent { Type = "started" },
+                new GeminiStreamEvent { Type = "thought", Thought = "The customer wants " },
+                new GeminiStreamEvent { Type = "thought", Thought = "a price for FDM." },
+                new GeminiStreamEvent { Type = "delta", Delta = "Sure." },
+                new GeminiStreamEvent
+                {
+                    Type = "final",
+                    Response = new GeminiResponse
+                    {
+                        Success = true,
+                        Content = "Sure."
+                    }
+                }
+            ]));
+
+        var result = await _handler.ExecuteAsync(
+            initialRequest,
+            onTextDelta: _ => Task.CompletedTask,
+            onThoughtDelta: thought =>
+            {
+                thoughts.Add(thought);
+                return Task.CompletedTask;
+            });
+
+        Assert.True(result.Success);
+        Assert.Equal(["The customer wants ", "a price for FDM."], thoughts);
+        Assert.NotNull(capturedRequest);
+        Assert.True(capturedRequest!.IncludeThoughts);
+    }
+
+    /// <summary>
     /// Verifies that provider fallback responses remain fallback results after the agent loop.
     /// </summary>
     [Fact]

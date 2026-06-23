@@ -38,6 +38,7 @@ public class AgentChatHandler
     /// <param name="userToken">The Bearer token to forward to downstream tool calls, or null if unavailable.</param>
     /// <param name="quoteAgentContextToken">Signed QuoteEngine agent context token for QuoteEngine tool calls.</param>
     /// <param name="onTextDelta">Callback for generated assistant text deltas.</param>
+    /// <param name="onThoughtDelta">Callback for streamed model reasoning (thought) deltas.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The final response with accumulated thinking steps.</returns>
     public async Task<AgentChatResult> ExecuteAsync(
@@ -46,6 +47,7 @@ public class AgentChatHandler
         string? userToken = null,
         string? quoteAgentContextToken = null,
         Func<string, Task>? onTextDelta = null,
+        Func<string, Task>? onThoughtDelta = null,
         CancellationToken cancellationToken = default)
     {
         var thinkingSteps = new List<ThinkingStep>();
@@ -71,10 +73,11 @@ public class AgentChatHandler
                 Messages = messages,
                 TimeoutSeconds = 30,
                 Tools = request.Tools,
-                ToolConfig = request.ToolConfig
+                ToolConfig = request.ToolConfig,
+                IncludeThoughts = request.IncludeThoughts
             };
 
-            var response = await SendGeminiMaybeStreamingAsync(iterationRequest, onTextDelta, null, cancellationToken);
+            var response = await SendGeminiMaybeStreamingAsync(iterationRequest, onTextDelta, onThoughtDelta, cancellationToken);
 
             if (response.TokenUsage is { } usage)
             {
@@ -248,7 +251,7 @@ public class AgentChatHandler
         Func<string, Task>? onThoughtDelta,
         CancellationToken cancellationToken)
     {
-        if (onTextDelta == null)
+        if (onTextDelta == null && onThoughtDelta == null)
         {
             return await _geminiClient.SendMessageAsync(request, cancellationToken);
         }
@@ -258,7 +261,8 @@ public class AgentChatHandler
         {
             await foreach (var streamEvent in _geminiClient.StreamMessageAsync(request, cancellationToken))
             {
-                if (streamEvent.Type.Equals("delta", StringComparison.OrdinalIgnoreCase) &&
+                if (onTextDelta != null &&
+                    streamEvent.Type.Equals("delta", StringComparison.OrdinalIgnoreCase) &&
                     !string.IsNullOrEmpty(streamEvent.Delta))
                 {
                     await onTextDelta(streamEvent.Delta);

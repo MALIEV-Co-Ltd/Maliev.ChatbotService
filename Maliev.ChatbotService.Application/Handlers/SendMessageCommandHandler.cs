@@ -499,6 +499,7 @@ public class SendMessageCommandHandler
                         command.UserToken,
                         command.QuoteAgentContextToken,
                         command.TextDeltaCallback,
+                        command.ThoughtDeltaCallback,
                         cancellationToken);
 
                     thinkingSteps = agentResult.ThinkingSteps;
