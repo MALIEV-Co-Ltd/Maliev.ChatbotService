@@ -294,8 +294,12 @@ public class GeminiClient : IGeminiClient
     /// </summary>
     private static List<object> BuildContents(GeminiRequest request)
     {
+        var messages = request.Messages.Count > 0
+            ? request.Messages
+            : BuildPromptMessages(request.Prompt);
+
         var contentsParts = new List<object>();
-        foreach (var message in request.Messages)
+        foreach (var message in messages)
         {
             contentsParts.Add(BuildContentEntry(message));
         }
@@ -303,7 +307,7 @@ public class GeminiClient : IGeminiClient
         // Legacy: merge top-level request attachments into the last plain-text user message.
         if (request.Attachments is { Count: > 0 } && contentsParts.Count > 0)
         {
-            var lastMessage = request.Messages[^1];
+            var lastMessage = messages[^1];
             if (lastMessage.Role != "assistant" &&
                 lastMessage.FunctionCalls is null &&
                 lastMessage.FunctionResponses is null)
@@ -321,6 +325,11 @@ public class GeminiClient : IGeminiClient
 
         return contentsParts;
     }
+
+    private static List<GeminiMessage> BuildPromptMessages(string? prompt) =>
+        string.IsNullOrWhiteSpace(prompt)
+            ? new List<GeminiMessage>()
+            : new List<GeminiMessage> { new() { Role = "user", Content = prompt } };
 
     private static object BuildContentEntry(GeminiMessage message)
     {

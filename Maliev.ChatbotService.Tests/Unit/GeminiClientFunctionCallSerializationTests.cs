@@ -19,6 +19,24 @@ namespace Maliev.ChatbotService.Tests.Unit;
 public sealed class GeminiClientFunctionCallSerializationTests
 {
     [Fact]
+    public async Task SendMessageAsync_PromptOnlyRequest_SerializesPromptAsUserContent()
+    {
+        var handler = new CapturingHandler("""{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}""");
+        var client = CreateClient(handler);
+
+        await client.SendMessageAsync(new GeminiRequest
+        {
+            SystemInstruction = "sys",
+            Prompt = "What is stainless steel 304?"
+        });
+
+        using var doc = JsonDocument.Parse(handler.RequestBody!);
+        var content = doc.RootElement.GetProperty("contents")[0];
+        Assert.Equal("user", content.GetProperty("role").GetString());
+        Assert.Equal("What is stainless steel 304?", content.GetProperty("parts")[0].GetProperty("text").GetString());
+    }
+
+    [Fact]
     public async Task SendMessageAsync_ToolTurns_SerializeAsNativeFunctionCallAndFunctionResponseParts()
     {
         var handler = new CapturingHandler(

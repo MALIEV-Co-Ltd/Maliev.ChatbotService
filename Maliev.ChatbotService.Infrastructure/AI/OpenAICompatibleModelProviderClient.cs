@@ -215,7 +215,11 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
             });
         }
 
-        foreach (var message in request.Messages)
+        var requestMessages = request.Messages.Count > 0
+            ? request.Messages
+            : BuildPromptMessages(request.Prompt);
+
+        foreach (var message in requestMessages)
         {
             // Model turn that issued tool calls -> assistant message with tool_calls.
             if (message.FunctionCalls is { Count: > 0 })
@@ -263,7 +267,7 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
 
         if (request.Attachments is { Count: > 0 } && messages.Count > 0)
         {
-            var lastMessage = request.Messages.LastOrDefault();
+            var lastMessage = requestMessages.LastOrDefault();
             if (lastMessage is not null &&
                 lastMessage.Role != "assistant" &&
                 lastMessage.FunctionCalls is null &&
@@ -340,6 +344,11 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
 
         return payload;
     }
+
+    private static List<GeminiMessage> BuildPromptMessages(string? prompt) =>
+        string.IsNullOrWhiteSpace(prompt)
+            ? new List<GeminiMessage>()
+            : new List<GeminiMessage> { new() { Role = "user", Content = prompt } };
 
     private static object BuildMessageContent(GeminiMessage message)
     {

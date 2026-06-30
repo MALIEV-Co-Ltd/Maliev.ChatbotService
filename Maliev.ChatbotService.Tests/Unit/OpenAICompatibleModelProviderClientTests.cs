@@ -11,6 +11,36 @@ namespace Maliev.ChatbotService.Tests.Unit;
 public sealed class OpenAICompatibleModelProviderClientTests
 {
     [Fact]
+    public async Task SendMessageAsync_PromptOnlyRequest_SerializesPromptAsUserMessage()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "choices": [
+                {
+                  "message": {
+                    "content": "Stainless steel 304 is an austenitic stainless steel."
+                  }
+                }
+              ]
+            }
+            """, "application/json");
+        var client = CreateClient(handler);
+
+        var response = await client.SendMessageAsync(new GeminiRequest
+        {
+            SystemInstruction = "You are a manufacturing assistant.",
+            Prompt = "What is stainless steel 304?"
+        });
+
+        Assert.True(response.Success);
+        using var payload = JsonDocument.Parse(handler.RequestBody);
+        var messages = payload.RootElement.GetProperty("messages").EnumerateArray().ToArray();
+        Assert.Equal("system", messages[0].GetProperty("role").GetString());
+        Assert.Equal("user", messages[1].GetProperty("role").GetString());
+        Assert.Equal("What is stainless steel 304?", messages[1].GetProperty("content").GetString());
+    }
+
+    [Fact]
     public async Task SendMessageAsync_WithImageAndTools_UsesOpenAiCompatiblePayloadAndParsesToolCalls()
     {
         var handler = new CapturingHandler("""
