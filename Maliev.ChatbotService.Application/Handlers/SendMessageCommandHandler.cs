@@ -45,6 +45,11 @@ public class SendMessageCommandHandler
     private const int SessionLockSeconds = 330;
     private const int ChatMaxOutputTokens = 2048;
     private const int ChatMediaMaxPromptTokens = 30000;
+    private static readonly HashSet<string> AllowedChatModelOverrides = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite"
+    };
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SendMessageCommandHandler"/> class.
@@ -487,7 +492,7 @@ public class SendMessageCommandHandler
             var allowModelThoughts = IsAgentToolChannel(session.Channel) && string.IsNullOrEmpty(command.ResponseMimeType);
             var geminiRequest = new GeminiRequest
             {
-                ModelName = command.ModelName,
+                ModelName = ResolveChatModelName(command.ModelName),
                 SystemInstruction = systemInstructionText,
                 Messages = geminiMessages,
                 TimeoutSeconds = enableGeminiSearch ? 30 : 10,
@@ -912,6 +917,17 @@ public class SendMessageCommandHandler
         return attachments.Any(attachment => attachment.ContentType is ContentType.Image or ContentType.PDF or ContentType.Video)
             ? "MEDIA_RESOLUTION_MEDIUM"
             : null;
+    }
+
+    private static string? ResolveChatModelName(string? requestedModelName)
+    {
+        if (string.IsNullOrWhiteSpace(requestedModelName))
+        {
+            return null;
+        }
+
+        var normalizedModelName = requestedModelName.Trim();
+        return AllowedChatModelOverrides.Contains(normalizedModelName) ? normalizedModelName : null;
     }
 
     private static object? BuildTokenUsageMetadata(GeminiTokenUsage? tokenUsage)

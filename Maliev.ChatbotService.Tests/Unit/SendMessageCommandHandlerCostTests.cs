@@ -35,6 +35,24 @@ public sealed class SendMessageCommandHandlerCostTests
     }
 
     [Fact]
+    public async Task HandleAsync_UnsupportedModelOverride_UsesConfiguredDefaultModel()
+    {
+        var result = await SendWebsiteMessageAsync(modelName: "gemini-2.5-pro");
+
+        Assert.NotNull(result.CapturedRequest);
+        Assert.Null(result.CapturedRequest!.ModelName);
+    }
+
+    [Fact]
+    public async Task HandleAsync_FlashLiteModelOverride_PreservesAllowedUtilityModel()
+    {
+        var result = await SendWebsiteMessageAsync(modelName: "gemini-2.5-flash-lite");
+
+        Assert.NotNull(result.CapturedRequest);
+        Assert.Equal("gemini-2.5-flash-lite", result.CapturedRequest!.ModelName);
+    }
+
+    [Fact]
     public async Task HandleAsync_WebsiteCustomerMessage_DoesNotPreflightTextOnlyPromptTokens()
     {
         var result = await SendWebsiteMessageAsync();
@@ -180,7 +198,8 @@ public sealed class SendMessageCommandHandlerCostTests
         Channel channel = Channel.Website,
         IEnumerable<ConversationSummary>? summaries = null,
         IntentClassificationResult? classification = null,
-        IReadOnlyList<KnowledgeBase>? knowledgeFacts = null)
+        IReadOnlyList<KnowledgeBase>? knowledgeFacts = null,
+        string? modelName = null)
     {
         var sessionId = Guid.NewGuid();
         var userProfileId = Guid.NewGuid();
@@ -353,6 +372,7 @@ public sealed class SendMessageCommandHandlerCostTests
             Content = attachments is { Count: > 0 }
                 ? "What can you tell from this attachment?"
                 : "What materials can you print?",
+            ModelName = modelName,
             Language = "en",
             Attachments = attachments
         });
