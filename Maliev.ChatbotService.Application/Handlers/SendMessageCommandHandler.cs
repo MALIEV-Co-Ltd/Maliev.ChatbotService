@@ -389,6 +389,7 @@ public class SendMessageCommandHandler
                 topicKeys,
                 coreInstructionTopicKey,
                 cancellationToken);
+            var dynamicContextSections = new List<string>();
 
             // 3. Fetch Knowledge Base Facts
             var injectedKnowledgeIds = new List<Guid>();
@@ -407,19 +408,22 @@ public class SendMessageCommandHandler
 
                 if (facts.Any())
                 {
-                    systemInstructionText += "\n\n## RELEVANT FACTS AND CONTEXT\n";
+                    var factLines = new List<string> { "## RELEVANT FACTS AND CONTEXT" };
                     foreach (var fact in facts)
                     {
-                        systemInstructionText += $"- {fact.Content}\n";
+                        factLines.Add($"- {fact.Content}");
                         injectedKnowledgeIds.Add(fact.Id);
                     }
+
+                    dynamicContextSections.Add(string.Join("\n", factLines));
                 }
             }
 
-            // Add summaries context to system instruction if available
+            // Keep volatile per-user context out of systemInstruction so Gemini can reuse the stable
+            // channel prompt prefix for implicit caching.
             if (!string.IsNullOrEmpty(summariesContext))
             {
-                systemInstructionText += $"\n\nPrevious conversation context:\n{summariesContext}";
+                dynamicContextSections.Add($"Previous conversation context:\n{summariesContext}");
             }
 
             // Get system instruction for business constraint validation (Core only for now)
@@ -457,6 +461,12 @@ public class SendMessageCommandHandler
                     };
                 })
                 .ToList();
+
+            var dynamicContextMessage = BuildDynamicContextMessage(dynamicContextSections);
+            if (dynamicContextMessage is not null)
+            {
+                geminiMessages.Insert(0, dynamicContextMessage);
+            }
 
             // Attach files to the current user message. Persisted refs cover prior turns; the current
             // turn's full attachments (including inline data) are re-attached from the command.
@@ -846,6 +856,25 @@ public class SendMessageCommandHandler
         }
 
         return contextParts.Count > 0 ? string.Join("\n", contextParts) : string.Empty;
+    }
+
+    private static GeminiMessage? BuildDynamicContextMessage(IEnumerable<string> contextSections)
+    {
+        var sections = contextSections
+            .Where(section => !string.IsNullOrWhiteSpace(section))
+            .ToList();
+
+        if (sections.Count == 0)
+        {
+            return null;
+        }
+
+        return new GeminiMessage
+        {
+            Role = "user",
+            Content = "Context for this response. Use this as background; it is not a new customer request.\n\n" +
+                string.Join("\n\n", sections)
+        };
     }
 
     private static string GetCoreInstructionTopicKey(Channel channel)

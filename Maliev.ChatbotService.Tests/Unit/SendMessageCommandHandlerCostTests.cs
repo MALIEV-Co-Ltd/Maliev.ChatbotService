@@ -122,10 +122,65 @@ public sealed class SendMessageCommandHandlerCostTests
         Assert.Equal(137, tokenUsage.GetProperty("totalTokens").GetInt32());
     }
 
+    [Fact]
+    public async Task HandleAsync_DynamicContext_DoesNotMutateSystemInstructionForGeminiCaching()
+    {
+        var result = await SendWebsiteMessageAsync(
+            summaries:
+            [
+                new ConversationSummary
+                {
+                    StructuredSummary = """
+                        {
+                          "topics": ["nylon PA12 quote"],
+                          "decisions": ["Use white PA12 for the bracket"],
+                          "preferences": ["Prefers metric dimensions"],
+                          "unresolvedQuestions": ["Confirm lead time"]
+                        }
+                        """
+                }
+            ]);
+
+        Assert.NotNull(result.CapturedRequest);
+        Assert.Equal("You are MALIEV's customer assistant.", result.CapturedRequest!.SystemInstruction);
+        Assert.Equal("user", result.CapturedRequest.Messages[0].Role);
+        Assert.Contains("Previous conversation context:", result.CapturedRequest.Messages[0].Content, StringComparison.Ordinal);
+        Assert.Contains("Topics discussed: nylon PA12 quote", result.CapturedRequest.Messages[0].Content, StringComparison.Ordinal);
+        Assert.Contains("Decisions: Use white PA12 for the bracket", result.CapturedRequest.Messages[0].Content, StringComparison.Ordinal);
+        Assert.Equal("What materials can you print?", result.CapturedRequest.Messages[^1].Content);
+    }
+
+    [Fact]
+    public async Task HandleAsync_IntranetKnowledgeContext_DoesNotMutateSystemInstructionForGeminiCaching()
+    {
+        var result = await SendWebsiteMessageAsync(
+            channel: Channel.Intranet,
+            classification: new IntentClassificationResult { Intent = "Inventory", Confidence = 0.95 },
+            knowledgeFacts:
+            [
+                new KnowledgeBase
+                {
+                    TopicKey = "Inventory",
+                    Content = "Use live inventory tools before promising material availability."
+                }
+            ]);
+
+        Assert.NotNull(result.CapturedRequest);
+        Assert.Equal("You are MALIEV's customer assistant.", result.CapturedRequest!.SystemInstruction);
+        Assert.DoesNotContain("RELEVANT FACTS", result.CapturedRequest.SystemInstruction, StringComparison.Ordinal);
+        Assert.Equal("user", result.CapturedRequest.Messages[0].Role);
+        Assert.Contains("RELEVANT FACTS AND CONTEXT", result.CapturedRequest.Messages[0].Content, StringComparison.Ordinal);
+        Assert.Contains("Use live inventory tools before promising material availability.", result.CapturedRequest.Messages[0].Content, StringComparison.Ordinal);
+        Assert.Equal("What materials can you print?", result.CapturedRequest.Messages[^1].Content);
+    }
+
     private static async Task<HandlerResult> SendWebsiteMessageAsync(
         List<AttachmentDto>? attachments = null,
         GeminiTokenUsage? tokenUsage = null,
-        Channel channel = Channel.Website)
+        Channel channel = Channel.Website,
+        IEnumerable<ConversationSummary>? summaries = null,
+        IntentClassificationResult? classification = null,
+        IReadOnlyList<KnowledgeBase>? knowledgeFacts = null)
     {
         var sessionId = Guid.NewGuid();
         var userProfileId = Guid.NewGuid();
@@ -180,10 +235,15 @@ public sealed class SendMessageCommandHandlerCostTests
             });
 
         var knowledgeBaseRepository = new Mock<IKnowledgeBaseRepository>();
+        knowledgeBaseRepository
+            .Setup(item => item.GetByTopicAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string topic, CancellationToken _) =>
+                knowledgeFacts?.Where(fact => fact.TopicKey == topic).ToList() ?? []);
+
         var summaryService = new Mock<IConversationSummaryService>();
         summaryService
             .Setup(item => item.GetRecentSummariesAsync(userProfileId, 2, It.IsAny<CancellationToken>()))
-            .ReturnsAsync([]);
+            .ReturnsAsync(summaries ?? []);
 
         var rateLimitService = new Mock<IRateLimitService>();
         rateLimitService
@@ -223,7 +283,7 @@ public sealed class SendMessageCommandHandlerCostTests
         var intentClassificationService = new Mock<IIntentClassificationService>();
         intentClassificationService
             .Setup(item => item.ClassifyIntentAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new IntentClassificationResult { Intent = "General", Confidence = 0.99 });
+            .ReturnsAsync(classification ?? new IntentClassificationResult { Intent = "General", Confidence = 0.99 });
 
         var languageDetectionService = new Mock<ILanguageDetectionService>();
         var responseFormatterService = new Mock<IResponseFormatterService>();
