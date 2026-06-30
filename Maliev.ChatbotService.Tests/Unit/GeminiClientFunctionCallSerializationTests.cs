@@ -231,7 +231,7 @@ public sealed class GeminiClientFunctionCallSerializationTests
     }
 
     [Fact]
-    public async Task SendMessageAsync_ServiceTier_SerializesAsTopLevelRequestField()
+    public async Task SendMessageAsync_ServiceTier_SerializesAsDocumentedRestRequestField()
     {
         var handler = new CapturingHandler("""{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}""");
         var client = CreateClient(handler);
@@ -244,10 +244,11 @@ public sealed class GeminiClientFunctionCallSerializationTests
         });
 
         using var doc = JsonDocument.Parse(handler.RequestBody!);
-        Assert.Equal("flex", doc.RootElement.GetProperty("serviceTier").GetString());
+        Assert.Equal("flex", doc.RootElement.GetProperty("service_tier").GetString());
+        Assert.False(doc.RootElement.TryGetProperty("serviceTier", out _));
         Assert.False(
             doc.RootElement.TryGetProperty("generationConfig", out var generationConfig) &&
-            generationConfig.TryGetProperty("serviceTier", out _));
+            generationConfig.TryGetProperty("service_tier", out _));
     }
 
     [Fact]

@@ -411,7 +411,7 @@ public class GeminiClient : IGeminiClient
 
         if (!string.IsNullOrWhiteSpace(request.ServiceTier))
         {
-            payload["serviceTier"] = request.ServiceTier;
+            payload["service_tier"] = request.ServiceTier;
         }
 
         var generationConfig = BuildGenerationConfig(request);
