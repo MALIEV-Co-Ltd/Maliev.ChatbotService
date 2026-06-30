@@ -35,6 +35,15 @@ public sealed class SendMessageCommandHandlerCostTests
     }
 
     [Fact]
+    public async Task HandleAsync_WebsiteCustomerMessage_DoesNotPreflightTextOnlyPromptTokens()
+    {
+        var result = await SendWebsiteMessageAsync();
+
+        Assert.NotNull(result.CapturedRequest);
+        Assert.Null(result.CapturedRequest!.MaxPromptTokens);
+    }
+
+    [Fact]
     public async Task HandleAsync_WebsiteCustomerMessage_SkipsUnusedIntentClassification()
     {
         var result = await SendWebsiteMessageAsync();
@@ -69,6 +78,23 @@ public sealed class SendMessageCommandHandlerCostTests
 
         Assert.NotNull(result.CapturedRequest);
         Assert.Equal("MEDIA_RESOLUTION_MEDIUM", result.CapturedRequest!.MediaResolution);
+    }
+
+    [Fact]
+    public async Task HandleAsync_WebsiteMediaAttachment_PreflightsPromptTokenCost()
+    {
+        var result = await SendWebsiteMessageAsync([
+            new AttachmentDto
+            {
+                ContentType = ContentType.PDF,
+                Data = "JVBERi0xLjQKJcTl8uXrp",
+                MimeType = "application/pdf",
+                SizeBytes = 1024
+            }
+        ]);
+
+        Assert.NotNull(result.CapturedRequest);
+        Assert.Equal(30000, result.CapturedRequest!.MaxPromptTokens);
     }
 
     [Fact]

@@ -44,6 +44,7 @@ public class SendMessageCommandHandler
     // each with a per-call timeout of 30s, so the worst case is ~300s; 330s adds a safety margin.
     private const int SessionLockSeconds = 330;
     private const int ChatMaxOutputTokens = 2048;
+    private const int ChatMediaMaxPromptTokens = 30000;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SendMessageCommandHandler"/> class.
@@ -483,6 +484,7 @@ public class SendMessageCommandHandler
                 ResponseMimeType = command.ResponseMimeType,
                 ResponseSchema = command.ResponseSchema,
                 MaxTokens = ChatMaxOutputTokens,
+                MaxPromptTokens = command.Attachments is { Count: > 0 } ? ChatMediaMaxPromptTokens : null,
                 EnableWebSearch = enableGeminiSearch,
                 IncludeThoughts = allowModelThoughts,
                 ThinkingBudget = allowModelThoughts ? null : 0,
