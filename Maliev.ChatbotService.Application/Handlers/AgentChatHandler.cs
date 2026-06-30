@@ -73,6 +73,7 @@ public class AgentChatHandler
                 Messages = messages,
                 TimeoutSeconds = 30,
                 MaxTokens = request.MaxTokens,
+                MaxPromptTokens = request.MaxPromptTokens,
                 Tools = request.Tools,
                 ToolConfig = request.ToolConfig,
                 IncludeThoughts = request.IncludeThoughts,

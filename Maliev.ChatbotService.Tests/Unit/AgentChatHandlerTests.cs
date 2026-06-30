@@ -242,6 +242,34 @@ public class AgentChatHandlerTests
     }
 
     /// <summary>
+    /// Verifies that prompt token caps from the caller are preserved through each agent loop request.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_MaxPromptTokens_PreservesPromptTokenCapForProviderCalls()
+    {
+        var initialRequest = new GeminiRequest
+        {
+            MaxPromptTokens = 30000,
+            Messages = new List<GeminiMessage> { new GeminiMessage { Role = "user", Content = "Quote this uploaded part" } }
+        };
+        GeminiRequest? capturedRequest = null;
+
+        _geminiClientMock.Setup(x => x.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<GeminiRequest, CancellationToken>((request, _) => capturedRequest = request)
+            .ReturnsAsync(new GeminiResponse
+            {
+                Success = true,
+                Content = "I can help quote that part."
+            });
+
+        var result = await _handler.ExecuteAsync(initialRequest);
+
+        Assert.True(result.Success);
+        Assert.NotNull(capturedRequest);
+        Assert.Equal(30000, capturedRequest!.MaxPromptTokens);
+    }
+
+    /// <summary>
     /// Verifies that streamed final assistant text is emitted as deltas from the agent loop.
     /// </summary>
     [Fact]
