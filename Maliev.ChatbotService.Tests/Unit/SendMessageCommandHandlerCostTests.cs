@@ -53,6 +53,56 @@ public sealed class SendMessageCommandHandlerCostTests
     }
 
     [Fact]
+    public async Task HandleAsync_SupportedStructuredJsonSchema_PreservesBoundedSchema()
+    {
+        var responseSchema = new
+        {
+            type = "object",
+            properties = new
+            {
+                clean_text = new { type = "string" }
+            },
+            required = new[] { "clean_text" }
+        };
+
+        var result = await SendWebsiteMessageAsync(
+            responseMimeType: "application/json",
+            responseSchema: responseSchema);
+
+        Assert.NotNull(result.CapturedRequest);
+        Assert.Equal("application/json", result.CapturedRequest!.ResponseMimeType);
+        Assert.Same(responseSchema, result.CapturedRequest.ResponseSchema);
+    }
+
+    [Fact]
+    public async Task HandleAsync_UnsupportedStructuredOutputMimeType_DoesNotForwardStructuredOutputConfig()
+    {
+        var result = await SendWebsiteMessageAsync(
+            responseMimeType: "text/plain",
+            responseSchema: new { type = "object" });
+
+        Assert.NotNull(result.CapturedRequest);
+        Assert.Null(result.CapturedRequest!.ResponseMimeType);
+        Assert.Null(result.CapturedRequest.ResponseSchema);
+    }
+
+    [Fact]
+    public async Task HandleAsync_OversizedStructuredOutputSchema_DoesNotForwardStructuredOutputConfig()
+    {
+        var result = await SendWebsiteMessageAsync(
+            responseMimeType: "application/json",
+            responseSchema: new
+            {
+                type = "object",
+                description = new string('x', 17_000)
+            });
+
+        Assert.NotNull(result.CapturedRequest);
+        Assert.Null(result.CapturedRequest!.ResponseMimeType);
+        Assert.Null(result.CapturedRequest.ResponseSchema);
+    }
+
+    [Fact]
     public async Task HandleAsync_WebsiteCustomerMessage_DoesNotPreflightTextOnlyPromptTokens()
     {
         var result = await SendWebsiteMessageAsync();
@@ -199,7 +249,9 @@ public sealed class SendMessageCommandHandlerCostTests
         IEnumerable<ConversationSummary>? summaries = null,
         IntentClassificationResult? classification = null,
         IReadOnlyList<KnowledgeBase>? knowledgeFacts = null,
-        string? modelName = null)
+        string? modelName = null,
+        string? responseMimeType = null,
+        object? responseSchema = null)
     {
         var sessionId = Guid.NewGuid();
         var userProfileId = Guid.NewGuid();
@@ -374,7 +426,9 @@ public sealed class SendMessageCommandHandlerCostTests
                 : "What materials can you print?",
             ModelName = modelName,
             Language = "en",
-            Attachments = attachments
+            Attachments = attachments,
+            ResponseMimeType = responseMimeType,
+            ResponseSchema = responseSchema
         });
 
         return new HandlerResult(capturedRequest, createdMessages, toolExecutor, intentClassificationService);

@@ -45,6 +45,8 @@ public class SendMessageCommandHandler
     private const int SessionLockSeconds = 330;
     private const int ChatMaxOutputTokens = 2048;
     private const int ChatMediaMaxPromptTokens = 30000;
+    private const int MaxStructuredOutputSchemaJsonCharacters = 16_384;
+    private const string JsonResponseMimeType = "application/json";
     private static readonly HashSet<string> AllowedChatModelOverrides = new(StringComparer.OrdinalIgnoreCase)
     {
         "gemini-2.5-flash",
@@ -489,15 +491,16 @@ public class SendMessageCommandHandler
                     .ToList();
             }
 
-            var allowModelThoughts = IsAgentToolChannel(session.Channel) && string.IsNullOrEmpty(command.ResponseMimeType);
+            var structuredOutput = ResolveStructuredOutput(command.ResponseMimeType, command.ResponseSchema);
+            var allowModelThoughts = IsAgentToolChannel(session.Channel) && string.IsNullOrEmpty(structuredOutput.ResponseMimeType);
             var geminiRequest = new GeminiRequest
             {
                 ModelName = ResolveChatModelName(command.ModelName),
                 SystemInstruction = systemInstructionText,
                 Messages = geminiMessages,
                 TimeoutSeconds = enableGeminiSearch ? 30 : 10,
-                ResponseMimeType = command.ResponseMimeType,
-                ResponseSchema = command.ResponseSchema,
+                ResponseMimeType = structuredOutput.ResponseMimeType,
+                ResponseSchema = structuredOutput.ResponseSchema,
                 MaxTokens = ChatMaxOutputTokens,
                 MaxPromptTokens = command.Attachments is { Count: > 0 } ? ChatMediaMaxPromptTokens : null,
                 EnableWebSearch = enableGeminiSearch,
@@ -928,6 +931,31 @@ public class SendMessageCommandHandler
 
         var normalizedModelName = requestedModelName.Trim();
         return AllowedChatModelOverrides.Contains(normalizedModelName) ? normalizedModelName : null;
+    }
+
+    private static (string? ResponseMimeType, object? ResponseSchema) ResolveStructuredOutput(
+        string? requestedResponseMimeType,
+        object? requestedResponseSchema)
+    {
+        if (string.IsNullOrWhiteSpace(requestedResponseMimeType))
+        {
+            return (null, null);
+        }
+
+        if (!string.Equals(requestedResponseMimeType.Trim(), JsonResponseMimeType, StringComparison.OrdinalIgnoreCase))
+        {
+            return (null, null);
+        }
+
+        if (requestedResponseSchema is null)
+        {
+            return (JsonResponseMimeType, null);
+        }
+
+        var schemaJson = JsonSerializer.Serialize(requestedResponseSchema);
+        return schemaJson.Length <= MaxStructuredOutputSchemaJsonCharacters
+            ? (JsonResponseMimeType, requestedResponseSchema)
+            : (null, null);
     }
 
     private static object? BuildTokenUsageMetadata(GeminiTokenUsage? tokenUsage)
