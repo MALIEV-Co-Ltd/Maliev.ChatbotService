@@ -383,6 +383,11 @@ public class GeminiClient : IGeminiClient
             ["contents"] = contentsParts.ToArray()
         };
 
+        if (!string.IsNullOrWhiteSpace(request.ServiceTier))
+        {
+            payload["serviceTier"] = request.ServiceTier;
+        }
+
         var generationConfig = BuildGenerationConfig(request);
         if (generationConfig.Count > 0)
         {

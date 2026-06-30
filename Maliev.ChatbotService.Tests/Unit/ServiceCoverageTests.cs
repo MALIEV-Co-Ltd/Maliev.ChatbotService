@@ -15,9 +15,9 @@ public class ExtractPreferencesServiceTests
     public async Task ExtractPreferencesAsync_WithEmptyMessage_ReturnsEmptyList()
     {
         var service = new ExtractPreferencesService(NullLogger<ExtractPreferencesService>.Instance);
-        
+
         var result = await service.ExtractPreferencesAsync("");
-        
+
         Assert.NotNull(result);
         Assert.Empty(result);
     }
@@ -26,9 +26,9 @@ public class ExtractPreferencesServiceTests
     public async Task ExtractPreferencesAsync_WithWhitespaceMessage_ReturnsEmptyList()
     {
         var service = new ExtractPreferencesService(NullLogger<ExtractPreferencesService>.Instance);
-        
+
         var result = await service.ExtractPreferencesAsync("   ");
-        
+
         Assert.NotNull(result);
         Assert.Empty(result);
     }
@@ -37,9 +37,9 @@ public class ExtractPreferencesServiceTests
     public async Task ExtractPreferencesAsync_WithMaterialPreference_ExtractsPreference()
     {
         var service = new ExtractPreferencesService(NullLogger<ExtractPreferencesService>.Instance);
-        
+
         var result = await service.ExtractPreferencesAsync("I prefer to use aluminum material");
-        
+
         Assert.NotEmpty(result);
         var materialPref = result.FirstOrDefault(r => r.Key == "MaterialPreference");
         Assert.NotNull(materialPref);
@@ -50,9 +50,9 @@ public class ExtractPreferencesServiceTests
     public async Task ExtractPreferencesAsync_WithMaterialLike_ExtractsPreference()
     {
         var service = new ExtractPreferencesService(NullLogger<ExtractPreferencesService>.Instance);
-        
+
         var result = await service.ExtractPreferencesAsync("I like using steel material");
-        
+
         Assert.NotEmpty(result);
         var materialPref = result.FirstOrDefault(r => r.Key == "MaterialPreference");
         Assert.NotNull(materialPref);
@@ -63,9 +63,9 @@ public class ExtractPreferencesServiceTests
     public async Task ExtractPreferencesAsync_WithMaterialAlways_ExtractsPreference()
     {
         var service = new ExtractPreferencesService(NullLogger<ExtractPreferencesService>.Instance);
-        
+
         var result = await service.ExtractPreferencesAsync("I always go with aluminum for my parts");
-        
+
         Assert.NotEmpty(result);
         var materialPref = result.FirstOrDefault(r => r.Key == "MaterialPreference");
         Assert.NotNull(materialPref);
@@ -76,9 +76,9 @@ public class ExtractPreferencesServiceTests
     public async Task ExtractPreferencesAsync_WithMaterialUsually_ExtractsPreference()
     {
         var service = new ExtractPreferencesService(NullLogger<ExtractPreferencesService>.Instance);
-        
+
         var result = await service.ExtractPreferencesAsync("I usually use plastic material for prototypes");
-        
+
         Assert.NotEmpty(result);
         var materialPref = result.FirstOrDefault(r => r.Key == "MaterialPreference");
         Assert.NotNull(materialPref);
@@ -89,9 +89,9 @@ public class ExtractPreferencesServiceTests
     public async Task ExtractPreferencesAsync_WithProcessPreference_ExtractsPreference()
     {
         var service = new ExtractPreferencesService(NullLogger<ExtractPreferencesService>.Instance);
-        
+
         var result = await service.ExtractPreferencesAsync("My preference is CNC machining process");
-        
+
         Assert.NotEmpty(result);
         var processPref = result.FirstOrDefault(r => r.Key == "ProcessPreference");
         Assert.NotNull(processPref);
@@ -102,9 +102,9 @@ public class ExtractPreferencesServiceTests
     public async Task ExtractPreferencesAsync_WithQualityStandard_ExtractsPreference()
     {
         var service = new ExtractPreferencesService(NullLogger<ExtractPreferencesService>.Instance);
-        
+
         var result = await service.ExtractPreferencesAsync("We require ISO 9001 certification");
-        
+
         Assert.NotEmpty(result);
         var qualityPref = result.FirstOrDefault(r => r.Key == "QualityStandard");
         Assert.NotNull(qualityPref);
@@ -115,9 +115,9 @@ public class ExtractPreferencesServiceTests
     public async Task ExtractPreferencesAsync_WithDeliveryPreference_ExtractsPreference()
     {
         var service = new ExtractPreferencesService(NullLogger<ExtractPreferencesService>.Instance);
-        
+
         var result = await service.ExtractPreferencesAsync("I need it delivered in 5 days");
-        
+
         Assert.NotNull(result);
     }
 
@@ -125,9 +125,9 @@ public class ExtractPreferencesServiceTests
     public async Task ExtractPreferencesAsync_WithQuantityPreference_ExtractsPreference()
     {
         var service = new ExtractPreferencesService(NullLogger<ExtractPreferencesService>.Instance);
-        
+
         var result = await service.ExtractPreferencesAsync("I prefer ordering 100 pieces");
-        
+
         Assert.NotNull(result);
     }
 
@@ -135,10 +135,10 @@ public class ExtractPreferencesServiceTests
     public async Task ExtractPreferencesAsync_WithMultiplePreferences_ExtractsAll()
     {
         var service = new ExtractPreferencesService(NullLogger<ExtractPreferencesService>.Instance);
-        
+
         var result = await service.ExtractPreferencesAsync(
             "I prefer to use aluminum and my preference is CNC process. We require ISO 9001 and need delivery in 3 days");
-        
+
         Assert.NotEmpty(result);
         Assert.True(result.Count >= 3);
     }
@@ -165,7 +165,7 @@ public class ConversationSummaryServiceTests
             mockGeminiClient.Object,
             mockLogger.Object);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => 
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.GenerateSummaryAsync(Guid.NewGuid()));
     }
 
@@ -174,7 +174,7 @@ public class ConversationSummaryServiceTests
     {
         var sessionId = Guid.NewGuid();
         var userId = Guid.NewGuid();
-        
+
         var mockSummaryRepo = new Mock<IConversationSummaryRepository>();
         var mockSessionRepo = new Mock<IConversationSessionRepository>();
         var mockMessageRepo = new Mock<IMessageRepository>();
@@ -195,7 +195,7 @@ public class ConversationSummaryServiceTests
 
         mockSessionRepo.Setup(r => r.GetByIdAsync(sessionId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(session);
-        
+
         mockMessageRepo.Setup(r => r.GetRecentBySessionIdAsync(sessionId, 1000, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Message>());
 
@@ -224,12 +224,13 @@ public class ConversationSummaryServiceTests
     {
         var sessionId = Guid.NewGuid();
         var userId = Guid.NewGuid();
-        
+
         var mockSummaryRepo = new Mock<IConversationSummaryRepository>();
         var mockSessionRepo = new Mock<IConversationSessionRepository>();
         var mockMessageRepo = new Mock<IMessageRepository>();
         var mockGeminiClient = new Mock<IGeminiClient>();
         var mockLogger = new Mock<ILogger<ConversationSummaryService>>();
+        GeminiRequest? capturedRequest = null;
 
         var session = new ConversationSession
         {
@@ -265,11 +266,12 @@ public class ConversationSummaryServiceTests
 
         mockSessionRepo.Setup(r => r.GetByIdAsync(sessionId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(session);
-        
+
         mockMessageRepo.Setup(r => r.GetRecentBySessionIdAsync(sessionId, 1000, It.IsAny<CancellationToken>()))
             .ReturnsAsync(messages);
 
         mockGeminiClient.Setup(c => c.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<GeminiRequest, CancellationToken>((request, _) => capturedRequest = request)
             .ReturnsAsync(new GeminiResponse
             {
                 Success = true,
@@ -293,6 +295,14 @@ public class ConversationSummaryServiceTests
 
         Assert.NotNull(result);
         Assert.Equal(sessionId, result.SessionId);
+        Assert.NotNull(capturedRequest);
+        Assert.Equal("gemini-2.5-flash-lite", capturedRequest!.ModelName);
+        Assert.Equal("flex", capturedRequest!.ServiceTier);
+        Assert.Equal("application/json", capturedRequest.ResponseMimeType);
+        Assert.NotNull(capturedRequest.ResponseSchema);
+        Assert.Equal(0, capturedRequest.ThinkingBudget);
+        Assert.Equal(0.1, capturedRequest.Temperature);
+        Assert.Equal(1024, capturedRequest.MaxTokens);
         mockSessionRepo.Verify(r => r.UpdateAsync(It.IsAny<ConversationSession>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -301,7 +311,7 @@ public class ConversationSummaryServiceTests
     {
         var sessionId = Guid.NewGuid();
         var userId = Guid.NewGuid();
-        
+
         var mockSummaryRepo = new Mock<IConversationSummaryRepository>();
         var mockSessionRepo = new Mock<IConversationSessionRepository>();
         var mockMessageRepo = new Mock<IMessageRepository>();
@@ -334,7 +344,7 @@ public class ConversationSummaryServiceTests
 
         mockSessionRepo.Setup(r => r.GetByIdAsync(sessionId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(session);
-        
+
         mockMessageRepo.Setup(r => r.GetRecentBySessionIdAsync(sessionId, 1000, It.IsAny<CancellationToken>()))
             .ReturnsAsync(messages);
 
@@ -365,7 +375,7 @@ public class ConversationSummaryServiceTests
     {
         var sessionId = Guid.NewGuid();
         var userId = Guid.NewGuid();
-        
+
         var mockSummaryRepo = new Mock<IConversationSummaryRepository>();
         var mockSessionRepo = new Mock<IConversationSessionRepository>();
         var mockMessageRepo = new Mock<IMessageRepository>();
@@ -398,7 +408,7 @@ public class ConversationSummaryServiceTests
 
         mockSessionRepo.Setup(r => r.GetByIdAsync(sessionId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(session);
-        
+
         mockMessageRepo.Setup(r => r.GetRecentBySessionIdAsync(sessionId, 1000, It.IsAny<CancellationToken>()))
             .ReturnsAsync(messages);
 
@@ -462,7 +472,7 @@ public class ResponseFormatterServiceTests
     {
         var service = new ResponseFormatterService();
         var (content, actions) = service.FormatResponse("test-content", Language.Thai);
-        
+
         Assert.Equal("test-content", content);
         Assert.NotEmpty(actions);
     }
@@ -472,7 +482,7 @@ public class ResponseFormatterServiceTests
     {
         var service = new ResponseFormatterService();
         var (content, actions) = service.FormatResponse("test-content", Language.English);
-        
+
         Assert.Equal("test-content", content);
         Assert.NotNull(actions);
     }
@@ -482,7 +492,7 @@ public class ResponseFormatterServiceTests
     {
         var service = new ResponseFormatterService();
         var msg = service.GetWelcomeMessage(Language.English);
-        
+
         Assert.Contains("Hello", msg);
     }
 
@@ -491,7 +501,7 @@ public class ResponseFormatterServiceTests
     {
         var service = new ResponseFormatterService();
         var msg = service.GetWelcomeMessage(Language.Thai);
-        
+
         Assert.NotNull(msg);
     }
 }
@@ -503,7 +513,7 @@ public class LanguageDetectionServiceTests
     {
         var service = new LanguageDetectionService();
         var result = service.DetectLanguage("สวัสดีครับ ยินดีต้อนรับ");
-        
+
         Assert.Equal(Language.Thai, result);
     }
 
@@ -512,7 +522,7 @@ public class LanguageDetectionServiceTests
     {
         var service = new LanguageDetectionService();
         var result = service.DetectLanguage("Hello world");
-        
+
         Assert.Equal(Language.English, result);
     }
 
@@ -521,7 +531,7 @@ public class LanguageDetectionServiceTests
     {
         var service = new LanguageDetectionService();
         var result = service.DetectLanguage("");
-        
+
         Assert.Equal(Language.English, result);
     }
 
@@ -530,7 +540,7 @@ public class LanguageDetectionServiceTests
     {
         var service = new LanguageDetectionService();
         var result = service.DetectLanguage("   ");
-        
+
         Assert.Equal(Language.English, result);
     }
 
@@ -539,7 +549,7 @@ public class LanguageDetectionServiceTests
     {
         var service = new LanguageDetectionService();
         var result = await service.DetectLanguageAsync("สวัสดีครับ");
-        
+
         Assert.Equal(Language.Thai, result);
     }
 
@@ -548,7 +558,7 @@ public class LanguageDetectionServiceTests
     {
         var service = new LanguageDetectionService();
         var result = await service.DetectLanguageAsync("Hello world");
-        
+
         Assert.Equal(Language.English, result);
     }
 }

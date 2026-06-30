@@ -11,6 +11,29 @@ namespace Maliev.ChatbotService.Infrastructure.Services;
 /// </summary>
 public class ConversationSummaryService : IConversationSummaryService
 {
+    private static readonly object SummaryResponseSchema = new
+    {
+        type = "object",
+        properties = new
+        {
+            topics = new { type = "array", items = new { type = "string" } },
+            decisions = new { type = "array", items = new { type = "string" } },
+            preferences = new { type = "array", items = new { type = "string" } },
+            entities = new { type = "array", items = new { type = "string" } },
+            intentCategories = new { type = "array", items = new { type = "string" } },
+            unresolvedQuestions = new { type = "array", items = new { type = "string" } }
+        },
+        required = new[]
+        {
+            "topics",
+            "decisions",
+            "preferences",
+            "entities",
+            "intentCategories",
+            "unresolvedQuestions"
+        }
+    };
+
     private readonly IConversationSummaryRepository _summaryRepository;
     private readonly IConversationSessionRepository _sessionRepository;
     private readonly IMessageRepository _messageRepository;
@@ -82,6 +105,7 @@ Respond with ONLY valid JSON. No markdown, no code blocks, just the JSON object.
 
         var geminiRequest = new GeminiRequest
         {
+            ModelName = "gemini-2.5-flash-lite",
             SystemInstruction = systemInstruction,
             Messages = new List<GeminiMessage>
             {
@@ -91,6 +115,12 @@ Respond with ONLY valid JSON. No markdown, no code blocks, just the JSON object.
                     Content = $"Summarize this conversation:\n\n{conversationText}"
                 }
             },
+            ResponseMimeType = "application/json",
+            ResponseSchema = SummaryResponseSchema,
+            Temperature = 0.1,
+            ThinkingBudget = 0,
+            MaxTokens = 1024,
+            ServiceTier = "flex",
             TimeoutSeconds = 30
         };
 

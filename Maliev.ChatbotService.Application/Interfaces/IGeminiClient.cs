@@ -74,6 +74,12 @@ public class GeminiRequest
     public string? MediaResolution { get; set; }
 
     /// <summary>
+    /// Gets or sets the Gemini service tier for this request.
+    /// Use "flex" only for latency-tolerant work; omit for standard interactive requests.
+    /// </summary>
+    public string? ServiceTier { get; set; }
+
+    /// <summary>
     /// Gets or sets the timeout for the request.
     /// </summary>
     public TimeSpan? Timeout { get; set; }

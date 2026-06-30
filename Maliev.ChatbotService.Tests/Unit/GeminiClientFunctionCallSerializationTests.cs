@@ -213,6 +213,26 @@ public sealed class GeminiClientFunctionCallSerializationTests
     }
 
     [Fact]
+    public async Task SendMessageAsync_ServiceTier_SerializesAsTopLevelRequestField()
+    {
+        var handler = new CapturingHandler("""{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}""");
+        var client = CreateClient(handler);
+
+        await client.SendMessageAsync(new GeminiRequest
+        {
+            SystemInstruction = "sys",
+            ServiceTier = "flex",
+            Messages = [new GeminiMessage { Role = "user", Content = "hi" }]
+        });
+
+        using var doc = JsonDocument.Parse(handler.RequestBody!);
+        Assert.Equal("flex", doc.RootElement.GetProperty("serviceTier").GetString());
+        Assert.False(
+            doc.RootElement.TryGetProperty("generationConfig", out var generationConfig) &&
+            generationConfig.TryGetProperty("serviceTier", out _));
+    }
+
+    [Fact]
     public async Task SendMessageAsync_UsageMetadata_MapsCostRelevantTokenBreakdown()
     {
         var handler = new CapturingHandler("""

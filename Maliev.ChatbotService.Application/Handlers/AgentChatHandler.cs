@@ -75,7 +75,9 @@ public class AgentChatHandler
                 Tools = request.Tools,
                 ToolConfig = request.ToolConfig,
                 IncludeThoughts = request.IncludeThoughts,
-                ThinkingBudget = request.ThinkingBudget
+                ThinkingBudget = request.ThinkingBudget,
+                MediaResolution = request.MediaResolution,
+                ServiceTier = request.ServiceTier
             };
 
             var response = await SendGeminiMaybeStreamingAsync(iterationRequest, onTextDelta, onThoughtDelta, cancellationToken);
