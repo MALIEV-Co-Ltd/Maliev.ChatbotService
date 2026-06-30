@@ -58,6 +58,12 @@ public class GeminiRequest
     public int? MaxTokens { get; set; }
 
     /// <summary>
+    /// Gets or sets the maximum allowed prompt token count before generation is skipped.
+    /// When set, Gemini requests preflight with countTokens to avoid expensive oversized calls.
+    /// </summary>
+    public int? MaxPromptTokens { get; set; }
+
+    /// <summary>
     /// Gets or sets the temperature for response generation (0.0-2.0).
     /// </summary>
     public double? Temperature { get; set; }

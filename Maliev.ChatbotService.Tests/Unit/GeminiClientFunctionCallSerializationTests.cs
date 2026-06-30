@@ -233,6 +233,32 @@ public sealed class GeminiClientFunctionCallSerializationTests
     }
 
     [Fact]
+    public async Task SendMessageAsync_MaxPromptTokensExceeded_CountsTokensAndSkipsGeneration()
+    {
+        var handler = new RoutingHandler(_ => """{"totalTokens":20001}""");
+        var client = CreateClient(handler);
+
+        var response = await client.SendMessageAsync(new GeminiRequest
+        {
+            SystemInstruction = "sys",
+            MaxPromptTokens = 20000,
+            Messages = [new GeminiMessage { Role = "user", Content = "large customer document" }]
+        });
+
+        Assert.False(response.Success);
+        Assert.True(response.IsFallback);
+        Assert.Equal("GeminiInputTokenLimit", response.ErrorType);
+        Assert.Single(handler.RequestUris);
+        Assert.Contains(":countTokens", handler.RequestUris[0], StringComparison.Ordinal);
+        Assert.DoesNotContain(handler.RequestUris, uri => uri.Contains(":generateContent", StringComparison.Ordinal));
+
+        using var body = JsonDocument.Parse(handler.RequestBodies[0]);
+        var generateContentRequest = body.RootElement.GetProperty("generateContentRequest");
+        Assert.Equal("sys", generateContentRequest.GetProperty("systemInstruction").GetProperty("parts")[0].GetProperty("text").GetString());
+        Assert.Equal("large customer document", generateContentRequest.GetProperty("contents")[0].GetProperty("parts")[0].GetProperty("text").GetString());
+    }
+
+    [Fact]
     public async Task SendMessageAsync_UsageMetadata_MapsCostRelevantTokenBreakdown()
     {
         var handler = new CapturingHandler("""
@@ -301,6 +327,26 @@ public sealed class GeminiClientFunctionCallSerializationTests
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
+            };
+        }
+    }
+
+    private sealed class RoutingHandler(Func<HttpRequestMessage, string> responseFactory) : HttpMessageHandler
+    {
+        public List<string> RequestUris { get; } = new();
+
+        public List<string> RequestBodies { get; } = new();
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            RequestUris.Add(request.RequestUri?.ToString() ?? string.Empty);
+            RequestBodies.Add(request.Content is null
+                ? string.Empty
+                : await request.Content.ReadAsStringAsync(cancellationToken));
+
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(responseFactory(request), Encoding.UTF8, "application/json")
             };
         }
     }

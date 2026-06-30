@@ -58,15 +58,21 @@ public class GeminiClient : IGeminiClient
         try
         {
             var modelName = request.ModelName ?? _modelName;
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(TimeSpan.FromSeconds(request.TimeoutSeconds));
+
+            var promptLimitResponse = await TryEnforcePromptTokenLimitAsync(request, modelName, cts.Token);
+            if (promptLimitResponse is not null)
+            {
+                return promptLimitResponse;
+            }
+
             var url = $"v1beta/models/{modelName}:generateContent";
             var json = BuildGeminiPayloadJson(request);
 
             using var messageRequest = new HttpRequestMessage(HttpMethod.Post, url);
             messageRequest.Headers.Add("x-goog-api-key", _apiKey);
             messageRequest.Content = new StringContent(json, Encoding.UTF8, "application/json");
-
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            cts.CancelAfter(TimeSpan.FromSeconds(request.TimeoutSeconds));
 
             var response = await _httpClient.SendAsync(messageRequest, cts.Token);
             var responseContent = await response.Content.ReadAsStringAsync(cts.Token);
@@ -127,6 +133,17 @@ public class GeminiClient : IGeminiClient
         cts.CancelAfter(TimeSpan.FromSeconds(request.TimeoutSeconds));
 
         var modelName = request.ModelName ?? _modelName;
+        var promptLimitResponse = await TryEnforcePromptTokenLimitAsync(request, modelName, cts.Token);
+        if (promptLimitResponse is not null)
+        {
+            yield return new GeminiStreamEvent
+            {
+                Type = "final",
+                Response = promptLimitResponse
+            };
+            yield break;
+        }
+
         var url = $"v1beta/models/{modelName}:streamGenerateContent?alt=sse";
         var json = BuildGeminiPayloadJson(request);
 
@@ -370,7 +387,7 @@ public class GeminiClient : IGeminiClient
         }
     }
 
-    private static string BuildGeminiPayloadJson(GeminiRequest request)
+    private static Dictionary<string, object?> BuildGeminiPayload(GeminiRequest request)
     {
         var contentsParts = BuildContents(request);
 
@@ -422,7 +439,66 @@ public class GeminiClient : IGeminiClient
             };
         }
 
-        return JsonSerializer.Serialize(payload, JsonOptions);
+        return payload;
+    }
+
+    private static string BuildGeminiPayloadJson(GeminiRequest request) =>
+        JsonSerializer.Serialize(BuildGeminiPayload(request), JsonOptions);
+
+    private async Task<GeminiResponse?> TryEnforcePromptTokenLimitAsync(
+        GeminiRequest request,
+        string modelName,
+        CancellationToken cancellationToken)
+    {
+        if (request.MaxPromptTokens is not > 0)
+        {
+            return null;
+        }
+
+        var totalTokens = await CountPromptTokensAsync(request, modelName, cancellationToken);
+        if (totalTokens <= request.MaxPromptTokens.Value)
+        {
+            return null;
+        }
+
+        _logger.LogWarning(
+            "Gemini request prompt token count {TotalTokens} exceeded configured limit {MaxPromptTokens}",
+            totalTokens,
+            request.MaxPromptTokens.Value);
+        UpdateSuccessRate();
+        return GetFallbackResponse("GeminiInputTokenLimit");
+    }
+
+    private async Task<int> CountPromptTokensAsync(
+        GeminiRequest request,
+        string modelName,
+        CancellationToken cancellationToken)
+    {
+        var payload = new Dictionary<string, object?>
+        {
+            ["generateContentRequest"] = BuildGeminiPayload(request)
+        };
+
+        var json = JsonSerializer.Serialize(payload, JsonOptions);
+        using var countRequest = new HttpRequestMessage(HttpMethod.Post, $"v1beta/models/{modelName}:countTokens");
+        countRequest.Headers.Add("x-goog-api-key", _apiKey);
+        countRequest.Content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        var response = await _httpClient.SendAsync(countRequest, cancellationToken);
+        var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "Gemini countTokens returned error: {StatusCode} - {Content}",
+                response.StatusCode,
+                responseContent);
+            throw new InvalidOperationException("Gemini countTokens failed.");
+        }
+
+        using var document = JsonDocument.Parse(responseContent);
+        return document.RootElement.TryGetProperty("totalTokens", out var totalTokens)
+            ? totalTokens.GetInt32()
+            : 0;
     }
 
     private static Dictionary<string, object?> BuildGenerationConfig(GeminiRequest request)
@@ -581,6 +657,7 @@ public class GeminiClient : IGeminiClient
             ["GeminiAPITimeout"] = "I apologize, but I'm experiencing delays in processing your request. Please try again in a few moments or contact our team at info@maliev.com.",
             ["GeminiAPIError"] = "I apologize, but I'm temporarily unable to process your request. Please try again in a few moments or contact our team at info@maliev.com.",
             ["GeminiAPIRateLimit"] = "We have exceeded the AI processing limit for today. Please wait a few minutes before trying again, or fill in the information manually. If this persists, please contact support at info@maliev.com.",
+            ["GeminiInputTokenLimit"] = "The uploaded content is too large for cost-effective AI processing. Please upload fewer pages, split the document into smaller files, or enter the key details manually.",
             ["RedisUnavailable"] = "I'm currently experiencing slower response times, but I'm still here to help. Please bear with me.",
             ["ValidationFailure"] = "I apologize, but I'm having trouble formulating a proper response. Could you please rephrase your question?",
             ["UnexpectedError"] = "I apologize for the inconvenience. Something unexpected occurred. Please try again, or contact our support team at info@maliev.com."

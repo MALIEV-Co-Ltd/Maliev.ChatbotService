@@ -52,6 +52,7 @@ public sealed class ExtractCustomerCommandHandlerTests
         Assert.True(result.Success);
         Assert.NotNull(capturedRequest);
         Assert.Equal("MEDIA_RESOLUTION_MEDIUM", capturedRequest!.MediaResolution);
+        Assert.Equal(20000, capturedRequest.MaxPromptTokens);
         Assert.NotNull(capturedRequest.Attachments);
         Assert.Single(capturedRequest.Attachments);
         Assert.Equal("application/pdf", capturedRequest.Attachments![0].MimeType);
