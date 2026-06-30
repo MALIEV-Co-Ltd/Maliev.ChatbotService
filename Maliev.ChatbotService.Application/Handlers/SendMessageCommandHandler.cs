@@ -365,8 +365,12 @@ public class SendMessageCommandHandler
             var previousSummaries = await _summaryService.GetRecentSummariesAsync(session.UserProfileId, 2, cancellationToken);
             var summariesContext = BuildSummariesContext(previousSummaries);
 
-            // 1. Classify Intent
-            var classification = await _intentClassificationService.ClassifyIntentAsync(command.Content, cancellationToken);
+            // 1. Classify intent only when the result can affect the prompt. Customer-facing channels
+            // intentionally discard intranet topic keys, so calling Gemini there burns tokens for no
+            // prompt benefit.
+            var classification = MessagePipelinePolicy.AllowsDomainTopicInjection(session.Channel)
+                ? await _intentClassificationService.ClassifyIntentAsync(command.Content, cancellationToken)
+                : new IntentClassificationResult { Intent = "General", Confidence = 0.0 };
             _metrics.RecordIntentClassification(classification.Intent, classification.Confidence);
 
             // Channel-scoped topic injection (P1): customer-facing channels (Website/QuoteEngine/social)

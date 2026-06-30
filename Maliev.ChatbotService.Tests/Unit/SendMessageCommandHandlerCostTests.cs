@@ -35,6 +35,26 @@ public sealed class SendMessageCommandHandlerCostTests
     }
 
     [Fact]
+    public async Task HandleAsync_WebsiteCustomerMessage_SkipsUnusedIntentClassification()
+    {
+        var result = await SendWebsiteMessageAsync();
+
+        result.IntentClassificationService.Verify(
+            item => item.ClassifyIntentAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task HandleAsync_IntranetMessage_ClassifiesIntentForDomainTopicInjection()
+    {
+        var result = await SendWebsiteMessageAsync(channel: Channel.Intranet);
+
+        result.IntentClassificationService.Verify(
+            item => item.ClassifyIntentAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
     public async Task HandleAsync_WebsiteMediaAttachment_UsesMediumMediaResolution()
     {
         var result = await SendWebsiteMessageAsync([
@@ -78,7 +98,8 @@ public sealed class SendMessageCommandHandlerCostTests
 
     private static async Task<HandlerResult> SendWebsiteMessageAsync(
         List<AttachmentDto>? attachments = null,
-        GeminiTokenUsage? tokenUsage = null)
+        GeminiTokenUsage? tokenUsage = null,
+        Channel channel = Channel.Website)
     {
         var sessionId = Guid.NewGuid();
         var userProfileId = Guid.NewGuid();
@@ -91,7 +112,7 @@ public sealed class SendMessageCommandHandlerCostTests
             {
                 Id = sessionId,
                 UserProfileId = userProfileId,
-                Channel = Channel.Website,
+                Channel = channel,
                 Status = SessionStatus.Active,
                 Language = Language.English,
                 StartTime = DateTimeOffset.UtcNow.AddMinutes(-5),
@@ -166,11 +187,11 @@ public sealed class SendMessageCommandHandlerCostTests
         systemInstructionService
             .Setup(item => item.GetMergedInstructionsAsync(
                 It.IsAny<IEnumerable<string>>(),
-                "website",
+                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync("You are MALIEV's customer assistant.");
         systemInstructionService
-            .Setup(item => item.GetActiveInstructionAsync("website", It.IsAny<CancellationToken>()))
+            .Setup(item => item.GetActiveInstructionAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new SystemInstruction { EnableWebSearch = false });
 
         var intentClassificationService = new Mock<IIntentClassificationService>();
@@ -193,6 +214,9 @@ public sealed class SendMessageCommandHandlerCostTests
         var searchDomainLogRepository = new Mock<ISearchDomainLogRepository>();
         var webSearchService = new Mock<IWebSearchService>();
         var toolExecutor = new Mock<IToolExecutorService>();
+        toolExecutor
+            .Setup(item => item.GetToolDeclarations(It.IsAny<string>()))
+            .Returns(new List<GeminiToolDeclaration>());
         var database = new Mock<IDatabase>();
         database
             .Setup(item => item.LockTakeAsync(
@@ -247,11 +271,12 @@ public sealed class SendMessageCommandHandlerCostTests
             Attachments = attachments
         });
 
-        return new HandlerResult(capturedRequest, createdMessages, toolExecutor);
+        return new HandlerResult(capturedRequest, createdMessages, toolExecutor, intentClassificationService);
     }
 
     private sealed record HandlerResult(
         GeminiRequest? CapturedRequest,
         IReadOnlyList<Message> CreatedMessages,
-        Mock<IToolExecutorService> ToolExecutor);
+        Mock<IToolExecutorService> ToolExecutor,
+        Mock<IIntentClassificationService> IntentClassificationService);
 }
