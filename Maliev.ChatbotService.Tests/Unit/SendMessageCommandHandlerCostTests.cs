@@ -8,6 +8,7 @@ using Maliev.ChatbotService.Domain.Events;
 using Microsoft.Extensions.Logging;
 using Moq;
 using StackExchange.Redis;
+using System.Text.Json;
 
 namespace Maliev.ChatbotService.Tests.Unit;
 
@@ -41,11 +42,39 @@ public sealed class SendMessageCommandHandlerCostTests
         Assert.Equal("MEDIA_RESOLUTION_MEDIUM", result.CapturedRequest!.MediaResolution);
     }
 
-    private static async Task<HandlerResult> SendWebsiteMessageAsync(List<AttachmentDto>? attachments = null)
+    [Fact]
+    public async Task HandleAsync_GeminiTokenUsage_PersistsCostBreakdownInAssistantMetadata()
+    {
+        var result = await SendWebsiteMessageAsync(tokenUsage: new GeminiTokenUsage
+        {
+            PromptTokens = 100,
+            CachedPromptTokens = 35,
+            ToolUsePromptTokens = 12,
+            ThoughtTokens = 0,
+            CompletionTokens = 25,
+            TotalTokens = 137
+        });
+
+        var assistantMessage = Assert.Single(result.CreatedMessages, message => message.Role == MessageRole.Assistant);
+        Assert.NotNull(assistantMessage.MetadataJson);
+        using var metadata = JsonDocument.Parse(assistantMessage.MetadataJson!);
+        var tokenUsage = metadata.RootElement.GetProperty("tokenUsage");
+        Assert.Equal(100, tokenUsage.GetProperty("promptTokens").GetInt32());
+        Assert.Equal(35, tokenUsage.GetProperty("cachedPromptTokens").GetInt32());
+        Assert.Equal(12, tokenUsage.GetProperty("toolUsePromptTokens").GetInt32());
+        Assert.Equal(0, tokenUsage.GetProperty("thoughtTokens").GetInt32());
+        Assert.Equal(25, tokenUsage.GetProperty("completionTokens").GetInt32());
+        Assert.Equal(137, tokenUsage.GetProperty("totalTokens").GetInt32());
+    }
+
+    private static async Task<HandlerResult> SendWebsiteMessageAsync(
+        List<AttachmentDto>? attachments = null,
+        GeminiTokenUsage? tokenUsage = null)
     {
         var sessionId = Guid.NewGuid();
         var userProfileId = Guid.NewGuid();
         GeminiRequest? capturedRequest = null;
+        var createdMessages = new List<Message>();
         var sessionRepository = new Mock<IConversationSessionRepository>();
         sessionRepository
             .Setup(item => item.GetByIdAsync(sessionId, It.IsAny<CancellationToken>()))
@@ -67,6 +96,7 @@ public sealed class SendMessageCommandHandlerCostTests
         var messageRepository = new Mock<IMessageRepository>();
         messageRepository
             .Setup(item => item.CreateAsync(It.IsAny<Message>(), It.IsAny<CancellationToken>()))
+            .Callback<Message, CancellationToken>((message, _) => createdMessages.Add(message))
             .ReturnsAsync((Message message, CancellationToken _) => message);
         messageRepository
             .Setup(item => item.GetRecentBySessionIdAsync(sessionId, 10, It.IsAny<CancellationToken>()))
@@ -120,7 +150,7 @@ public sealed class SendMessageCommandHandlerCostTests
             {
                 Success = true,
                 Content = "We can print PLA, PETG, ABS, ASA, nylon, and engineering materials.",
-                TokenUsage = new GeminiTokenUsage { TotalTokens = 25 }
+                TokenUsage = tokenUsage ?? new GeminiTokenUsage { TotalTokens = 25 }
             });
 
         var systemInstructionService = new Mock<ISystemInstructionService>();
@@ -208,8 +238,11 @@ public sealed class SendMessageCommandHandlerCostTests
             Attachments = attachments
         });
 
-        return new HandlerResult(capturedRequest, toolExecutor);
+        return new HandlerResult(capturedRequest, createdMessages, toolExecutor);
     }
 
-    private sealed record HandlerResult(GeminiRequest? CapturedRequest, Mock<IToolExecutorService> ToolExecutor);
+    private sealed record HandlerResult(
+        GeminiRequest? CapturedRequest,
+        IReadOnlyList<Message> CreatedMessages,
+        Mock<IToolExecutorService> ToolExecutor);
 }

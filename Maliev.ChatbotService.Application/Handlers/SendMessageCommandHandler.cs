@@ -585,7 +585,9 @@ public class SendMessageCommandHandler
 
                         injectedTopicKeys = topicKeys,
 
-                        injectedKnowledgeIds = injectedKnowledgeIds
+                        injectedKnowledgeIds = injectedKnowledgeIds,
+
+                        tokenUsage = BuildTokenUsageMetadata(geminiResponse.TokenUsage)
 
                     })
 
@@ -873,6 +875,21 @@ public class SendMessageCommandHandler
         return attachments.Any(attachment => attachment.ContentType is ContentType.Image or ContentType.PDF or ContentType.Video)
             ? "MEDIA_RESOLUTION_MEDIUM"
             : null;
+    }
+
+    private static object? BuildTokenUsageMetadata(GeminiTokenUsage? tokenUsage)
+    {
+        return tokenUsage is null
+            ? null
+            : new
+            {
+                promptTokens = tokenUsage.PromptTokens,
+                cachedPromptTokens = tokenUsage.CachedPromptTokens,
+                toolUsePromptTokens = tokenUsage.ToolUsePromptTokens,
+                thoughtTokens = tokenUsage.ThoughtTokens,
+                completionTokens = tokenUsage.CompletionTokens,
+                totalTokens = tokenUsage.TotalTokens
+            };
     }
 
     /// <summary>
