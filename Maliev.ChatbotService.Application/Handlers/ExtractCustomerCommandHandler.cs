@@ -166,6 +166,7 @@ public class ExtractCustomerCommandHandler
             ResponseMimeType = "application/json",
             ResponseSchema = CustomerExtractionSchema,
             ThinkingBudget = 0,
+            MediaResolution = attachments.Count > 0 ? "MEDIA_RESOLUTION_MEDIUM" : null,
             TimeoutSeconds = 60
         };
 

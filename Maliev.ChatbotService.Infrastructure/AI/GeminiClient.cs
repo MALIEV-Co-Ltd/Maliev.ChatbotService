@@ -443,6 +443,11 @@ public class GeminiClient : IGeminiClient
             generationConfig["temperature"] = request.Temperature.Value;
         }
 
+        if (!string.IsNullOrWhiteSpace(request.MediaResolution))
+        {
+            generationConfig["mediaResolution"] = request.MediaResolution;
+        }
+
         if (request.ThinkingBudget is not null || request.IncludeThoughts)
         {
             var thinkingConfig = new Dictionary<string, object?>();

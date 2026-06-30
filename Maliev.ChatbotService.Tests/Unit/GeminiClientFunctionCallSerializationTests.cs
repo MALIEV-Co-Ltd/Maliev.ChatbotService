@@ -200,6 +200,7 @@ public sealed class GeminiClientFunctionCallSerializationTests
             MaxTokens = 128,
             Temperature = 0.2,
             ThinkingBudget = 0,
+            MediaResolution = "MEDIA_RESOLUTION_MEDIUM",
             Messages = [new GeminiMessage { Role = "user", Content = "hi" }]
         });
 
@@ -208,6 +209,7 @@ public sealed class GeminiClientFunctionCallSerializationTests
         Assert.Equal(128, generationConfig.GetProperty("maxOutputTokens").GetInt32());
         Assert.Equal(0.2, generationConfig.GetProperty("temperature").GetDouble());
         Assert.Equal(0, generationConfig.GetProperty("thinkingConfig").GetProperty("thinkingBudget").GetInt32());
+        Assert.Equal("MEDIA_RESOLUTION_MEDIUM", generationConfig.GetProperty("mediaResolution").GetString());
     }
 
     [Fact]

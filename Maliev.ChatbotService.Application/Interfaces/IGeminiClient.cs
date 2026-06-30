@@ -68,6 +68,12 @@ public class GeminiRequest
     public int? ThinkingBudget { get; set; }
 
     /// <summary>
+    /// Gets or sets the Gemini media resolution for multimodal inputs.
+    /// Use values such as MEDIA_RESOLUTION_LOW, MEDIA_RESOLUTION_MEDIUM, or MEDIA_RESOLUTION_HIGH.
+    /// </summary>
+    public string? MediaResolution { get; set; }
+
+    /// <summary>
     /// Gets or sets the timeout for the request.
     /// </summary>
     public TimeSpan? Timeout { get; set; }
