@@ -468,6 +468,7 @@ public class SendMessageCommandHandler
                     .ToList();
             }
 
+            var allowModelThoughts = IsAgentToolChannel(session.Channel) && string.IsNullOrEmpty(command.ResponseMimeType);
             var geminiRequest = new GeminiRequest
             {
                 ModelName = command.ModelName,
@@ -477,14 +478,15 @@ public class SendMessageCommandHandler
                 ResponseMimeType = command.ResponseMimeType,
                 ResponseSchema = command.ResponseSchema,
                 EnableWebSearch = enableGeminiSearch,
-                IncludeThoughts = true
+                IncludeThoughts = allowModelThoughts,
+                ThinkingBudget = allowModelThoughts ? null : 0
             };
 
             // Use the agent loop only for channels with scoped, allowlisted tool profiles.
             GeminiResponse geminiResponse;
             var thinkingSteps = new List<Models.ThinkingStep>();
 
-            if (IsAgentToolChannel(session.Channel) && string.IsNullOrEmpty(command.ResponseMimeType))
+            if (allowModelThoughts)
             {
                 var tools = _toolExecutor.GetToolDeclarations(GetToolProfile(session.Channel));
                 if (tools.Count > 0)
