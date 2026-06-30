@@ -10,6 +10,18 @@ namespace Maliev.ChatbotService.Infrastructure.Services;
 /// </summary>
 public class IntentClassificationService : IIntentClassificationService
 {
+    private static readonly object IntentClassificationSchema = new
+    {
+        type = "object",
+        properties = new
+        {
+            intent = new { type = "string" },
+            confidence = new { type = "number" },
+            additionalTopics = new { type = "array", items = new { type = "string" } }
+        },
+        required = new[] { "intent", "confidence", "additionalTopics" }
+    };
+
     private readonly IGeminiClient _geminiClient;
     private readonly ISystemInstructionRepository _repository;
     private readonly IConfiguration _configuration;
@@ -51,6 +63,9 @@ public class IntentClassificationService : IIntentClassificationService
             },
             Temperature = 0.1, // Low temperature for deterministic classification
             ThinkingBudget = 0,
+            MaxTokens = 256,
+            ResponseMimeType = "application/json",
+            ResponseSchema = IntentClassificationSchema,
             TimeoutSeconds = 5
         };
 
