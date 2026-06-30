@@ -11,6 +11,8 @@ namespace Maliev.ChatbotService.Infrastructure.Services;
 /// </summary>
 public class ConversationSummaryService : IConversationSummaryService
 {
+    private const int MaxSummaryPromptTokens = 30000;
+
     private static readonly object SummaryResponseSchema = new
     {
         type = "object",
@@ -120,6 +122,7 @@ Respond with ONLY valid JSON. No markdown, no code blocks, just the JSON object.
             Temperature = 0.1,
             ThinkingBudget = 0,
             MaxTokens = 1024,
+            MaxPromptTokens = MaxSummaryPromptTokens,
             ServiceTier = "flex",
             TimeoutSeconds = 30
         };

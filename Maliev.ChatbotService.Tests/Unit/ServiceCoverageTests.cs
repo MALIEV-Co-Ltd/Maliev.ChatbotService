@@ -303,6 +303,7 @@ public class ConversationSummaryServiceTests
         Assert.Equal(0, capturedRequest.ThinkingBudget);
         Assert.Equal(0.1, capturedRequest.Temperature);
         Assert.Equal(1024, capturedRequest.MaxTokens);
+        Assert.Equal(30000, capturedRequest.MaxPromptTokens);
         mockSessionRepo.Verify(r => r.UpdateAsync(It.IsAny<ConversationSession>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
