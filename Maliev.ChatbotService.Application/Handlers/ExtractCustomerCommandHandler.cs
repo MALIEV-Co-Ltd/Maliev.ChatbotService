@@ -172,6 +172,7 @@ public class ExtractCustomerCommandHandler
             MaxTokens = MaxExtractionOutputTokens,
             MaxPromptTokens = MaxExtractionPromptTokens,
             MediaResolution = attachments.Count > 0 ? "MEDIA_RESOLUTION_MEDIUM" : null,
+            ServiceTier = "flex",
             TimeoutSeconds = 60
         };
 

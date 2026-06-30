@@ -72,6 +72,7 @@ public class RefineSystemInstructionCommandHandler
             Temperature = 0.2,
             ThinkingBudget = 0,
             MaxTokens = MaxRefinementOutputTokens,
+            ServiceTier = "flex",
             TimeoutSeconds = 30
         };
 

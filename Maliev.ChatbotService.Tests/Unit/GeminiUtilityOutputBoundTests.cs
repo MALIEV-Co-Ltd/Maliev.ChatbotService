@@ -102,5 +102,6 @@ public sealed class GeminiUtilityOutputBoundTests
         Assert.Equal("Refined persona", result.PersonaDefinition);
         Assert.NotNull(capturedRequest);
         Assert.Equal(4096, capturedRequest!.MaxTokens);
+        Assert.Equal("flex", capturedRequest.ServiceTier);
     }
 }
