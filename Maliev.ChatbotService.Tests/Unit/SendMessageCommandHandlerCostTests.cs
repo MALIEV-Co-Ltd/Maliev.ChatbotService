@@ -16,10 +16,36 @@ public sealed class SendMessageCommandHandlerCostTests
     [Fact]
     public async Task HandleAsync_WebsiteCustomerMessage_DisablesThinkingToAvoidDefaultReasoningCost()
     {
+        var result = await SendWebsiteMessageAsync();
+
+        Assert.NotNull(result.CapturedRequest);
+        Assert.False(result.CapturedRequest!.IncludeThoughts);
+        Assert.Equal(0, result.CapturedRequest.ThinkingBudget);
+        result.ToolExecutor.Verify(item => item.GetToolDeclarations(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task HandleAsync_WebsiteMediaAttachment_UsesMediumMediaResolution()
+    {
+        var result = await SendWebsiteMessageAsync([
+            new AttachmentDto
+            {
+                ContentType = ContentType.Image,
+                Data = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB",
+                MimeType = "image/png",
+                SizeBytes = 1024
+            }
+        ]);
+
+        Assert.NotNull(result.CapturedRequest);
+        Assert.Equal("MEDIA_RESOLUTION_MEDIUM", result.CapturedRequest!.MediaResolution);
+    }
+
+    private static async Task<HandlerResult> SendWebsiteMessageAsync(List<AttachmentDto>? attachments = null)
+    {
         var sessionId = Guid.NewGuid();
         var userProfileId = Guid.NewGuid();
         GeminiRequest? capturedRequest = null;
-
         var sessionRepository = new Mock<IConversationSessionRepository>();
         sessionRepository
             .Setup(item => item.GetByIdAsync(sessionId, It.IsAny<CancellationToken>()))
@@ -175,13 +201,15 @@ public sealed class SendMessageCommandHandlerCostTests
         await handler.HandleAsync(new SendMessageCommand
         {
             SessionId = sessionId,
-            Content = "What materials can you print?",
-            Language = "en"
+            Content = attachments is { Count: > 0 }
+                ? "What can you tell from this attachment?"
+                : "What materials can you print?",
+            Language = "en",
+            Attachments = attachments
         });
 
-        Assert.NotNull(capturedRequest);
-        Assert.False(capturedRequest!.IncludeThoughts);
-        Assert.Equal(0, capturedRequest.ThinkingBudget);
-        toolExecutor.Verify(item => item.GetToolDeclarations(It.IsAny<string>()), Times.Never);
+        return new HandlerResult(capturedRequest, toolExecutor);
     }
+
+    private sealed record HandlerResult(GeminiRequest? CapturedRequest, Mock<IToolExecutorService> ToolExecutor);
 }

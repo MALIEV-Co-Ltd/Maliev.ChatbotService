@@ -479,7 +479,8 @@ public class SendMessageCommandHandler
                 ResponseSchema = command.ResponseSchema,
                 EnableWebSearch = enableGeminiSearch,
                 IncludeThoughts = allowModelThoughts,
-                ThinkingBudget = allowModelThoughts ? null : 0
+                ThinkingBudget = allowModelThoughts ? null : 0,
+                MediaResolution = ResolveMediaResolution(command.Attachments)
             };
 
             // Use the agent loop only for channels with scoped, allowlisted tool profiles.
@@ -862,6 +863,17 @@ public class SendMessageCommandHandler
         };
     }
 
+    private static string? ResolveMediaResolution(IReadOnlyCollection<AttachmentDto>? attachments)
+    {
+        if (attachments is null)
+        {
+            return null;
+        }
+
+        return attachments.Any(attachment => attachment.ContentType is ContentType.Image or ContentType.PDF or ContentType.Video)
+            ? "MEDIA_RESOLUTION_MEDIUM"
+            : null;
+    }
 
     /// <summary>
     /// Detects whether the user message requires web search based on keywords.
