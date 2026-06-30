@@ -50,6 +50,7 @@ public class IntentClassificationService : IIntentClassificationService
                 new GeminiMessage { Role = "user", Content = message }
             },
             Temperature = 0.1, // Low temperature for deterministic classification
+            ThinkingBudget = 0,
             TimeoutSeconds = 5
         };
 

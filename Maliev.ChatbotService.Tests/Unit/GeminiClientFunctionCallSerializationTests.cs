@@ -188,6 +188,60 @@ public sealed class GeminiClientFunctionCallSerializationTests
         Assert.Equal("application/pdf", fileData.GetProperty("mimeType").GetString());
     }
 
+    [Fact]
+    public async Task SendMessageAsync_GenerationOptions_SerializeUnderGenerationConfig()
+    {
+        var handler = new CapturingHandler("""{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}""");
+        var client = CreateClient(handler);
+
+        await client.SendMessageAsync(new GeminiRequest
+        {
+            SystemInstruction = "sys",
+            MaxTokens = 128,
+            Temperature = 0.2,
+            ThinkingBudget = 0,
+            Messages = [new GeminiMessage { Role = "user", Content = "hi" }]
+        });
+
+        using var doc = JsonDocument.Parse(handler.RequestBody!);
+        var generationConfig = doc.RootElement.GetProperty("generationConfig");
+        Assert.Equal(128, generationConfig.GetProperty("maxOutputTokens").GetInt32());
+        Assert.Equal(0.2, generationConfig.GetProperty("temperature").GetDouble());
+        Assert.Equal(0, generationConfig.GetProperty("thinkingConfig").GetProperty("thinkingBudget").GetInt32());
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_UsageMetadata_MapsCostRelevantTokenBreakdown()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "candidates":[{"content":{"parts":[{"text":"ok"}]}}],
+              "usageMetadata":{
+                "promptTokenCount":100,
+                "cachedContentTokenCount":25,
+                "toolUsePromptTokenCount":10,
+                "thoughtsTokenCount":15,
+                "candidatesTokenCount":20,
+                "totalTokenCount":145
+              }
+            }
+            """);
+        var client = CreateClient(handler);
+
+        var response = await client.SendMessageAsync(new GeminiRequest
+        {
+            Messages = [new GeminiMessage { Role = "user", Content = "hi" }]
+        });
+
+        Assert.NotNull(response.TokenUsage);
+        Assert.Equal(100, response.TokenUsage.PromptTokens);
+        Assert.Equal(25, response.TokenUsage.CachedPromptTokens);
+        Assert.Equal(10, response.TokenUsage.ToolUsePromptTokens);
+        Assert.Equal(15, response.TokenUsage.ThoughtTokens);
+        Assert.Equal(20, response.TokenUsage.CompletionTokens);
+        Assert.Equal(145, response.TokenUsage.TotalTokens);
+    }
+
     private static GeminiClient CreateClient(HttpMessageHandler handler)
     {
         var configuration = new ConfigurationBuilder()

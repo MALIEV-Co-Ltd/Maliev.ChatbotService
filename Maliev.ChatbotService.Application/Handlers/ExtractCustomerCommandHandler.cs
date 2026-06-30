@@ -165,6 +165,7 @@ public class ExtractCustomerCommandHandler
             Attachments = attachments.Count > 0 ? attachments : null,
             ResponseMimeType = "application/json",
             ResponseSchema = CustomerExtractionSchema,
+            ThinkingBudget = 0,
             TimeoutSeconds = 60
         };
 

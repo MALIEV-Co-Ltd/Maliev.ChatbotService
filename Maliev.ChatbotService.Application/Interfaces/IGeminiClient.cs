@@ -63,6 +63,11 @@ public class GeminiRequest
     public double? Temperature { get; set; }
 
     /// <summary>
+    /// Gets or sets the Gemini thinking token budget. Set to 0 to disable thinking for low-cost deterministic calls.
+    /// </summary>
+    public int? ThinkingBudget { get; set; }
+
+    /// <summary>
     /// Gets or sets the timeout for the request.
     /// </summary>
     public TimeSpan? Timeout { get; set; }
@@ -240,6 +245,21 @@ public class GeminiTokenUsage
     /// Gets or sets the number of completion tokens.
     /// </summary>
     public int CompletionTokens { get; set; }
+
+    /// <summary>
+    /// Gets or sets the number of cached prompt tokens reported by Gemini.
+    /// </summary>
+    public int CachedPromptTokens { get; set; }
+
+    /// <summary>
+    /// Gets or sets the number of tool-use prompt tokens reported by Gemini.
+    /// </summary>
+    public int ToolUsePromptTokens { get; set; }
+
+    /// <summary>
+    /// Gets or sets the number of thought tokens reported by Gemini.
+    /// </summary>
+    public int ThoughtTokens { get; set; }
 
     /// <summary>
     /// Gets or sets the total number of tokens.

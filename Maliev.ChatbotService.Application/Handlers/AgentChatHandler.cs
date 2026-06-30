@@ -74,7 +74,8 @@ public class AgentChatHandler
                 TimeoutSeconds = 30,
                 Tools = request.Tools,
                 ToolConfig = request.ToolConfig,
-                IncludeThoughts = request.IncludeThoughts
+                IncludeThoughts = request.IncludeThoughts,
+                ThinkingBudget = request.ThinkingBudget
             };
 
             var response = await SendGeminiMaybeStreamingAsync(iterationRequest, onTextDelta, onThoughtDelta, cancellationToken);
@@ -83,6 +84,9 @@ public class AgentChatHandler
             {
                 accumulatedUsage.PromptTokens += usage.PromptTokens;
                 accumulatedUsage.CompletionTokens += usage.CompletionTokens;
+                accumulatedUsage.CachedPromptTokens += usage.CachedPromptTokens;
+                accumulatedUsage.ToolUsePromptTokens += usage.ToolUsePromptTokens;
+                accumulatedUsage.ThoughtTokens += usage.ThoughtTokens;
                 accumulatedUsage.TotalTokens += usage.TotalTokens;
                 sawUsage = true;
             }

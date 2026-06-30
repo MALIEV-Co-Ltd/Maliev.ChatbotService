@@ -69,6 +69,7 @@ public class RefineSystemInstructionCommandHandler
             ResponseMimeType = "application/json",
             ResponseSchema = ResponseSchema,
             Temperature = 0.2,
+            ThinkingBudget = 0,
             TimeoutSeconds = 30
         };
 

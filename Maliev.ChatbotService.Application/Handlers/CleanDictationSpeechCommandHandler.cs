@@ -40,6 +40,7 @@ public class CleanDictationSpeechCommandHandler
                 new() { Role = "user", Content = command.Speech }
             },
             Temperature = 0.1,
+            ThinkingBudget = 0,
             TimeoutSeconds = 5,
         };
 

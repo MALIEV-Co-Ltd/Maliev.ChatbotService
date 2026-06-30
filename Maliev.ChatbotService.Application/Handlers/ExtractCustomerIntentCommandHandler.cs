@@ -57,6 +57,7 @@ public class ExtractCustomerIntentCommandHandler
                 new() { Role = "user", Content = command.UserMessage }
             },
             Temperature = 0.1,
+            ThinkingBudget = 0,
             TimeoutSeconds = 5,
             ResponseMimeType = "application/json",
             ResponseSchema = schema

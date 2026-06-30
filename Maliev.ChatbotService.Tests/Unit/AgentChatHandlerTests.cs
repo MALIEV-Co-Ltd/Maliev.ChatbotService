@@ -398,7 +398,15 @@ public class AgentChatHandlerTests
                     return new GeminiResponse
                     {
                         Success = true,
-                        TokenUsage = new GeminiTokenUsage { PromptTokens = 80, CompletionTokens = 20, TotalTokens = 100 },
+                        TokenUsage = new GeminiTokenUsage
+                        {
+                            PromptTokens = 80,
+                            CachedPromptTokens = 10,
+                            ToolUsePromptTokens = 5,
+                            ThoughtTokens = 7,
+                            CompletionTokens = 20,
+                            TotalTokens = 100
+                        },
                         FunctionCalls = new List<GeminiFunctionCall>
                         {
                             new GeminiFunctionCall { Name = "quote_get_state", Args = new Dictionary<string, object>() }
@@ -410,7 +418,15 @@ public class AgentChatHandlerTests
                 {
                     Success = true,
                     Content = "Here is your quote.",
-                    TokenUsage = new GeminiTokenUsage { PromptTokens = 120, CompletionTokens = 30, TotalTokens = 150 }
+                    TokenUsage = new GeminiTokenUsage
+                    {
+                        PromptTokens = 120,
+                        CachedPromptTokens = 15,
+                        ToolUsePromptTokens = 6,
+                        ThoughtTokens = 8,
+                        CompletionTokens = 30,
+                        TotalTokens = 150
+                    }
                 };
             });
 
@@ -427,6 +443,9 @@ public class AgentChatHandlerTests
         Assert.NotNull(result.TokenUsage);
         Assert.Equal(250, result.TokenUsage!.TotalTokens);
         Assert.Equal(200, result.TokenUsage.PromptTokens);
+        Assert.Equal(25, result.TokenUsage.CachedPromptTokens);
+        Assert.Equal(11, result.TokenUsage.ToolUsePromptTokens);
+        Assert.Equal(15, result.TokenUsage.ThoughtTokens);
         Assert.Equal(50, result.TokenUsage.CompletionTokens);
     }
 
