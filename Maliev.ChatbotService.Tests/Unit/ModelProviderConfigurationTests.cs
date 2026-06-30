@@ -18,6 +18,36 @@ public sealed class ModelProviderConfigurationTests
     }
 
     [Fact]
+    public void Program_ModelProviderHttpClients_DoNotRetryProviderRateLimits()
+    {
+        var program = File.ReadAllText(Path.Combine(
+            GetRepositoryRoot(),
+            "Maliev.ChatbotService.Api",
+            "Program.cs"));
+
+        var geminiRegistration = ExtractSourceBlock(
+            program,
+            "AddHttpClient<GeminiModelProviderClient>",
+            "AddHttpClient<OpenAICompatibleModelProviderClient>");
+        var openAiCompatibleRegistration = ExtractSourceBlock(
+            program,
+            "AddHttpClient<OpenAICompatibleModelProviderClient>",
+            "builder.Services.AddHttpClient<IWebSearchService");
+        var retryPolicy = ExtractSourceBlock(
+            program,
+            "static ValueTask<bool> ShouldRetryModelProviderFailure",
+            "internal static partial class Log");
+
+        Assert.Contains("ShouldRetryModelProviderFailure(", geminiRegistration, StringComparison.Ordinal);
+        Assert.Contains("ShouldRetryModelProviderFailure(", openAiCompatibleRegistration, StringComparison.Ordinal);
+        Assert.Contains("HttpStatusCode.TooManyRequests", retryPolicy, StringComparison.Ordinal);
+        Assert.Contains("ValueTask.FromResult(false)", retryPolicy, StringComparison.Ordinal);
+        Assert.Contains("HttpStatusCode.RequestTimeout", retryPolicy, StringComparison.Ordinal);
+        Assert.Contains(">= 500", retryPolicy, StringComparison.Ordinal);
+        Assert.Contains("HttpRequestException", retryPolicy, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AppSettings_DefinesConfigurableLlmProviderAndOpenAiCompatibleEndpoint()
     {
         var appsettings = File.ReadAllText(Path.Combine(

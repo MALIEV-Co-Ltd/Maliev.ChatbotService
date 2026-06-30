@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.Http;
 using System.Threading.RateLimiting;
 using Maliev.ChatbotService.Api.RateLimiting;
 using Maliev.ChatbotService.Application.Handlers;
@@ -221,14 +223,27 @@ try
             client.BaseAddress = new Uri(externalClientsConfig.Gemini.BaseAddress);
             client.Timeout = TimeSpan.FromSeconds(60);
         })
-        .AddStandardResilienceHandler();
+        .AddStandardResilienceHandler(options =>
+        {
+            // GeminiClient already handles 429 (TooManyRequests) internally by returning a
+            // graceful fallback response. Polly retrying 429 with exponential backoff adds
+            // ~30s of delay before GeminiClient ever sees the response.
+            options.Retry.ShouldHandle = args => Program.ShouldRetryModelProviderFailure(
+                args.Outcome.Result,
+                args.Outcome.Exception);
+        });
 
         builder.Services.AddHttpClient<OpenAICompatibleModelProviderClient>(client =>
         {
             client.BaseAddress = new Uri(externalClientsConfig.OpenAICompatible.BaseAddress);
             client.Timeout = TimeSpan.FromSeconds(60);
         })
-        .AddStandardResilienceHandler();
+        .AddStandardResilienceHandler(options =>
+        {
+            options.Retry.ShouldHandle = args => Program.ShouldRetryModelProviderFailure(
+                args.Outcome.Result,
+                args.Outcome.Exception);
+        });
     }
 
     builder.Services.AddHttpClient<IWebSearchService, WebSearchService>(client =>
@@ -317,6 +332,27 @@ finally
 /// </summary>
 public partial class Program
 {
+    private static ValueTask<bool> ShouldRetryModelProviderFailure(HttpResponseMessage? response, Exception? exception)
+    {
+        if (response?.StatusCode == HttpStatusCode.TooManyRequests)
+        {
+            return ValueTask.FromResult(false);
+        }
+
+        if (response is { IsSuccessStatusCode: false } failedResponse &&
+            ((int)failedResponse.StatusCode >= 500 || failedResponse.StatusCode == HttpStatusCode.RequestTimeout))
+        {
+            return ValueTask.FromResult(true);
+        }
+
+        if (exception is HttpRequestException)
+        {
+            return ValueTask.FromResult(true);
+        }
+
+        return ValueTask.FromResult(false);
+    }
+
     internal static partial class Log
     {
         [LoggerMessage(Level = LogLevel.Information, Message = "Starting {ServiceName} host")]
