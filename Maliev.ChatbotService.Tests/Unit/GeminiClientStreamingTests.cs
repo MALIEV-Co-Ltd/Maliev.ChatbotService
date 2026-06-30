@@ -114,6 +114,43 @@ public sealed class GeminiClientStreamingTests
             forwarded.RootElement.GetProperty("cad_commands").ValueKind);
     }
 
+    [Fact]
+    public async Task StreamMessageAsync_WithThoughts_PutsThinkingConfigUnderGenerationConfig()
+    {
+        var handler = new GeminiStreamingHandler([
+            """
+            data: {"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}]}
+            """
+        ]);
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Gemini:ApiKey"] = "test-key",
+                ["Gemini:MainModelName"] = "gemini-test"
+            })
+            .Build();
+        var client = new GeminiClient(
+            new HttpClient(handler) { BaseAddress = new Uri("https://generativelanguage.googleapis.com/") },
+            configuration,
+            new ConversationMetrics(CreateMeterFactory(), configuration),
+            NullLogger<GeminiClient>.Instance);
+
+        await foreach (var _ in client.StreamMessageAsync(new GeminiRequest
+        {
+            SystemInstruction = "You are a test assistant.",
+            IncludeThoughts = true,
+            Messages = [new GeminiMessage { Role = "user", Content = "Say hello" }]
+        }))
+        {
+        }
+
+        Assert.NotNull(handler.RequestBody);
+        using var doc = JsonDocument.Parse(handler.RequestBody!);
+        Assert.False(doc.RootElement.TryGetProperty("thinkingConfig", out _));
+        var generationConfig = doc.RootElement.GetProperty("generationConfig");
+        Assert.True(generationConfig.GetProperty("thinkingConfig").GetProperty("includeThoughts").GetBoolean());
+    }
+
     private static IMeterFactory CreateMeterFactory()
     {
         var factory = new Mock<IMeterFactory>();
@@ -127,18 +164,22 @@ public sealed class GeminiClientStreamingTests
         public Uri? RequestUri { get; private set; }
 
         public string? ApiKey { get; private set; }
+        public string? RequestBody { get; private set; }
 
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             RequestUri = request.RequestUri;
             ApiKey = request.Headers.TryGetValues("x-goog-api-key", out var values)
                 ? values.SingleOrDefault()
                 : null;
+            RequestBody = request.Content is null
+                ? null
+                : await request.Content.ReadAsStringAsync(cancellationToken);
             var body = string.Join("\n\n", sseLines) + "\n\n";
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            return new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent(body, Encoding.UTF8, "text/event-stream")
-            });
+            };
         }
     }
 }

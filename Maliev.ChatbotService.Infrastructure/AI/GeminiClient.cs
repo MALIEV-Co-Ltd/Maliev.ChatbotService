@@ -535,13 +535,21 @@ public class GeminiClient : IGeminiClient
             ["contents"] = contentsParts.ToArray()
         };
 
-        if (!string.IsNullOrEmpty(request.ResponseMimeType))
+        if (!string.IsNullOrEmpty(request.ResponseMimeType) || request.IncludeThoughts)
         {
-            payload["generationConfig"] = new
+            var generationConfig = new Dictionary<string, object?>();
+            if (!string.IsNullOrEmpty(request.ResponseMimeType))
             {
-                responseMimeType = request.ResponseMimeType,
-                responseSchema = request.ResponseSchema
-            };
+                generationConfig["responseMimeType"] = request.ResponseMimeType;
+                generationConfig["responseSchema"] = request.ResponseSchema;
+            }
+
+            if (request.IncludeThoughts)
+            {
+                generationConfig["thinkingConfig"] = new { includeThoughts = true };
+            }
+
+            payload["generationConfig"] = generationConfig;
         }
 
         if (hasTools || useBuiltInSearch)
@@ -570,11 +578,6 @@ public class GeminiClient : IGeminiClient
             {
                 functionCallingConfig = new { mode = request.ToolConfig?.Mode ?? "AUTO" }
             };
-        }
-
-        if (request.IncludeThoughts)
-        {
-            payload["thinkingConfig"] = new { includeThoughts = true };
         }
 
         return JsonSerializer.Serialize(payload, new JsonSerializerOptions
