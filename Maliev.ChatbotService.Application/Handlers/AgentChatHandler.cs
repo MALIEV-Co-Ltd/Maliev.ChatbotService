@@ -72,6 +72,7 @@ public class AgentChatHandler
                 SystemInstruction = request.SystemInstruction,
                 Messages = messages,
                 TimeoutSeconds = 30,
+                MaxTokens = request.MaxTokens,
                 Tools = request.Tools,
                 ToolConfig = request.ToolConfig,
                 IncludeThoughts = request.IncludeThoughts,

@@ -43,6 +43,7 @@ public class SendMessageCommandHandler
     // concurrent message interleave (C2). AgentChatHandler runs up to MaxIterations (10) iterations,
     // each with a per-call timeout of 30s, so the worst case is ~300s; 330s adds a safety margin.
     private const int SessionLockSeconds = 330;
+    private const int ChatMaxOutputTokens = 2048;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SendMessageCommandHandler"/> class.
@@ -477,6 +478,7 @@ public class SendMessageCommandHandler
                 TimeoutSeconds = enableGeminiSearch ? 30 : 10,
                 ResponseMimeType = command.ResponseMimeType,
                 ResponseSchema = command.ResponseSchema,
+                MaxTokens = ChatMaxOutputTokens,
                 EnableWebSearch = enableGeminiSearch,
                 IncludeThoughts = allowModelThoughts,
                 ThinkingBudget = allowModelThoughts ? null : 0,

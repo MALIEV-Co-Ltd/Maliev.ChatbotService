@@ -14,6 +14,7 @@ namespace Maliev.ChatbotService.Application.Handlers;
 public class ExtractCustomerCommandHandler
 {
     private const int MaxExtractionPromptTokens = 20000;
+    private const int MaxExtractionOutputTokens = 4096;
 
     private readonly ISystemInstructionRepository _instructionRepository;
     private readonly IGeminiClient _geminiClient;
@@ -168,6 +169,7 @@ public class ExtractCustomerCommandHandler
             ResponseMimeType = "application/json",
             ResponseSchema = CustomerExtractionSchema,
             ThinkingBudget = 0,
+            MaxTokens = MaxExtractionOutputTokens,
             MaxPromptTokens = MaxExtractionPromptTokens,
             MediaResolution = attachments.Count > 0 ? "MEDIA_RESOLUTION_MEDIUM" : null,
             TimeoutSeconds = 60

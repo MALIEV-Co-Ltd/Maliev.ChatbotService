@@ -26,6 +26,15 @@ public sealed class SendMessageCommandHandlerCostTests
     }
 
     [Fact]
+    public async Task HandleAsync_WebsiteCustomerMessage_BoundsGeneratedOutputTokens()
+    {
+        var result = await SendWebsiteMessageAsync();
+
+        Assert.NotNull(result.CapturedRequest);
+        Assert.Equal(2048, result.CapturedRequest!.MaxTokens);
+    }
+
+    [Fact]
     public async Task HandleAsync_WebsiteMediaAttachment_UsesMediumMediaResolution()
     {
         var result = await SendWebsiteMessageAsync([

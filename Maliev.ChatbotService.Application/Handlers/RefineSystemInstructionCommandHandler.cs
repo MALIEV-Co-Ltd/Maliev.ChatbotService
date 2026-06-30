@@ -11,6 +11,7 @@ namespace Maliev.ChatbotService.Application.Handlers;
 public class RefineSystemInstructionCommandHandler
 {
     private const int InstructionTextMaxLength = 5000;
+    private const int MaxRefinementOutputTokens = 4096;
     private readonly IGeminiClient _geminiClient;
     private readonly ILogger<RefineSystemInstructionCommandHandler> _logger;
 
@@ -70,6 +71,7 @@ public class RefineSystemInstructionCommandHandler
             ResponseSchema = ResponseSchema,
             Temperature = 0.2,
             ThinkingBudget = 0,
+            MaxTokens = MaxRefinementOutputTokens,
             TimeoutSeconds = 30
         };
 
