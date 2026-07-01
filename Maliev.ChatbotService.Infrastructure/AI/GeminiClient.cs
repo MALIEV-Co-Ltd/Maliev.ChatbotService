@@ -530,6 +530,11 @@ public class GeminiClient : IGeminiClient
             payload["cachedContent"] = request.CachedContentName;
         }
 
+        if (request.Store is not null)
+        {
+            payload["store"] = request.Store.Value;
+        }
+
         var generationConfig = BuildGenerationConfig(request);
         if (generationConfig.Count > 0)
         {

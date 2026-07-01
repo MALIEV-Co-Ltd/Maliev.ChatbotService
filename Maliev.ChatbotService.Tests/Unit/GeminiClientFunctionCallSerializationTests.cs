@@ -77,6 +77,26 @@ public sealed class GeminiClientFunctionCallSerializationTests
     }
 
     [Fact]
+    public async Task SendMessageAsync_StoreFalse_SerializesAsTopLevelStoreField()
+    {
+        var handler = new CapturingHandler("""{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}""");
+        var client = CreateClient(handler);
+
+        await client.SendMessageAsync(new GeminiRequest
+        {
+            SystemInstruction = "sys",
+            Prompt = "Handle private customer data.",
+            Store = false,
+            MaxTokens = 128
+        });
+
+        using var doc = JsonDocument.Parse(handler.RequestBody!);
+        Assert.False(doc.RootElement.GetProperty("store").GetBoolean());
+        Assert.True(doc.RootElement.TryGetProperty("generationConfig", out var generationConfig));
+        Assert.False(generationConfig.TryGetProperty("store", out _));
+    }
+
+    [Fact]
     public async Task SendMessageAsync_ToolTurns_SerializeAsNativeFunctionCallAndFunctionResponseParts()
     {
         var handler = new CapturingHandler(

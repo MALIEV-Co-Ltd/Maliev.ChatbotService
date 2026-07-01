@@ -96,6 +96,12 @@ public class GeminiRequest
     public string? ServiceTier { get; set; }
 
     /// <summary>
+    /// Gets or sets whether Gemini may store this request for provider-side logging and datasets.
+    /// Set to <see langword="false" /> for customer or private payloads.
+    /// </summary>
+    public bool? Store { get; set; }
+
+    /// <summary>
     /// Gets or sets the timeout for the request.
     /// </summary>
     public TimeSpan? Timeout { get; set; }
