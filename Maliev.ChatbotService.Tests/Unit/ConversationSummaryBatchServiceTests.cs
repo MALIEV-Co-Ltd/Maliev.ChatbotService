@@ -330,6 +330,8 @@ public sealed class ConversationSummaryBatchServiceTests
         Assert.NotNull(updatedBatchJob.CompletedAt);
         Assert.Equal(ConversationSummaryBatchStatus.Succeeded, batchItem.Status);
         Assert.Contains("\"TotalTokens\":15", batchItem.TokenUsageJson);
+        Assert.Contains("\"ServiceTier\":\"batch\"", batchItem.CostEstimateJson);
+        Assert.Contains("\"TotalMicroUsd\":2", batchItem.CostEstimateJson);
     }
 
     private static ConversationSummaryBatchService CreateService(

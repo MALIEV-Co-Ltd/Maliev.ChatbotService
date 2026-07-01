@@ -61,6 +61,7 @@ public class ConversationSummaryBatchJobRepositoryTests : IAsyncLifetime
                     SessionId = sessionId,
                     UserProfileId = userId,
                     Status = ConversationSummaryBatchStatus.Submitted,
+                    CostEstimateJson = """{"ServiceTier":"batch","TotalMicroUsd":2}""",
                     CreatedAt = now,
                     UpdatedAt = now
                 }
@@ -78,6 +79,7 @@ public class ConversationSummaryBatchJobRepositoryTests : IAsyncLifetime
         Assert.Equal(sessionId, item.SessionId);
         Assert.Equal(userId, item.UserProfileId);
         Assert.Equal(ConversationSummaryBatchStatus.Submitted, item.Status);
+        Assert.Contains("\"ServiceTier\":\"batch\"", item.CostEstimateJson);
     }
 
     /// <summary>

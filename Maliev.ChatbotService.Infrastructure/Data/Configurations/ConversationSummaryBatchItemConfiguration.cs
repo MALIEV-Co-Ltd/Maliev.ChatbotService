@@ -40,6 +40,9 @@ public class ConversationSummaryBatchItemConfiguration : IEntityTypeConfiguratio
         builder.Property(x => x.TokenUsageJson)
             .HasColumnType("jsonb");
 
+        builder.Property(x => x.CostEstimateJson)
+            .HasColumnType("jsonb");
+
         builder.Property(x => x.CreatedAt)
             .IsRequired();
 

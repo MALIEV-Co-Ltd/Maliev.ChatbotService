@@ -48,6 +48,11 @@ public class ConversationSummaryBatchItem
     public string? TokenUsageJson { get; set; }
 
     /// <summary>
+    /// Gets or sets Gemini cost estimate metadata JSON, if available.
+    /// </summary>
+    public string? CostEstimateJson { get; set; }
+
+    /// <summary>
     /// Gets or sets the timestamp when the item record was created.
     /// </summary>
     public DateTimeOffset CreatedAt { get; set; }

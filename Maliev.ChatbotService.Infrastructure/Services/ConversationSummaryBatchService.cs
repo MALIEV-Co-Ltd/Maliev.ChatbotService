@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Maliev.ChatbotService.Application.Costing;
 using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Domain.Entities;
 using Maliev.ChatbotService.Domain.Enums;
@@ -337,6 +338,7 @@ public class ConversationSummaryBatchService : IConversationSummaryBatchService
                     ConversationSummaryGeminiRequestFactory.EmptySummaryJson,
                     response.ErrorMessage,
                     null,
+                    job.ModelName,
                     now,
                     cancellationToken);
                 continue;
@@ -355,6 +357,7 @@ public class ConversationSummaryBatchService : IConversationSummaryBatchService
                     ConversationSummaryGeminiRequestFactory.EmptySummaryJson,
                     response.Response?.ErrorMessage ?? "Gemini batch summary response was invalid.",
                     response.Response?.TokenUsage,
+                    job.ModelName,
                     now,
                     cancellationToken);
                 continue;
@@ -366,6 +369,7 @@ public class ConversationSummaryBatchService : IConversationSummaryBatchService
                 summaryJson,
                 null,
                 response.Response.TokenUsage,
+                job.ModelName,
                 now,
                 cancellationToken);
         }
@@ -378,6 +382,7 @@ public class ConversationSummaryBatchService : IConversationSummaryBatchService
                 ConversationSummaryGeminiRequestFactory.EmptySummaryJson,
                 "Gemini batch summary response did not include this session.",
                 null,
+                job.ModelName,
                 now,
                 cancellationToken);
         }
@@ -397,6 +402,7 @@ public class ConversationSummaryBatchService : IConversationSummaryBatchService
                 ConversationSummaryGeminiRequestFactory.EmptySummaryJson,
                 errorMessage,
                 null,
+                job.ModelName,
                 now,
                 cancellationToken);
         }
@@ -408,14 +414,21 @@ public class ConversationSummaryBatchService : IConversationSummaryBatchService
         string summaryJson,
         string? errorMessage,
         GeminiTokenUsage? tokenUsage,
+        string modelName,
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
+        var tokenUsageJson = tokenUsage is null ? null : JsonSerializer.Serialize(tokenUsage);
+        var costEstimate = GeminiCostEstimator.Estimate(modelName, "batch", tokenUsage);
+        var costEstimateJson = costEstimate is null ? null : JsonSerializer.Serialize(costEstimate);
+
         var session = await _sessionRepository.GetByIdAsync(item.SessionId, cancellationToken);
         if (session is null)
         {
             item.Status = ConversationSummaryBatchStatus.Failed;
             item.ErrorMessage = $"Session {item.SessionId} was not found.";
+            item.TokenUsageJson = tokenUsageJson;
+            item.CostEstimateJson = costEstimateJson;
             item.UpdatedAt = now;
             item.CompletedAt = now;
             return;
@@ -442,7 +455,8 @@ public class ConversationSummaryBatchService : IConversationSummaryBatchService
         item.Status = status;
         item.StructuredSummary = summaryJson;
         item.ErrorMessage = errorMessage;
-        item.TokenUsageJson = tokenUsage is null ? null : JsonSerializer.Serialize(tokenUsage);
+        item.TokenUsageJson = tokenUsageJson;
+        item.CostEstimateJson = costEstimateJson;
         item.UpdatedAt = now;
         item.CompletedAt = now;
     }
