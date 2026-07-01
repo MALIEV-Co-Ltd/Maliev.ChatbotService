@@ -494,7 +494,7 @@ public class GeminiClient : IGeminiClient
         }
     }
 
-    private static Dictionary<string, object?> BuildGeminiPayload(GeminiRequest request)
+    internal static Dictionary<string, object?> BuildGeminiPayload(GeminiRequest request)
     {
         var contentsParts = BuildContents(request);
 

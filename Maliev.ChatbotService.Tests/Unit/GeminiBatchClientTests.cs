@@ -1,0 +1,167 @@
+using System.Net;
+using System.Text;
+using System.Text.Json;
+using Maliev.ChatbotService.Application.Interfaces;
+using Maliev.ChatbotService.Infrastructure.AI;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
+using Xunit;
+
+namespace Maliev.ChatbotService.Tests.Unit;
+
+public sealed class GeminiBatchClientTests
+{
+    [Fact]
+    public async Task CreateInlineGenerateContentBatchAsync_SerializesInlineRequestsAndParsesOperation()
+    {
+        var handler = new CapturingHandler("""{"name":"batches/batch-123","metadata":{"state":"JOB_STATE_PENDING"}}""");
+        var client = CreateClient(handler);
+
+        var result = await client.CreateInlineGenerateContentBatchAsync(new ModelBatchRequest
+        {
+            DisplayName = "expired-session-summaries",
+            ModelName = "gemini-2.5-flash-lite",
+            Priority = -10,
+            Requests =
+            [
+                new ModelBatchGenerateContentRequest
+                {
+                    Request = new GeminiRequest
+                    {
+                        SystemInstruction = "Summarize the conversation.",
+                        Messages =
+                        [
+                            new GeminiMessage { Role = "user", Content = "User: hello\nAssistant: hi" }
+                        ],
+                        ResponseMimeType = "application/json",
+                        ResponseSchema = new
+                        {
+                            type = "object",
+                            properties = new { topics = new { type = "array", items = new { type = "string" } } }
+                        },
+                        ThinkingBudget = 0,
+                        MaxTokens = 1024
+                    },
+                    Metadata = new Dictionary<string, object?>
+                    {
+                        ["sessionId"] = "session-1",
+                        ["userProfileId"] = "user-1"
+                    }
+                }
+            ]
+        });
+
+        Assert.Equal("batches/batch-123", result.Name);
+        Assert.Equal("JOB_STATE_PENDING", result.State);
+        Assert.Equal(HttpMethod.Post, handler.Request!.Method);
+        Assert.Equal("/v1beta/models/gemini-2.5-flash-lite:batchGenerateContent", handler.Request.RequestUri!.AbsolutePath);
+        Assert.True(handler.Request.Headers.Contains("x-goog-api-key"));
+
+        using var payload = JsonDocument.Parse(handler.RequestBody!);
+        var batch = payload.RootElement.GetProperty("batch");
+        Assert.Equal("expired-session-summaries", batch.GetProperty("display_name").GetString());
+        Assert.Equal("-10", batch.GetProperty("priority").GetString());
+
+        var inlineRequest = batch
+            .GetProperty("input_config")
+            .GetProperty("requests")
+            .GetProperty("requests")[0];
+
+        Assert.Equal("session-1", inlineRequest.GetProperty("metadata").GetProperty("sessionId").GetString());
+        var generateRequest = inlineRequest.GetProperty("request");
+        Assert.Equal(
+            "Summarize the conversation.",
+            generateRequest.GetProperty("systemInstruction").GetProperty("parts")[0].GetProperty("text").GetString());
+        Assert.Equal(
+            "User: hello\nAssistant: hi",
+            generateRequest.GetProperty("contents")[0].GetProperty("parts")[0].GetProperty("text").GetString());
+        Assert.Equal(
+            "application/json",
+            generateRequest.GetProperty("generationConfig").GetProperty("responseMimeType").GetString());
+        Assert.Equal(
+            0,
+            generateRequest.GetProperty("generationConfig").GetProperty("thinkingConfig").GetProperty("thinkingBudget").GetInt32());
+    }
+
+    [Fact]
+    public async Task GetBatchAsync_ParsesOperationStateAndInlineResponses()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "name":"batches/batch-123",
+              "done":true,
+              "metadata":{"state":"JOB_STATE_SUCCEEDED"},
+              "response":{
+                "output":{
+                  "inlinedResponses":{
+                    "inlinedResponses":[{
+                      "metadata":{"sessionId":"session-1"},
+                      "response":{
+                        "candidates":[{"content":{"parts":[{"text":"{\"topics\":[]}"}]}}],
+                        "usageMetadata":{"totalTokenCount":25}
+                      }
+                    }]
+                  }
+                }
+              }
+            }
+            """);
+        var client = CreateClient(handler);
+
+        var result = await client.GetBatchAsync("batches/batch-123");
+
+        Assert.Equal("batches/batch-123", result.Name);
+        Assert.True(result.Done);
+        Assert.Equal("JOB_STATE_SUCCEEDED", result.State);
+        var response = Assert.Single(result.InlineResponses);
+        Assert.True(response.Metadata.TryGetValue("sessionId", out var sessionId));
+        Assert.Equal("session-1", sessionId?.ToString());
+        Assert.NotNull(response.Response);
+        Assert.Equal("{\"topics\":[]}", response.Response!.Content);
+        Assert.Equal(25, response.Response.TokenUsage!.TotalTokens);
+        Assert.Equal(HttpMethod.Get, handler.Request!.Method);
+        Assert.Equal("/v1beta/batches/batch-123", handler.Request.RequestUri!.AbsolutePath);
+    }
+
+    private static GeminiBatchClient CreateClient(CapturingHandler handler)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Gemini:ApiKey"] = "test-api-key",
+                ["Gemini:MainModelName"] = "gemini-2.5-flash"
+            })
+            .Build();
+
+        return new GeminiBatchClient(
+            new HttpClient(handler) { BaseAddress = new Uri("https://generativelanguage.googleapis.com/") },
+            configuration,
+            NullLogger<GeminiBatchClient>.Instance);
+    }
+
+    private sealed class CapturingHandler : HttpMessageHandler
+    {
+        private readonly string _responseJson;
+
+        public CapturingHandler(string responseJson)
+        {
+            _responseJson = responseJson;
+        }
+
+        public HttpRequestMessage? Request { get; private set; }
+
+        public string? RequestBody { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Request = request;
+            RequestBody = request.Content is null
+                ? null
+                : await request.Content.ReadAsStringAsync(cancellationToken);
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(_responseJson, Encoding.UTF8, "application/json")
+            };
+        }
+    }
+}
