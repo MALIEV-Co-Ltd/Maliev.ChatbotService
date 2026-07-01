@@ -53,4 +53,41 @@ public sealed class IntentClassificationServiceTests
         Assert.Contains("confidence", schemaJson);
         Assert.Contains("additionalTopics", schemaJson);
     }
+
+    [Fact]
+    public async Task ClassifyIntentAsync_UsesGeminiIntentModelConfiguration()
+    {
+        GeminiRequest? capturedRequest = null;
+        var geminiClient = new Mock<IGeminiClient>();
+        geminiClient
+            .Setup(item => item.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<GeminiRequest, CancellationToken>((request, _) => capturedRequest = request)
+            .ReturnsAsync(new GeminiResponse
+            {
+                Success = true,
+                Content = "{\"intent\":\"Support\",\"confidence\":0.88,\"additionalTopics\":[]}"
+            });
+
+        var instructionRepository = new Mock<ISystemInstructionRepository>();
+        instructionRepository
+            .Setup(item => item.GetActiveByTopicsAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<SystemInstruction>());
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Gemini:IntentModelName"] = "gemini-2.5-flash-lite-configured"
+            })
+            .Build();
+        var service = new IntentClassificationService(
+            geminiClient.Object,
+            instructionRepository.Object,
+            configuration,
+            NullLogger<IntentClassificationService>.Instance);
+
+        await service.ClassifyIntentAsync("Need order status");
+
+        Assert.NotNull(capturedRequest);
+        Assert.Equal("gemini-2.5-flash-lite-configured", capturedRequest!.ModelName);
+    }
 }

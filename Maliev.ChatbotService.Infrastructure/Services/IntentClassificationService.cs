@@ -43,7 +43,9 @@ public class IntentClassificationService : IIntentClassificationService
         _repository = repository;
         _configuration = configuration;
         _logger = logger;
-        _modelName = _configuration["IntentClassification:ModelName"] ?? "gemini-2.5-flash-lite";
+        _modelName = _configuration["Gemini:IntentModelName"]
+            ?? _configuration["IntentClassification:ModelName"]
+            ?? "gemini-2.5-flash-lite";
     }
 
     /// <inheritdoc/>
