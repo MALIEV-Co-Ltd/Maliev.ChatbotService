@@ -959,9 +959,19 @@ public class SendMessageCommandHandler
 
     private static string? ResolveMediaResolution(IEnumerable<GeminiMessage> messages)
     {
-        return messages.Any(message => message.Attachments?.Any(IsMediaAttachment) == true)
-            ? "MEDIA_RESOLUTION_MEDIUM"
-            : null;
+        var mediaAttachments = messages
+            .SelectMany(message => message.Attachments ?? [])
+            .Where(IsMediaAttachment)
+            .ToList();
+
+        if (mediaAttachments.Count == 0)
+        {
+            return null;
+        }
+
+        return mediaAttachments.All(IsVideoAttachment)
+            ? "MEDIA_RESOLUTION_LOW"
+            : "MEDIA_RESOLUTION_MEDIUM";
     }
 
     private static bool IsMediaAttachment(GeminiAttachment attachment)
@@ -975,6 +985,16 @@ public class SendMessageCommandHandler
         return attachment.MimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) ||
             attachment.MimeType.StartsWith("video/", StringComparison.OrdinalIgnoreCase) ||
             attachment.MimeType.Equals("application/pdf", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsVideoAttachment(GeminiAttachment attachment)
+    {
+        if (Enum.TryParse<ContentType>(attachment.ContentType, ignoreCase: true, out var contentType))
+        {
+            return contentType == ContentType.Video;
+        }
+
+        return attachment.MimeType.StartsWith("video/", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? ResolveChatModelName(string? requestedModelName)

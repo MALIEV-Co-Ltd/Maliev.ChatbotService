@@ -204,6 +204,23 @@ public sealed class SendMessageCommandHandlerCostTests
     }
 
     [Fact]
+    public async Task HandleAsync_WebsiteVideoAttachment_UsesLowMediaResolution()
+    {
+        var result = await SendWebsiteMessageAsync([
+            new AttachmentDto
+            {
+                ContentType = ContentType.Video,
+                Data = "AAAA",
+                MimeType = "video/mp4",
+                SizeBytes = 1024
+            }
+        ]);
+
+        Assert.NotNull(result.CapturedRequest);
+        Assert.Equal("MEDIA_RESOLUTION_LOW", result.CapturedRequest!.MediaResolution);
+    }
+
+    [Fact]
     public async Task HandleAsync_PersistedMediaAttachment_UsesMediumMediaResolution()
     {
         var now = DateTimeOffset.UtcNow;
