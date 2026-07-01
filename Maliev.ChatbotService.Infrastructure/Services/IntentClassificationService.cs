@@ -1,3 +1,4 @@
+using Maliev.ChatbotService.Application.Configuration;
 using Maliev.ChatbotService.Application.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -29,6 +30,7 @@ public class IntentClassificationService : IIntentClassificationService
     private readonly IConfiguration _configuration;
     private readonly ILogger<IntentClassificationService> _logger;
     private readonly string _modelName;
+    private readonly GeminiUtilityRequestOptions _requestOptions;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="IntentClassificationService"/> class.
@@ -46,6 +48,7 @@ public class IntentClassificationService : IIntentClassificationService
         _modelName = _configuration["Gemini:IntentModelName"]
             ?? _configuration["IntentClassification:ModelName"]
             ?? "gemini-2.5-flash-lite";
+        _requestOptions = GeminiUtilityRequestOptions.FromConfiguration(_configuration);
     }
 
     /// <inheritdoc/>
@@ -71,7 +74,8 @@ public class IntentClassificationService : IIntentClassificationService
             MaxPromptTokens = MaxClassificationPromptTokens,
             ResponseMimeType = "application/json",
             ResponseSchema = IntentClassificationSchema,
-            TimeoutSeconds = 5
+            ServiceTier = _requestOptions.ServiceTier,
+            TimeoutSeconds = _requestOptions.TimeoutSeconds
         };
 
         try

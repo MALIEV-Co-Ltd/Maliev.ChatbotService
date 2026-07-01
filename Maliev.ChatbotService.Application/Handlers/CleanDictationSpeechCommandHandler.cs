@@ -1,4 +1,5 @@
 using Maliev.ChatbotService.Application.Commands;
+using Maliev.ChatbotService.Application.Configuration;
 using Maliev.ChatbotService.Application.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -21,6 +22,7 @@ public class CleanDictationSpeechCommandHandler
     private readonly IGeminiClient _geminiClient;
     private readonly ILogger<CleanDictationSpeechCommandHandler> _logger;
     private readonly string _modelName;
+    private readonly GeminiUtilityRequestOptions _requestOptions;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="CleanDictationSpeechCommandHandler"/> class.
@@ -33,6 +35,7 @@ public class CleanDictationSpeechCommandHandler
         _geminiClient = geminiClient;
         _logger = logger;
         _modelName = configuration?["Gemini:IntentModelName"] ?? "gemini-2.5-flash-lite";
+        _requestOptions = GeminiUtilityRequestOptions.FromConfiguration(configuration);
     }
 
     /// <summary>
@@ -52,7 +55,8 @@ public class CleanDictationSpeechCommandHandler
             ThinkingBudget = 0,
             MaxTokens = MaxCleanupOutputTokens,
             MaxPromptTokens = MaxCleanupPromptTokens,
-            TimeoutSeconds = 5,
+            ServiceTier = _requestOptions.ServiceTier,
+            TimeoutSeconds = _requestOptions.TimeoutSeconds,
         };
 
         try
