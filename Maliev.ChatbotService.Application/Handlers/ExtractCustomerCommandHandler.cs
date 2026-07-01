@@ -173,7 +173,7 @@ public class ExtractCustomerCommandHandler
             MaxPromptTokens = MaxExtractionPromptTokens,
             MediaResolution = attachments.Count > 0 ? "MEDIA_RESOLUTION_MEDIUM" : null,
             ServiceTier = "flex",
-            TimeoutSeconds = 60
+            TimeoutSeconds = GeminiRequest.FlexInferenceTimeoutSeconds
         };
 
         var geminiResponse = await _geminiClient.SendMessageAsync(geminiRequest, cancellationToken);

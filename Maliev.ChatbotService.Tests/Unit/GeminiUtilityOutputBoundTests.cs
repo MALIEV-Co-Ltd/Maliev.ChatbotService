@@ -103,5 +103,6 @@ public sealed class GeminiUtilityOutputBoundTests
         Assert.NotNull(capturedRequest);
         Assert.Equal(4096, capturedRequest!.MaxTokens);
         Assert.Equal("flex", capturedRequest.ServiceTier);
+        Assert.Equal(600, capturedRequest.TimeoutSeconds);
     }
 }

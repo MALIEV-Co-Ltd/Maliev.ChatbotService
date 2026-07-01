@@ -28,6 +28,11 @@ public interface IGeminiClient
 public class GeminiRequest
 {
     /// <summary>
+    /// Recommended timeout window for Gemini Flex inference requests, in seconds.
+    /// </summary>
+    public const int FlexInferenceTimeoutSeconds = 600;
+
+    /// <summary>
     /// Gets or sets the model name to use for this request (optional).
     /// </summary>
     public string? ModelName { get; set; }

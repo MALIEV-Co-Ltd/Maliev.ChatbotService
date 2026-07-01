@@ -298,6 +298,7 @@ public class ConversationSummaryServiceTests
         Assert.NotNull(capturedRequest);
         Assert.Equal("gemini-2.5-flash-lite", capturedRequest!.ModelName);
         Assert.Equal("flex", capturedRequest!.ServiceTier);
+        Assert.Equal(600, capturedRequest.TimeoutSeconds);
         Assert.Equal("application/json", capturedRequest.ResponseMimeType);
         Assert.NotNull(capturedRequest.ResponseSchema);
         Assert.Equal(0, capturedRequest.ThinkingBudget);

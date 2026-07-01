@@ -124,7 +124,7 @@ Respond with ONLY valid JSON. No markdown, no code blocks, just the JSON object.
             MaxTokens = 1024,
             MaxPromptTokens = MaxSummaryPromptTokens,
             ServiceTier = "flex",
-            TimeoutSeconds = 30
+            TimeoutSeconds = GeminiRequest.FlexInferenceTimeoutSeconds
         };
 
         var response = await _geminiClient.SendMessageAsync(geminiRequest, cancellationToken);

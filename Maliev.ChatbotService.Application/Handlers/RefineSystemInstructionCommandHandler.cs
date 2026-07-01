@@ -73,7 +73,7 @@ public class RefineSystemInstructionCommandHandler
             ThinkingBudget = 0,
             MaxTokens = MaxRefinementOutputTokens,
             ServiceTier = "flex",
-            TimeoutSeconds = 30
+            TimeoutSeconds = GeminiRequest.FlexInferenceTimeoutSeconds
         };
 
         var response = await _geminiClient.SendMessageAsync(request, cancellationToken);
