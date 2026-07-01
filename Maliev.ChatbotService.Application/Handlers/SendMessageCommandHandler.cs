@@ -44,7 +44,7 @@ public class SendMessageCommandHandler
     // each with a per-call timeout of 30s, so the worst case is ~300s; 330s adds a safety margin.
     private const int SessionLockSeconds = 330;
     private const int ChatMaxOutputTokens = 2048;
-    private const int ChatMediaMaxPromptTokens = 30000;
+    private const int ChatMaxPromptTokens = 30000;
     private const int MaxStructuredOutputSchemaJsonCharacters = 16_384;
     private const string JsonResponseMimeType = "application/json";
     private static readonly HashSet<string> AllowedChatModelOverrides = new(StringComparer.OrdinalIgnoreCase)
@@ -502,7 +502,7 @@ public class SendMessageCommandHandler
                 ResponseMimeType = structuredOutput.ResponseMimeType,
                 ResponseSchema = structuredOutput.ResponseSchema,
                 MaxTokens = ChatMaxOutputTokens,
-                MaxPromptTokens = command.Attachments is { Count: > 0 } ? ChatMediaMaxPromptTokens : null,
+                MaxPromptTokens = ChatMaxPromptTokens,
                 EnableWebSearch = enableGeminiSearch,
                 IncludeThoughts = allowModelThoughts,
                 ThinkingBudget = allowModelThoughts ? null : 0,

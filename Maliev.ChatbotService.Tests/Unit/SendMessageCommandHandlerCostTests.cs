@@ -103,12 +103,12 @@ public sealed class SendMessageCommandHandlerCostTests
     }
 
     [Fact]
-    public async Task HandleAsync_WebsiteCustomerMessage_DoesNotPreflightTextOnlyPromptTokens()
+    public async Task HandleAsync_WebsiteCustomerMessage_PreflightsTextOnlyPromptTokens()
     {
         var result = await SendWebsiteMessageAsync();
 
         Assert.NotNull(result.CapturedRequest);
-        Assert.Null(result.CapturedRequest!.MaxPromptTokens);
+        Assert.Equal(30000, result.CapturedRequest!.MaxPromptTokens);
     }
 
     [Fact]
