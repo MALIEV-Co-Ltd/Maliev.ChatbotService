@@ -151,6 +151,7 @@ try
     // Services
     builder.Services.AddScoped<ISystemInstructionService, SystemInstructionService>();
     builder.Services.AddScoped<IConversationSummaryService, ConversationSummaryService>();
+    builder.Services.AddScoped<IConversationSummaryBatchService, ConversationSummaryBatchService>();
     builder.Services.AddScoped<IRateLimitService, RateLimitService>();
     builder.Services.AddScoped<IUsageBudgetService, RedisUsageBudgetService>();
     builder.Services.AddSingleton<IWebhookBufferQueue, RedisWebhookBufferQueue>();

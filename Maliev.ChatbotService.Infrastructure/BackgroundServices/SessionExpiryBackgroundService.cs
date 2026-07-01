@@ -61,8 +61,11 @@ public class SessionExpiryBackgroundService : BackgroundService
         var sessionRepository = scope.ServiceProvider.GetRequiredService<IConversationSessionRepository>();
         var messageRepository = scope.ServiceProvider.GetRequiredService<IMessageRepository>();
         var summaryService = scope.ServiceProvider.GetRequiredService<IConversationSummaryService>();
+        var summaryBatchService = scope.ServiceProvider.GetRequiredService<IConversationSummaryBatchService>();
         var eventPublisher = scope.ServiceProvider.GetRequiredService<IEventPublisher>();
         var metrics = scope.ServiceProvider.GetRequiredService<IConversationMetrics>();
+
+        await summaryBatchService.ProcessOpenBatchesAsync(cancellationToken);
 
         // Get all expired sessions
         var expiredSessions = await sessionRepository.GetExpiredSessionsAsync(cancellationToken);
@@ -74,6 +77,9 @@ public class SessionExpiryBackgroundService : BackgroundService
         }
 
         _logger.LogInformation("Processing {Count} expired sessions", expiredSessions.Count);
+        var batchDeferredSessionIds = await summaryBatchService.SubmitExpiredSessionSummariesAsync(
+            expiredSessions,
+            cancellationToken);
 
         foreach (var session in expiredSessions)
         {
@@ -86,9 +92,20 @@ public class SessionExpiryBackgroundService : BackgroundService
 
                 if (messages.Any())
                 {
-                    // Generate summary for the session
-                    await summaryService.GenerateSummaryAsync(session.Id, cancellationToken);
-                    _logger.LogInformation("Generated summary for expired session {SessionId}", session.Id);
+                    if (batchDeferredSessionIds.Contains(session.Id))
+                    {
+                        session.Status = SessionStatus.Closed;
+                        await sessionRepository.UpdateAsync(session, cancellationToken);
+                        _logger.LogInformation(
+                            "Queued batch summary and closed expired session {SessionId}",
+                            session.Id);
+                    }
+                    else
+                    {
+                        // Generate summary for the session
+                        await summaryService.GenerateSummaryAsync(session.Id, cancellationToken);
+                        _logger.LogInformation("Generated summary for expired session {SessionId}", session.Id);
+                    }
                 }
                 else
                 {

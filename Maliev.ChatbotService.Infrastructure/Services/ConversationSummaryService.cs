@@ -3,7 +3,6 @@ using Maliev.ChatbotService.Domain.Entities;
 using Maliev.ChatbotService.Domain.Enums;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using System.Text.Json;
 
 namespace Maliev.ChatbotService.Infrastructure.Services;
 
@@ -12,31 +11,6 @@ namespace Maliev.ChatbotService.Infrastructure.Services;
 /// </summary>
 public class ConversationSummaryService : IConversationSummaryService
 {
-    private const int MaxSummaryPromptTokens = 30000;
-
-    private static readonly object SummaryResponseSchema = new
-    {
-        type = "object",
-        properties = new
-        {
-            topics = new { type = "array", items = new { type = "string" } },
-            decisions = new { type = "array", items = new { type = "string" } },
-            preferences = new { type = "array", items = new { type = "string" } },
-            entities = new { type = "array", items = new { type = "string" } },
-            intentCategories = new { type = "array", items = new { type = "string" } },
-            unresolvedQuestions = new { type = "array", items = new { type = "string" } }
-        },
-        required = new[]
-        {
-            "topics",
-            "decisions",
-            "preferences",
-            "entities",
-            "intentCategories",
-            "unresolvedQuestions"
-        }
-    };
-
     private readonly IConversationSummaryRepository _summaryRepository;
     private readonly IConversationSessionRepository _sessionRepository;
     private readonly IMessageRepository _messageRepository;
@@ -84,7 +58,10 @@ public class ConversationSummaryService : IConversationSummaryService
         }
 
         // Get all messages in the session
-        var messages = await _messageRepository.GetRecentBySessionIdAsync(sessionId, 1000, cancellationToken);
+        var messages = await _messageRepository.GetRecentBySessionIdAsync(
+            sessionId,
+            ConversationSummaryGeminiRequestFactory.MaxSummaryMessages,
+            cancellationToken);
         var messageList = messages.OrderBy(m => m.CreatedAt).ToList();
 
         if (messageList.Count == 0)
@@ -94,43 +71,8 @@ public class ConversationSummaryService : IConversationSummaryService
         }
 
         // Build conversation text for summarization
-        var conversationText = string.Join("\n", messageList.Select(m =>
-            $"{(m.Role == MessageRole.User ? "User" : "Assistant")}: {m.Content}"));
-
-        // Create summarization prompt
-        var systemInstruction = @"You are a conversation summarization assistant. Your task is to analyze a conversation and extract structured information in JSON format.
-
-Extract the following:
-1. topics: Array of main topics discussed (e.g., [""CNC machining"", ""material selection""])
-2. decisions: Array of decisions made (e.g., [""Customer prefers aluminum"", ""Needs quotation for 100 units""])
-3. preferences: Array of user preferences (e.g., [""Prefers 6061 aluminum"", ""Requires anodized finish""])
-4. entities: Array of important entities mentioned (e.g., [""100 units"", ""6061 aluminum"", ""delivery by March 15""])
-5. intentCategories: Array of intent categories (e.g., [""quotation_request"", ""technical_inquiry"", ""order_status""])
-6. unresolvedQuestions: Array of questions that were not answered (e.g., [""What is the lead time?"", ""Can you provide samples?""])
-
-Respond with ONLY valid JSON. No markdown, no code blocks, just the JSON object.";
-
-        var geminiRequest = new GeminiRequest
-        {
-            ModelName = _modelName,
-            SystemInstruction = systemInstruction,
-            Messages = new List<GeminiMessage>
-            {
-                new GeminiMessage
-                {
-                    Role = "user",
-                    Content = $"Summarize this conversation:\n\n{conversationText}"
-                }
-            },
-            ResponseMimeType = "application/json",
-            ResponseSchema = SummaryResponseSchema,
-            Temperature = 0.1,
-            ThinkingBudget = 0,
-            MaxTokens = 1024,
-            MaxPromptTokens = MaxSummaryPromptTokens,
-            ServiceTier = "flex",
-            TimeoutSeconds = GeminiRequest.FlexInferenceTimeoutSeconds
-        };
+        var conversationText = ConversationSummaryGeminiRequestFactory.BuildConversationText(messageList);
+        var geminiRequest = ConversationSummaryGeminiRequestFactory.CreateRequest(conversationText, _modelName);
 
         var response = await _geminiClient.SendMessageAsync(geminiRequest, cancellationToken);
 
@@ -141,10 +83,10 @@ Respond with ONLY valid JSON. No markdown, no code blocks, just the JSON object.
         }
 
         // Clean the response to ensure it's valid JSON
-        var summaryJson = CleanJsonResponse(response.Content);
+        var summaryJson = ConversationSummaryGeminiRequestFactory.CleanJsonResponse(response.Content);
 
         // Validate JSON structure
-        if (!IsValidSummaryJson(summaryJson))
+        if (!ConversationSummaryGeminiRequestFactory.IsValidSummaryJson(summaryJson))
         {
             _logger.LogWarning("Invalid summary JSON for session {SessionId}, creating empty summary", sessionId);
             return await CreateEmptySummaryAsync(session, cancellationToken);
@@ -190,7 +132,7 @@ Respond with ONLY valid JSON. No markdown, no code blocks, just the JSON object.
             Id = Guid.NewGuid(),
             SessionId = session.Id,
             UserProfileId = session.UserProfileId,
-            StructuredSummary = "{\"topics\":[],\"decisions\":[],\"preferences\":[],\"entities\":[],\"intentCategories\":[],\"unresolvedQuestions\":[]}",
+            StructuredSummary = ConversationSummaryGeminiRequestFactory.EmptySummaryJson,
             CreatedAt = DateTimeOffset.UtcNow
         };
 
@@ -201,47 +143,5 @@ Respond with ONLY valid JSON. No markdown, no code blocks, just the JSON object.
         await _sessionRepository.UpdateAsync(session, cancellationToken);
 
         return createdSummary;
-    }
-
-    private static string CleanJsonResponse(string content)
-    {
-        // Remove markdown code blocks if present
-        var cleaned = content.Trim();
-        if (cleaned.StartsWith("```json"))
-        {
-            cleaned = cleaned.Substring(7);
-        }
-        else if (cleaned.StartsWith("```"))
-        {
-            cleaned = cleaned.Substring(3);
-        }
-
-        if (cleaned.EndsWith("```"))
-        {
-            cleaned = cleaned.Substring(0, cleaned.Length - 3);
-        }
-
-        return cleaned.Trim();
-    }
-
-    private static bool IsValidSummaryJson(string json)
-    {
-        try
-        {
-            var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-
-            // Validate required fields exist
-            return root.TryGetProperty("topics", out _) &&
-                   root.TryGetProperty("decisions", out _) &&
-                   root.TryGetProperty("preferences", out _) &&
-                   root.TryGetProperty("entities", out _) &&
-                   root.TryGetProperty("intentCategories", out _) &&
-                   root.TryGetProperty("unresolvedQuestions", out _);
-        }
-        catch
-        {
-            return false;
-        }
     }
 }
