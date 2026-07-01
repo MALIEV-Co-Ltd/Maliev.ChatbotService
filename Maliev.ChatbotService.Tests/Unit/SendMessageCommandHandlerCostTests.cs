@@ -143,10 +143,34 @@ public sealed class SendMessageCommandHandlerCostTests
     }
 
     [Fact]
-    public async Task HandleAsync_GlobalAndInstructionWebSearchEnabled_EnablesGeminiSearchForTechnicalQuery()
+    public async Task HandleAsync_GlobalAndInstructionWebSearchEnabled_EnablesGeminiSearchForFreshTechnicalQuery()
+    {
+        var result = await SendWebsiteMessageAsync(
+            messageContent: "What are the latest ISO 9001 requirements?",
+            instructionEnableWebSearch: true,
+            globalWebSearchEnabled: true);
+
+        Assert.NotNull(result.CapturedRequest);
+        Assert.True(result.CapturedRequest!.EnableWebSearch);
+    }
+
+    [Fact]
+    public async Task HandleAsync_WebSearchEnabled_StaticTechnicalQuery_DoesNotEnableGeminiSearch()
     {
         var result = await SendWebsiteMessageAsync(
             messageContent: "What does ISO 9001 require?",
+            instructionEnableWebSearch: true,
+            globalWebSearchEnabled: true);
+
+        Assert.NotNull(result.CapturedRequest);
+        Assert.False(result.CapturedRequest!.EnableWebSearch);
+    }
+
+    [Fact]
+    public async Task HandleAsync_WebSearchEnabled_SourceLookupQuery_EnablesGeminiSearch()
+    {
+        var result = await SendWebsiteMessageAsync(
+            messageContent: "Find the official ASTM D638 source for tensile testing.",
             instructionEnableWebSearch: true,
             globalWebSearchEnabled: true);
 

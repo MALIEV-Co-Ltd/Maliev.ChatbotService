@@ -1372,13 +1372,18 @@ public class SendMessageCommandHandler
     }
 
     /// <summary>
-    /// Detects whether the user message requires web search based on keywords.
+    /// Detects whether the user message explicitly requires Google Search grounding.
     /// </summary>
     /// <param name="message">The user message.</param>
     /// <returns>True if web search should be triggered.</returns>
     private static bool ShouldTriggerWebSearch(string message)
     {
-        var searchKeywords = new[]
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return false;
+        }
+
+        var groundedTopicKeywords = new[]
         {
             "astm", "iso", "din", "jis", "spec", "specification",
             "standard", "properties", "technical", "datasheet",
@@ -1386,8 +1391,28 @@ public class SendMessageCommandHandler
         };
 
         var messageLower = message.ToLowerInvariant();
-        return searchKeywords.Any(keyword => messageLower.Contains(keyword));
+        if (!ContainsAny(messageLower, groundedTopicKeywords))
+        {
+            return false;
+        }
+
+        var freshnessKeywords = new[]
+        {
+            "latest", "current", "currently", "recent", "recently",
+            "updated", "newest", "new version", "changed", "still valid",
+            "today", "this week", "this month", "this year"
+        };
+        var sourceLookupKeywords = new[]
+        {
+            "official", "source", "citation", "cite", "reference",
+            "link", "url", "find", "lookup", "look up", "online", "web"
+        };
+
+        return ContainsAny(messageLower, freshnessKeywords) || ContainsAny(messageLower, sourceLookupKeywords);
     }
+
+    private static bool ContainsAny(string value, IEnumerable<string> keywords) =>
+        keywords.Any(keyword => value.Contains(keyword, StringComparison.Ordinal));
 
     private Language ResolveMessageLanguage(string? language, string content)
     {
