@@ -505,6 +505,48 @@ public sealed class GeminiClientFunctionCallSerializationTests
     }
 
     [Fact]
+    public async Task SendMessageAsync_UrlContextOnly_DoesNotSerializeFunctionCallingConfig()
+    {
+        var handler = new CapturingHandler("""{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}""");
+        var client = CreateClient(handler);
+
+        await client.SendMessageAsync(new GeminiRequest
+        {
+            SystemInstruction = "sys",
+            EnableUrlContext = true,
+            Messages = [new GeminiMessage { Role = "user", Content = "Summarize https://example.com/materials/asa.pdf" }]
+        });
+
+        using var doc = JsonDocument.Parse(handler.RequestBody!);
+        var tools = doc.RootElement.GetProperty("tools").EnumerateArray().ToArray();
+        Assert.Single(tools);
+        Assert.True(tools[0].TryGetProperty("urlContext", out _));
+        Assert.False(doc.RootElement.TryGetProperty("toolConfig", out _));
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_BuiltInSearchAndUrlContext_SerializesBothBuiltInTools()
+    {
+        var handler = new CapturingHandler("""{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}""");
+        var client = CreateClient(handler);
+
+        await client.SendMessageAsync(new GeminiRequest
+        {
+            SystemInstruction = "sys",
+            EnableWebSearch = true,
+            EnableUrlContext = true,
+            Messages = [new GeminiMessage { Role = "user", Content = "Compare latest ISO notes with https://example.com/iso-notes" }]
+        });
+
+        using var doc = JsonDocument.Parse(handler.RequestBody!);
+        var tools = doc.RootElement.GetProperty("tools").EnumerateArray().ToArray();
+        Assert.Equal(2, tools.Length);
+        Assert.Contains(tools, tool => tool.TryGetProperty("googleSearch", out _));
+        Assert.Contains(tools, tool => tool.TryGetProperty("urlContext", out _));
+        Assert.False(doc.RootElement.TryGetProperty("toolConfig", out _));
+    }
+
+    [Fact]
     public async Task SendMessageAsync_MaxPromptTokensExceeded_CountsTokensAndSkipsGeneration()
     {
         var handler = new RoutingHandler(_ => """{"totalTokens":20001}""");

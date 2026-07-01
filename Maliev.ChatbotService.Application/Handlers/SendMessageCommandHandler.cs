@@ -8,6 +8,8 @@ using Maliev.ChatbotService.Domain.Events;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
+using System.Net;
+using System.Net.Sockets;
 using System.Text.Json;
 
 namespace Maliev.ChatbotService.Application.Handlers;
@@ -43,6 +45,8 @@ public class SendMessageCommandHandler
     private readonly StackExchange.Redis.IConnectionMultiplexer _redis;
     private readonly ILogger<SendMessageCommandHandler> _logger;
     private readonly bool _webSearchGloballyEnabled;
+    private readonly bool _urlContextEnabled;
+    private readonly int _urlContextMaxUrls;
     private readonly long _fileApiInlineThresholdBytes;
     private readonly long _maxImageSizeBytes;
     private readonly long _maxPdfSizeBytes;
@@ -66,6 +70,7 @@ public class SendMessageCommandHandler
     private const int DefaultMaxPdfSizeMb = 20;
     private const int DefaultMaxVideoSizeMb = 50;
     private const int DefaultMaxAudioSizeMb = 10;
+    private const int DefaultUrlContextMaxUrls = 3;
     private const string DefaultChatImageMediaResolution = "MEDIA_RESOLUTION_MEDIUM";
     private const string DefaultChatPdfMediaResolution = "MEDIA_RESOLUTION_MEDIUM";
     private const string DefaultChatVideoMediaResolution = "MEDIA_RESOLUTION_LOW";
@@ -159,6 +164,11 @@ public class SendMessageCommandHandler
         _redis = redis;
         _logger = logger;
         _webSearchGloballyEnabled = configuration?.GetValue<bool>("Features:WebSearchEnabled") ?? false;
+        _urlContextEnabled = configuration?.GetValue<bool>("Gemini:UrlContext:Enabled") ?? false;
+        _urlContextMaxUrls = Math.Clamp(
+            configuration?.GetValue<int?>("Gemini:UrlContext:MaxUrlsPerRequest") ?? DefaultUrlContextMaxUrls,
+            1,
+            20);
         _fileApiInlineThresholdBytes = Math.Max(
             0,
             configuration?.GetValue<long?>("Gemini:FileApiInlineThresholdBytes") ??
@@ -557,17 +567,28 @@ public class SendMessageCommandHandler
 
             var structuredOutput = ResolveStructuredOutput(command.ResponseMimeType, command.ResponseSchema);
             var allowModelThoughts = IsAgentToolChannel(session.Channel) && string.IsNullOrEmpty(structuredOutput.ResponseMimeType);
+            var enableGeminiUrlContext = ShouldEnableUrlContext(
+                command.Content,
+                _urlContextEnabled,
+                _urlContextMaxUrls,
+                allowModelThoughts);
+            if (enableGeminiUrlContext)
+            {
+                enableGeminiSearch = false;
+            }
+
             var geminiRequest = new GeminiRequest
             {
                 ModelName = ResolveChatModelName(command.ModelName),
                 SystemInstruction = systemInstructionText,
                 Messages = geminiMessages,
-                TimeoutSeconds = enableGeminiSearch ? 30 : 10,
+                TimeoutSeconds = enableGeminiSearch || enableGeminiUrlContext ? 30 : 10,
                 ResponseMimeType = structuredOutput.ResponseMimeType,
                 ResponseSchema = structuredOutput.ResponseSchema,
                 MaxTokens = ChatMaxOutputTokens,
                 MaxPromptTokens = ChatMaxPromptTokens,
                 EnableWebSearch = enableGeminiSearch,
+                EnableUrlContext = enableGeminiUrlContext,
                 IncludeThoughts = allowModelThoughts,
                 ThinkingBudget = allowModelThoughts ? AgentThinkingBudgetTokens : 0,
                 MediaResolution = ResolveMediaResolution(geminiMessages),
@@ -1413,6 +1434,103 @@ public class SendMessageCommandHandler
 
     private static bool ContainsAny(string value, IEnumerable<string> keywords) =>
         keywords.Any(keyword => value.Contains(keyword, StringComparison.Ordinal));
+
+    private static bool ShouldEnableUrlContext(
+        string message,
+        bool urlContextEnabled,
+        int maxUrlsPerRequest,
+        bool allowModelThoughts)
+    {
+        if (!urlContextEnabled ||
+            allowModelThoughts ||
+            string.IsNullOrWhiteSpace(message) ||
+            !HasUrlAnalysisIntent(message))
+        {
+            return false;
+        }
+
+        var publicUrlCount = 0;
+        foreach (var token in message.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var candidate = TrimUrlCandidate(token);
+            if (!Uri.TryCreate(candidate, UriKind.Absolute, out var uri))
+            {
+                continue;
+            }
+
+            if (!IsSupportedUrlContextUri(uri))
+            {
+                return false;
+            }
+
+            publicUrlCount++;
+            if (publicUrlCount > maxUrlsPerRequest)
+            {
+                return false;
+            }
+        }
+
+        return publicUrlCount > 0;
+    }
+
+    private static bool HasUrlAnalysisIntent(string message)
+    {
+        var messageLower = message.ToLowerInvariant();
+        var urlAnalysisKeywords = new[]
+        {
+            "summarize", "summarise", "analyze", "analyse", "compare",
+            "extract", "read", "review", "based on", "using http",
+            "from http", "at http", "what does", "what do", "tell me"
+        };
+
+        return ContainsAny(messageLower, urlAnalysisKeywords);
+    }
+
+    private static string TrimUrlCandidate(string token) =>
+        token.TrimStart('(', '[', '{', '<', '"', '\'')
+            .TrimEnd('.', ',', ';', ':', '!', '?', ')', ']', '}', '>', '"', '\'');
+
+    private static bool IsSupportedUrlContextUri(Uri uri)
+    {
+        if (uri.Scheme != Uri.UriSchemeHttp &&
+            uri.Scheme != Uri.UriSchemeHttps)
+        {
+            return false;
+        }
+
+        if (uri.IsLoopback ||
+            string.IsNullOrWhiteSpace(uri.Host) ||
+            uri.Host.EndsWith(".local", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return !IPAddress.TryParse(uri.Host, out var address) || !IsPrivateAddress(address);
+    }
+
+    private static bool IsPrivateAddress(IPAddress address)
+    {
+        if (address.AddressFamily == AddressFamily.InterNetwork)
+        {
+            var bytes = address.GetAddressBytes();
+            return bytes[0] == 10 ||
+                bytes[0] == 127 ||
+                (bytes[0] == 172 && bytes[1] is >= 16 and <= 31) ||
+                (bytes[0] == 192 && bytes[1] == 168) ||
+                (bytes[0] == 169 && bytes[1] == 254);
+        }
+
+        if (address.AddressFamily == AddressFamily.InterNetworkV6)
+        {
+            var bytes = address.GetAddressBytes();
+            return IPAddress.IsLoopback(address) ||
+                address.IsIPv6LinkLocal ||
+                address.IsIPv6SiteLocal ||
+                (bytes.Length > 0 && (bytes[0] & 0xfe) == 0xfc);
+        }
+
+        return false;
+    }
 
     private Language ResolveMessageLanguage(string? language, string content)
     {

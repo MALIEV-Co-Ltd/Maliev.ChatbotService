@@ -532,6 +532,7 @@ public class GeminiClient : IGeminiClient
 
         var hasTools = request.Tools != null && request.Tools.Count > 0;
         var useBuiltInSearch = request.EnableWebSearch;
+        var useUrlContext = request.EnableUrlContext;
 
         var payload = new Dictionary<string, object?>
         {
@@ -564,12 +565,17 @@ public class GeminiClient : IGeminiClient
             payload["generationConfig"] = generationConfig;
         }
 
-        if (hasTools || useBuiltInSearch)
+        if (hasTools || useBuiltInSearch || useUrlContext)
         {
             var toolsList = new List<object>();
             if (useBuiltInSearch)
             {
                 toolsList.Add(new { googleSearch = new { } });
+            }
+
+            if (useUrlContext)
+            {
+                toolsList.Add(new { urlContext = new { } });
             }
 
             if (hasTools)

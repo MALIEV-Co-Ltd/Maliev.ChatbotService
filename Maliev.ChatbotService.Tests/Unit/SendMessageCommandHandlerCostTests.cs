@@ -179,6 +179,63 @@ public sealed class SendMessageCommandHandlerCostTests
     }
 
     [Fact]
+    public async Task HandleAsync_UrlContextEnabled_PublicUrlAnalysis_EnablesUrlContextWithoutSearch()
+    {
+        var result = await SendWebsiteMessageAsync(
+            messageContent: "Compare the latest ISO 9001 notes at https://example.com/iso-9001-notes.pdf",
+            urlContextEnabled: true,
+            globalWebSearchEnabled: true,
+            instructionEnableWebSearch: true);
+
+        Assert.NotNull(result.CapturedRequest);
+        Assert.True(result.CapturedRequest!.EnableUrlContext);
+        Assert.False(result.CapturedRequest.EnableWebSearch);
+    }
+
+    [Fact]
+    public async Task HandleAsync_UrlContextEnabled_PrivateUrl_DoesNotEnableUrlContext()
+    {
+        var result = await SendWebsiteMessageAsync(
+            messageContent: "Summarize http://localhost:5000/internal/quote",
+            urlContextEnabled: true);
+
+        Assert.NotNull(result.CapturedRequest);
+        Assert.False(result.CapturedRequest!.EnableUrlContext);
+    }
+
+    [Fact]
+    public async Task HandleAsync_UrlContextEnabled_IntranetToolMessage_DoesNotEnableUrlContext()
+    {
+        var result = await SendWebsiteMessageAsync(
+            channel: Channel.Intranet,
+            messageContent: "Summarize https://example.com/customer-history before checking the account.",
+            urlContextEnabled: true,
+            toolDeclarations:
+            [
+                new GeminiToolDeclaration
+                {
+                    FunctionDeclarations =
+                    [
+                        new GeminiFunctionDeclaration
+                        {
+                            Name = "lookup_customer",
+                            Description = "Looks up a customer record.",
+                            Parameters = new
+                            {
+                                type = "object",
+                                properties = new { customer_id = new { type = "string" } },
+                                required = new[] { "customer_id" }
+                            }
+                        }
+                    ]
+                }
+            ]);
+
+        Assert.NotNull(result.CapturedRequest);
+        Assert.False(result.CapturedRequest!.EnableUrlContext);
+    }
+
+    [Fact]
     public async Task HandleAsync_IntranetMessage_ClassifiesIntentForDomainTopicInjection()
     {
         var result = await SendWebsiteMessageAsync(channel: Channel.Intranet);
@@ -702,7 +759,8 @@ public sealed class SendMessageCommandHandlerCostTests
         string? responseServiceTier = null,
         string? chatImageMediaResolution = null,
         string? chatPdfMediaResolution = null,
-        string? chatVideoMediaResolution = null)
+        string? chatVideoMediaResolution = null,
+        bool urlContextEnabled = false)
     {
         var sessionId = Guid.NewGuid();
         var userProfileId = Guid.NewGuid();
@@ -851,6 +909,7 @@ public sealed class SendMessageCommandHandlerCostTests
                 ["Gemini:Chat:ImageMediaResolution"] = chatImageMediaResolution,
                 ["Gemini:Chat:PdfMediaResolution"] = chatPdfMediaResolution,
                 ["Gemini:Chat:VideoMediaResolution"] = chatVideoMediaResolution,
+                ["Gemini:UrlContext:Enabled"] = urlContextEnabled.ToString(),
                 ["Gemini:MainModelName"] = "gemini-2.5-flash"
             })
             .Build();

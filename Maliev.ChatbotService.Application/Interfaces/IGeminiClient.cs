@@ -117,6 +117,11 @@ public class GeminiRequest
     public bool EnableWebSearch { get; set; }
 
     /// <summary>
+    /// Gets or sets whether to enable Gemini URL Context for URLs supplied in the prompt.
+    /// </summary>
+    public bool EnableUrlContext { get; set; }
+
+    /// <summary>
     /// Gets or sets whether to request model thinking/reasoning blocks.
     /// </summary>
     public bool IncludeThoughts { get; set; }
