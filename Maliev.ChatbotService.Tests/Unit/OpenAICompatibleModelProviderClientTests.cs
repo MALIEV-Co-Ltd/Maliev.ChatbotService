@@ -254,6 +254,57 @@ public sealed class OpenAICompatibleModelProviderClientTests
     }
 
     [Fact]
+    public async Task SendMessageAsync_UsageDetails_MapsCachedAudioReasoningAndBodyServiceTier()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "service_tier": "standard",
+              "choices": [
+                {
+                  "message": {
+                    "content": "ok"
+                  }
+                }
+              ],
+              "usage": {
+                "prompt_tokens": 100,
+                "completion_tokens": 20,
+                "total_tokens": 120,
+                "prompt_tokens_details": {
+                  "cached_tokens": 60,
+                  "audio_tokens": 25
+                },
+                "completion_tokens_details": {
+                  "reasoning_tokens": 7
+                }
+              }
+            }
+            """, "application/json");
+        var client = CreateClient(handler);
+
+        var response = await client.SendMessageAsync(new GeminiRequest
+        {
+            Messages = [new GeminiMessage { Role = "user", Content = "Transcribe and summarize this." }],
+            ServiceTier = "priority"
+        });
+
+        Assert.True(response.Success);
+        Assert.Equal("standard", response.ServiceTier);
+        Assert.NotNull(response.TokenUsage);
+        Assert.Equal(100, response.TokenUsage.PromptTokens);
+        Assert.Equal(13, response.TokenUsage.CompletionTokens);
+        Assert.Equal(7, response.TokenUsage.ThoughtTokens);
+        Assert.Equal(60, response.TokenUsage.CachedPromptTokens);
+        Assert.Equal(120, response.TokenUsage.TotalTokens);
+        Assert.Contains(
+            response.TokenUsage.PromptTokenDetails,
+            item => item.Modality == "AUDIO" && item.TokenCount == 25);
+        Assert.Contains(
+            response.TokenUsage.PromptTokenDetails,
+            item => item.Modality == "TEXT" && item.TokenCount == 75);
+    }
+
+    [Fact]
     public async Task StreamMessageAsync_WithoutTools_EmitsOpenAiCompatibleDeltasAndFinalResponse()
     {
         var handler = new CapturingHandler(string.Join("\n\n",
@@ -321,6 +372,48 @@ public sealed class OpenAICompatibleModelProviderClientTests
         Assert.Equal(12, finalResponse.TokenUsage.PromptTokens);
         Assert.Equal(3, finalResponse.TokenUsage.CompletionTokens);
         Assert.Equal(15, finalResponse.TokenUsage.TotalTokens);
+    }
+
+    [Fact]
+    public async Task StreamMessageAsync_UsageChunk_MapsUsageDetailsAndBodyServiceTier()
+    {
+        var handler = new CapturingHandler(string.Join("\n\n",
+            """
+            data: {"choices":[{"delta":{"content":"ok"}}]}
+            """,
+            """
+            data: {"service_tier":"standard","choices":[],"usage":{"prompt_tokens":100,"completion_tokens":20,"total_tokens":120,"prompt_tokens_details":{"cached_tokens":60,"audio_tokens":25},"completion_tokens_details":{"reasoning_tokens":7}}}
+            """,
+            "data: [DONE]"), "text/event-stream");
+        var client = CreateClient(handler);
+
+        GeminiResponse? finalResponse = null;
+        await foreach (var streamEvent in client.StreamMessageAsync(new GeminiRequest
+        {
+            Messages = [new GeminiMessage { Role = "user", Content = "Transcribe and summarize this." }],
+            ServiceTier = "priority"
+        }))
+        {
+            if (streamEvent.Type.Equals("final", StringComparison.OrdinalIgnoreCase))
+            {
+                finalResponse = streamEvent.Response;
+            }
+        }
+
+        Assert.NotNull(finalResponse);
+        Assert.Equal("standard", finalResponse!.ServiceTier);
+        Assert.NotNull(finalResponse.TokenUsage);
+        Assert.Equal(100, finalResponse.TokenUsage.PromptTokens);
+        Assert.Equal(13, finalResponse.TokenUsage.CompletionTokens);
+        Assert.Equal(7, finalResponse.TokenUsage.ThoughtTokens);
+        Assert.Equal(60, finalResponse.TokenUsage.CachedPromptTokens);
+        Assert.Equal(120, finalResponse.TokenUsage.TotalTokens);
+        Assert.Contains(
+            finalResponse.TokenUsage.PromptTokenDetails,
+            item => item.Modality == "AUDIO" && item.TokenCount == 25);
+        Assert.Contains(
+            finalResponse.TokenUsage.PromptTokenDetails,
+            item => item.Modality == "TEXT" && item.TokenCount == 75);
     }
 
     [Fact]

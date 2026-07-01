@@ -159,7 +159,7 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
             yield break;
         }
 
-        var responseServiceTier = GetResponseServiceTier(response);
+        var streamServiceTier = GetResponseServiceTier(response);
         await using var stream = await response.Content.ReadAsStreamAsync(cts.Token);
         using var reader = new StreamReader(stream);
         while (await reader.ReadLineAsync(cts.Token) is { } line)
@@ -181,6 +181,7 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
             }
 
             using var document = JsonDocument.Parse(data);
+            streamServiceTier = ParseServiceTier(document.RootElement) ?? streamServiceTier;
             if (document.RootElement.TryGetProperty("usage", out var usage) &&
                 usage.ValueKind == JsonValueKind.Object)
             {
@@ -205,7 +206,7 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
                 Success = true,
                 Content = accumulatedText.ToString(),
                 TokenUsage = tokenUsage,
-                ServiceTier = responseServiceTier
+                ServiceTier = streamServiceTier
             }
         };
     }
@@ -587,7 +588,8 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
             Success = true,
             Content = content,
             FunctionCalls = functionCalls,
-            TokenUsage = tokenUsage
+            TokenUsage = tokenUsage,
+            ServiceTier = ParseServiceTier(root)
         };
     }
 
@@ -635,13 +637,80 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
         return content.GetString() ?? string.Empty;
     }
 
-    private static GeminiTokenUsage ParseTokenUsage(JsonElement usage) =>
-        new()
+    private static string? ParseServiceTier(JsonElement root) =>
+        root.TryGetProperty("service_tier", out var serviceTier) &&
+        serviceTier.ValueKind == JsonValueKind.String
+            ? serviceTier.GetString()
+            : null;
+
+    private static GeminiTokenUsage ParseTokenUsage(JsonElement usage)
+    {
+        var promptTokens = GetInt32(usage, "prompt_tokens");
+        var completionTokens = GetInt32(usage, "completion_tokens");
+        var totalTokens = GetInt32(usage, "total_tokens");
+        var cachedPromptTokens = 0;
+        var audioPromptTokens = 0;
+        var reasoningTokens = 0;
+
+        if (usage.TryGetProperty("prompt_tokens_details", out var promptDetails) &&
+            promptDetails.ValueKind == JsonValueKind.Object)
         {
-            PromptTokens = usage.TryGetProperty("prompt_tokens", out var promptTokens) ? promptTokens.GetInt32() : 0,
-            CompletionTokens = usage.TryGetProperty("completion_tokens", out var completionTokens) ? completionTokens.GetInt32() : 0,
-            TotalTokens = usage.TryGetProperty("total_tokens", out var totalTokens) ? totalTokens.GetInt32() : 0
+            cachedPromptTokens = GetInt32(promptDetails, "cached_tokens");
+            audioPromptTokens = GetInt32(promptDetails, "audio_tokens");
+        }
+
+        if (usage.TryGetProperty("completion_tokens_details", out var completionDetails) &&
+            completionDetails.ValueKind == JsonValueKind.Object)
+        {
+            reasoningTokens = GetInt32(completionDetails, "reasoning_tokens");
+        }
+
+        return new GeminiTokenUsage
+        {
+            PromptTokens = promptTokens,
+            CompletionTokens = Math.Max(0, completionTokens - reasoningTokens),
+            CachedPromptTokens = cachedPromptTokens,
+            ThoughtTokens = reasoningTokens,
+            TotalTokens = totalTokens,
+            PromptTokenDetails = BuildOpenAiPromptTokenDetails(promptTokens, audioPromptTokens)
         };
+    }
+
+    private static List<GeminiModalityTokenCount> BuildOpenAiPromptTokenDetails(
+        int promptTokens,
+        int audioPromptTokens)
+    {
+        if (promptTokens <= 0)
+        {
+            return [];
+        }
+
+        var boundedAudioTokens = Math.Clamp(audioPromptTokens, 0, promptTokens);
+        var textTokens = promptTokens - boundedAudioTokens;
+        var details = new List<GeminiModalityTokenCount>();
+        if (textTokens > 0)
+        {
+            details.Add(new GeminiModalityTokenCount { Modality = "TEXT", TokenCount = textTokens });
+        }
+
+        if (boundedAudioTokens > 0)
+        {
+            details.Add(new GeminiModalityTokenCount { Modality = "AUDIO", TokenCount = boundedAudioTokens });
+        }
+
+        return details;
+    }
+
+    private static int GetInt32(JsonElement element, string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var property) ||
+            property.ValueKind != JsonValueKind.Number)
+        {
+            return 0;
+        }
+
+        return property.TryGetInt32(out var value) ? value : 0;
+    }
 
     private static GeminiResponse GetFallbackResponse(string errorType)
     {
