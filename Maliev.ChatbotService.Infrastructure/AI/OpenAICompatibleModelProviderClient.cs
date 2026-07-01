@@ -445,6 +445,12 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
                 continue;
             }
 
+            if (TryBuildInputAudioPart(attachment, out var audioPart))
+            {
+                parts.Add(audioPart);
+                continue;
+            }
+
             parts.Add(new
             {
                 type = "text",
@@ -478,6 +484,59 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
         }
 
         return $"data:{attachment.MimeType};base64,{attachment.Data}";
+    }
+
+    private static bool TryBuildInputAudioPart(GeminiAttachment attachment, out object audioPart)
+    {
+        audioPart = new { };
+
+        if (!attachment.MimeType.StartsWith("audio/", StringComparison.OrdinalIgnoreCase) ||
+            !TryResolveAudioFormat(attachment.MimeType, out var format) ||
+            !TryExtractInlineBase64(attachment.Data, out var data))
+        {
+            return false;
+        }
+
+        audioPart = new
+        {
+            type = "input_audio",
+            input_audio = new
+            {
+                data,
+                format
+            }
+        };
+        return true;
+    }
+
+    private static bool TryResolveAudioFormat(string mimeType, out string format)
+    {
+        format = string.Empty;
+        var normalized = mimeType.Trim().ToLowerInvariant();
+        format = normalized switch
+        {
+            "audio/wav" or "audio/wave" or "audio/x-wav" => "wav",
+            "audio/mpeg" or "audio/mp3" => "mp3",
+            _ => string.Empty
+        };
+
+        return format.Length > 0;
+    }
+
+    private static bool TryExtractInlineBase64(string data, out string base64Data)
+    {
+        base64Data = string.Empty;
+        if (data.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            data.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
+            data.StartsWith("gs://", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        base64Data = data.Contains(',')
+            ? data.Split(',', 2)[1]
+            : data;
+        return !string.IsNullOrWhiteSpace(base64Data);
     }
 
     // OpenAI requires a tool message's tool_call_id to match the assistant tool_call id. Real

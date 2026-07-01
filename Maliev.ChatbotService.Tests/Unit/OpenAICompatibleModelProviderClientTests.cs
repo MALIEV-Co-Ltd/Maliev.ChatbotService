@@ -143,6 +143,54 @@ public sealed class OpenAICompatibleModelProviderClientTests
     }
 
     [Fact]
+    public async Task SendMessageAsync_WithAudioAttachment_SerializesInputAudioPart()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "choices": [
+                {
+                  "message": {
+                    "content": "transcribed"
+                  }
+                }
+              ]
+            }
+            """, "application/json");
+        var client = CreateClient(handler);
+
+        var response = await client.SendMessageAsync(new GeminiRequest
+        {
+            Messages =
+            [
+                new GeminiMessage
+                {
+                    Role = "user",
+                    Content = "Transcribe this audio.",
+                    Attachments =
+                    [
+                        new GeminiAttachment
+                        {
+                            MimeType = "audio/wav",
+                            Data = "data:audio/wav;base64,UklGRg=="
+                        }
+                    ]
+                }
+            ]
+        });
+
+        Assert.True(response.Success);
+        using var payload = JsonDocument.Parse(handler.RequestBody);
+        var messages = payload.RootElement.GetProperty("messages").EnumerateArray().ToArray();
+        var contentParts = messages[0].GetProperty("content").EnumerateArray().ToArray();
+        Assert.Equal("text", contentParts[0].GetProperty("type").GetString());
+        Assert.Equal("input_audio", contentParts[1].GetProperty("type").GetString());
+
+        var inputAudio = contentParts[1].GetProperty("input_audio");
+        Assert.Equal("UklGRg==", inputAudio.GetProperty("data").GetString());
+        Assert.Equal("wav", inputAudio.GetProperty("format").GetString());
+    }
+
+    [Fact]
     public async Task SendMessageAsync_GeminiCostControls_SerializesServiceTierAndExtraBody()
     {
         var handler = new CapturingHandler("""
