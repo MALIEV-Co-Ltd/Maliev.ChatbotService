@@ -1,6 +1,7 @@
 using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Domain.Entities;
 using Maliev.ChatbotService.Domain.Enums;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 
@@ -41,6 +42,7 @@ public class ConversationSummaryService : IConversationSummaryService
     private readonly IMessageRepository _messageRepository;
     private readonly IGeminiClient _geminiClient;
     private readonly ILogger<ConversationSummaryService> _logger;
+    private readonly string _modelName;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ConversationSummaryService"/> class.
@@ -50,18 +52,21 @@ public class ConversationSummaryService : IConversationSummaryService
     /// <param name="messageRepository">The message repository.</param>
     /// <param name="geminiClient">The Gemini API client.</param>
     /// <param name="logger">The logger.</param>
+    /// <param name="configuration">Application configuration.</param>
     public ConversationSummaryService(
         IConversationSummaryRepository summaryRepository,
         IConversationSessionRepository sessionRepository,
         IMessageRepository messageRepository,
         IGeminiClient geminiClient,
-        ILogger<ConversationSummaryService> logger)
+        ILogger<ConversationSummaryService> logger,
+        IConfiguration? configuration = null)
     {
         _summaryRepository = summaryRepository;
         _sessionRepository = sessionRepository;
         _messageRepository = messageRepository;
         _geminiClient = geminiClient;
         _logger = logger;
+        _modelName = configuration?["Gemini:IntentModelName"] ?? "gemini-2.5-flash-lite";
     }
 
     /// <summary>
@@ -107,7 +112,7 @@ Respond with ONLY valid JSON. No markdown, no code blocks, just the JSON object.
 
         var geminiRequest = new GeminiRequest
         {
-            ModelName = "gemini-2.5-flash-lite",
+            ModelName = _modelName,
             SystemInstruction = systemInstruction,
             Messages = new List<GeminiMessage>
             {

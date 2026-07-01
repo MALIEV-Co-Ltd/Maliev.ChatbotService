@@ -1,5 +1,6 @@
 using Maliev.ChatbotService.Application.Commands;
 using Maliev.ChatbotService.Application.Interfaces;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 
@@ -16,6 +17,7 @@ public class ExtractCustomerIntentCommandHandler
     private readonly IGeminiClient _geminiClient;
     private readonly ISystemInstructionRepository _instructionRepository;
     private readonly ILogger<ExtractCustomerIntentCommandHandler> _logger;
+    private readonly string _modelName;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ExtractCustomerIntentCommandHandler"/> class.
@@ -23,11 +25,13 @@ public class ExtractCustomerIntentCommandHandler
     public ExtractCustomerIntentCommandHandler(
         IGeminiClient geminiClient,
         ISystemInstructionRepository instructionRepository,
-        ILogger<ExtractCustomerIntentCommandHandler> logger)
+        ILogger<ExtractCustomerIntentCommandHandler> logger,
+        IConfiguration? configuration = null)
     {
         _geminiClient = geminiClient;
         _instructionRepository = instructionRepository;
         _logger = logger;
+        _modelName = configuration?["Gemini:IntentModelName"] ?? "gemini-2.5-flash-lite";
     }
 
     /// <summary>
@@ -53,7 +57,7 @@ public class ExtractCustomerIntentCommandHandler
 
         var request = new GeminiRequest
         {
-            ModelName = "gemini-2.5-flash-lite",
+            ModelName = _modelName,
             SystemInstruction = systemInstruction,
             Messages = new List<GeminiMessage>
             {

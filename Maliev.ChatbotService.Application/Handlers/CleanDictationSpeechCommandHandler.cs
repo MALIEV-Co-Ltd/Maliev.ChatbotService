@@ -1,5 +1,6 @@
 using Maliev.ChatbotService.Application.Commands;
 using Maliev.ChatbotService.Application.Interfaces;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Maliev.ChatbotService.Application.Handlers;
@@ -19,14 +20,19 @@ public class CleanDictationSpeechCommandHandler
 
     private readonly IGeminiClient _geminiClient;
     private readonly ILogger<CleanDictationSpeechCommandHandler> _logger;
+    private readonly string _modelName;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="CleanDictationSpeechCommandHandler"/> class.
     /// </summary>
-    public CleanDictationSpeechCommandHandler(IGeminiClient geminiClient, ILogger<CleanDictationSpeechCommandHandler> logger)
+    public CleanDictationSpeechCommandHandler(
+        IGeminiClient geminiClient,
+        ILogger<CleanDictationSpeechCommandHandler> logger,
+        IConfiguration? configuration = null)
     {
         _geminiClient = geminiClient;
         _logger = logger;
+        _modelName = configuration?["Gemini:IntentModelName"] ?? "gemini-2.5-flash-lite";
     }
 
     /// <summary>
@@ -36,7 +42,7 @@ public class CleanDictationSpeechCommandHandler
     {
         var request = new GeminiRequest
         {
-            ModelName = "gemini-2.5-flash-lite",
+            ModelName = _modelName,
             SystemInstruction = SystemInstruction,
             Messages = new List<GeminiMessage>
             {
