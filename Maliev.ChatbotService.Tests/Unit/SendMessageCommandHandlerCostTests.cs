@@ -204,6 +204,42 @@ public sealed class SendMessageCommandHandlerCostTests
     }
 
     [Fact]
+    public async Task HandleAsync_PersistedMediaAttachment_UsesMediumMediaResolution()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var result = await SendWebsiteMessageAsync(conversationHistory:
+        [
+            new Message
+            {
+                Id = Guid.NewGuid(),
+                SessionId = Guid.NewGuid(),
+                Role = MessageRole.User,
+                Content = "Earlier I uploaded a PDF drawing.",
+                ContentType = ContentType.Text,
+                CreatedAt = now.AddMinutes(-2),
+                MetadataJson = MessagePipelinePolicy.BuildAttachmentMetadataJson(new List<(string, string)>
+                {
+                    ("application/pdf", "https://cdn.example.com/drawing.pdf")
+                })
+            },
+            new Message
+            {
+                Id = Guid.NewGuid(),
+                SessionId = Guid.NewGuid(),
+                Role = MessageRole.User,
+                Content = "Can you estimate what details matter from it?",
+                ContentType = ContentType.Text,
+                CreatedAt = now
+            }
+        ]);
+
+        Assert.NotNull(result.CapturedRequest);
+        Assert.Equal("MEDIA_RESOLUTION_MEDIUM", result.CapturedRequest!.MediaResolution);
+        Assert.NotNull(result.CapturedRequest.Messages[0].Attachments);
+        Assert.Equal("application/pdf", result.CapturedRequest.Messages[0].Attachments![0].MimeType);
+    }
+
+    [Fact]
     public async Task HandleAsync_WebsiteMediaAttachment_PreflightsPromptTokenCost()
     {
         var result = await SendWebsiteMessageAsync([

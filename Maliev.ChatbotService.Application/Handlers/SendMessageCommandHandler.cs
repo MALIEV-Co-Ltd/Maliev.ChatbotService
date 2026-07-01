@@ -513,7 +513,7 @@ public class SendMessageCommandHandler
                 EnableWebSearch = enableGeminiSearch,
                 IncludeThoughts = allowModelThoughts,
                 ThinkingBudget = allowModelThoughts ? AgentThinkingBudgetTokens : 0,
-                MediaResolution = ResolveMediaResolution(command.Attachments)
+                MediaResolution = ResolveMediaResolution(geminiMessages)
             };
 
             // Use the agent loop only for channels with scoped, allowlisted tool profiles.
@@ -931,16 +931,24 @@ public class SendMessageCommandHandler
         };
     }
 
-    private static string? ResolveMediaResolution(IReadOnlyCollection<AttachmentDto>? attachments)
+    private static string? ResolveMediaResolution(IEnumerable<GeminiMessage> messages)
     {
-        if (attachments is null)
-        {
-            return null;
-        }
-
-        return attachments.Any(attachment => attachment.ContentType is ContentType.Image or ContentType.PDF or ContentType.Video)
+        return messages.Any(message => message.Attachments?.Any(IsMediaAttachment) == true)
             ? "MEDIA_RESOLUTION_MEDIUM"
             : null;
+    }
+
+    private static bool IsMediaAttachment(GeminiAttachment attachment)
+    {
+        if (Enum.TryParse<ContentType>(attachment.ContentType, ignoreCase: true, out var contentType) &&
+            contentType is ContentType.Image or ContentType.PDF or ContentType.Video)
+        {
+            return true;
+        }
+
+        return attachment.MimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) ||
+            attachment.MimeType.StartsWith("video/", StringComparison.OrdinalIgnoreCase) ||
+            attachment.MimeType.Equals("application/pdf", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? ResolveChatModelName(string? requestedModelName)
