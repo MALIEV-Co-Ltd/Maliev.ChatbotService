@@ -162,6 +162,7 @@ public class GeminiClient : IGeminiClient
         var accumulatedText = new StringBuilder();
         var accumulatedThought = new StringBuilder();
         var functionCalls = new List<GeminiFunctionCall>();
+        var groundingWebSearchQueries = new List<string>();
         GeminiTokenUsage? tokenUsage = null;
         string? streamServiceTier = null;
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -285,6 +286,11 @@ public class GeminiClient : IGeminiClient
                     functionCalls.AddRange(parsed.FunctionCalls);
                 }
 
+                if (parsed.GroundingWebSearchQueries.Count > 0)
+                {
+                    groundingWebSearchQueries.AddRange(parsed.GroundingWebSearchQueries);
+                }
+
                 tokenUsage = parsed.TokenUsage ?? tokenUsage;
             }
 
@@ -300,7 +306,8 @@ public class GeminiClient : IGeminiClient
                     ThoughtContent = accumulatedThought.ToString(),
                     FunctionCalls = functionCalls,
                     TokenUsage = tokenUsage,
-                    ServiceTier = streamServiceTier
+                    ServiceTier = streamServiceTier,
+                    GroundingWebSearchQueries = groundingWebSearchQueries
                 }
             };
             yield break;

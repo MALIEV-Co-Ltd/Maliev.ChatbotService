@@ -108,6 +108,44 @@ public sealed class GeminiClientStreamingTests
     }
 
     [Fact]
+    public async Task StreamMessageAsync_GroundingMetadata_MapsWebSearchQueriesToFinalResponse()
+    {
+        var handler = new GeminiStreamingHandler([
+            """
+            data: {"candidates":[{"content":{"parts":[{"text":"ok"}]},"groundingMetadata":{"webSearchQueries":["latest ISO 9001 source","official ASTM D638 source"]},"finishReason":"STOP"}]}
+            """
+        ]);
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Gemini:ApiKey"] = "test-key",
+                ["Gemini:MainModelName"] = "gemini-test"
+            })
+            .Build();
+        var client = new GeminiClient(
+            new HttpClient(handler) { BaseAddress = new Uri("https://generativelanguage.googleapis.com/") },
+            configuration,
+            new ConversationMetrics(CreateMeterFactory(), configuration),
+            NullLogger<GeminiClient>.Instance);
+
+        var events = new List<GeminiStreamEvent>();
+        await foreach (var streamEvent in client.StreamMessageAsync(new GeminiRequest
+        {
+            EnableWebSearch = true,
+            Messages = [new GeminiMessage { Role = "user", Content = "Find the latest ISO sources." }]
+        }))
+        {
+            events.Add(streamEvent);
+        }
+
+        var final = Assert.Single(events, item => item.Type == "final");
+        Assert.NotNull(final.Response);
+        Assert.Equal(
+            ["latest ISO 9001 source", "official ASTM D638 source"],
+            final.Response.GroundingWebSearchQueries);
+    }
+
+    [Fact]
     public async Task StreamMessageAsync_PromptFeedbackBlock_ReturnsValidationFallback()
     {
         var handler = new GeminiStreamingHandler([
