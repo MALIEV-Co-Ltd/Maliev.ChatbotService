@@ -47,6 +47,12 @@ public sealed class GeminiUtilityRequestOptions
             return null;
         }
 
-        return serviceTier.Trim();
+        var normalizedServiceTier = serviceTier.Trim().ToLowerInvariant();
+        return normalizedServiceTier switch
+        {
+            "standard" or "flex" or "priority" => normalizedServiceTier,
+            _ => throw new InvalidOperationException(
+                $"{ServiceTierConfigurationKey} must be one of: standard, flex, priority.")
+        };
     }
 }
