@@ -81,6 +81,7 @@ public sealed class GeminiBatchClientTests
         Assert.Equal(
             0,
             generateRequest.GetProperty("generationConfig").GetProperty("thinkingConfig").GetProperty("thinkingBudget").GetInt32());
+        Assert.False(generateRequest.TryGetProperty("serviceTier", out _));
     }
 
     [Fact]

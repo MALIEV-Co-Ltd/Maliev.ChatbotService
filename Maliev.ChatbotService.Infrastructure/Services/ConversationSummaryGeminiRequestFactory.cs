@@ -63,9 +63,7 @@ Respond with ONLY valid JSON. No markdown, no code blocks, just the JSON object.
             Temperature = 0.1,
             ThinkingBudget = 0,
             MaxTokens = 1024,
-            MaxPromptTokens = MaxSummaryPromptTokens,
-            ServiceTier = "flex",
-            TimeoutSeconds = GeminiRequest.FlexInferenceTimeoutSeconds
+            MaxPromptTokens = MaxSummaryPromptTokens
         };
     }
 

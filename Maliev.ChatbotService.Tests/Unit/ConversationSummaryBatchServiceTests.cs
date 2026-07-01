@@ -62,8 +62,8 @@ public sealed class ConversationSummaryBatchServiceTests
         Assert.Equal("application/json", request.Request.ResponseMimeType);
         Assert.NotNull(request.Request.ResponseSchema);
         Assert.Equal(0, request.Request.ThinkingBudget);
-        Assert.Equal("flex", request.Request.ServiceTier);
-        Assert.Equal(GeminiRequest.FlexInferenceTimeoutSeconds, request.Request.TimeoutSeconds);
+        Assert.Null(request.Request.ServiceTier);
+        Assert.Equal(10, request.Request.TimeoutSeconds);
 
         Assert.NotNull(capturedBatchJob);
         Assert.Equal("batches/summary-1", capturedBatchJob!.BatchName);
