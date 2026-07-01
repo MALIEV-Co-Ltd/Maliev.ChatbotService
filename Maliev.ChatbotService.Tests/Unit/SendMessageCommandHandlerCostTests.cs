@@ -250,6 +250,59 @@ public sealed class SendMessageCommandHandlerCostTests
     }
 
     [Fact]
+    public async Task HandleAsync_DynamicContext_KeepsConversationHistoryPrefixForImplicitCaching()
+    {
+        var result = await SendWebsiteMessageAsync(
+            conversationHistory:
+            [
+                new Message
+                {
+                    Id = Guid.NewGuid(),
+                    SessionId = Guid.NewGuid(),
+                    Role = MessageRole.User,
+                    Content = "Earlier we discussed a nylon PA12 bracket.",
+                    ContentType = ContentType.Text,
+                    CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-3)
+                },
+                new Message
+                {
+                    Id = Guid.NewGuid(),
+                    SessionId = Guid.NewGuid(),
+                    Role = MessageRole.Assistant,
+                    Content = "I can help quote that bracket.",
+                    ContentType = ContentType.Text,
+                    CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-2)
+                },
+                new Message
+                {
+                    Id = Guid.NewGuid(),
+                    SessionId = Guid.NewGuid(),
+                    Role = MessageRole.User,
+                    Content = "What materials can you print?",
+                    ContentType = ContentType.Text,
+                    CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-1)
+                }
+            ],
+            summaries:
+            [
+                new ConversationSummary
+                {
+                    StructuredSummary = """
+                        {
+                          "topics": ["nylon PA12 quote"]
+                        }
+                        """
+                }
+            ]);
+
+        Assert.NotNull(result.CapturedRequest);
+        Assert.Equal("Earlier we discussed a nylon PA12 bracket.", result.CapturedRequest!.Messages[0].Content);
+        Assert.Equal("I can help quote that bracket.", result.CapturedRequest.Messages[1].Content);
+        Assert.Contains("Previous conversation context:", result.CapturedRequest.Messages[2].Content, StringComparison.Ordinal);
+        Assert.Equal("What materials can you print?", result.CapturedRequest.Messages[^1].Content);
+    }
+
+    [Fact]
     public async Task HandleAsync_IntranetKnowledgeContext_DoesNotMutateSystemInstructionForGeminiCaching()
     {
         var result = await SendWebsiteMessageAsync(
@@ -280,6 +333,7 @@ public sealed class SendMessageCommandHandlerCostTests
         IEnumerable<ConversationSummary>? summaries = null,
         IntentClassificationResult? classification = null,
         IReadOnlyList<KnowledgeBase>? knowledgeFacts = null,
+        IReadOnlyList<Message>? conversationHistory = null,
         string? modelName = null,
         string? responseMimeType = null,
         object? responseSchema = null,
@@ -314,17 +368,17 @@ public sealed class SendMessageCommandHandlerCostTests
             .ReturnsAsync((Message message, CancellationToken _) => message);
         messageRepository
             .Setup(item => item.GetRecentBySessionIdAsync(sessionId, 10, It.IsAny<CancellationToken>()))
-            .ReturnsAsync([
-                new Message
-                {
-                    Id = Guid.NewGuid(),
-                    SessionId = sessionId,
-                    Role = MessageRole.User,
-                    Content = "What materials can you print?",
-                    ContentType = ContentType.Text,
-                    CreatedAt = DateTimeOffset.UtcNow
-                }
-            ]);
+            .ReturnsAsync((conversationHistory ?? [
+                    new Message
+                    {
+                        Id = Guid.NewGuid(),
+                        SessionId = sessionId,
+                        Role = MessageRole.User,
+                        Content = "What materials can you print?",
+                        ContentType = ContentType.Text,
+                        CreatedAt = DateTimeOffset.UtcNow
+                    }
+                ]).ToList());
 
         var userProfileRepository = new Mock<IUserProfileRepository>();
         userProfileRepository

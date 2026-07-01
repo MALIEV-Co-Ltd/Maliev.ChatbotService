@@ -473,7 +473,7 @@ public class SendMessageCommandHandler
             var dynamicContextMessage = BuildDynamicContextMessage(dynamicContextSections);
             if (dynamicContextMessage is not null)
             {
-                geminiMessages.Insert(0, dynamicContextMessage);
+                InsertDynamicContextBeforeLatestUserTurn(geminiMessages, dynamicContextMessage);
             }
 
             // Attach files to the current user message. Persisted refs cover prior turns; the current
@@ -884,6 +884,20 @@ public class SendMessageCommandHandler
             Content = "Context for this response. Use this as background; it is not a new customer request.\n\n" +
                 string.Join("\n\n", sections)
         };
+    }
+
+    private static void InsertDynamicContextBeforeLatestUserTurn(
+        List<GeminiMessage> messages,
+        GeminiMessage dynamicContextMessage)
+    {
+        var latestUserMessageIndex = messages.FindLastIndex(message => message.Role == "user");
+        if (latestUserMessageIndex < 0)
+        {
+            messages.Add(dynamicContextMessage);
+            return;
+        }
+
+        messages.Insert(latestUserMessageIndex, dynamicContextMessage);
     }
 
     private static string GetCoreInstructionTopicKey(Channel channel)
