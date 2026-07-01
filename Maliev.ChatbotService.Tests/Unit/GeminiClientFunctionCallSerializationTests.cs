@@ -37,6 +37,28 @@ public sealed class GeminiClientFunctionCallSerializationTests
     }
 
     [Fact]
+    public async Task SendMessageAsync_CachedContentName_SerializesAsTopLevelCachedContent()
+    {
+        var handler = new CapturingHandler("""{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}""");
+        var client = CreateClient(handler);
+
+        await client.SendMessageAsync(new GeminiRequest
+        {
+            SystemInstruction = "sys",
+            Prompt = "Summarize the customer context.",
+            CachedContentName = "cachedContents/customer-context-123",
+            MaxTokens = 256
+        });
+
+        using var doc = JsonDocument.Parse(handler.RequestBody!);
+        Assert.Equal("cachedContents/customer-context-123", doc.RootElement.GetProperty("cachedContent").GetString());
+        Assert.True(doc.RootElement.TryGetProperty("generationConfig", out var generationConfig));
+        Assert.False(generationConfig.TryGetProperty("cachedContent", out _));
+        Assert.Equal("sys", doc.RootElement.GetProperty("systemInstruction").GetProperty("parts")[0].GetProperty("text").GetString());
+        Assert.Equal("Summarize the customer context.", doc.RootElement.GetProperty("contents")[0].GetProperty("parts")[0].GetProperty("text").GetString());
+    }
+
+    [Fact]
     public async Task SendMessageAsync_ToolTurns_SerializeAsNativeFunctionCallAndFunctionResponseParts()
     {
         var handler = new CapturingHandler(

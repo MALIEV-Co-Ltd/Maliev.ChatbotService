@@ -85,6 +85,11 @@ public class GeminiRequest
     public string? MediaResolution { get; set; }
 
     /// <summary>
+    /// Gets or sets the Gemini cached content resource name to use as a prompt prefix.
+    /// </summary>
+    public string? CachedContentName { get; set; }
+
+    /// <summary>
     /// Gets or sets the Gemini service tier for this request.
     /// Use "flex" only for latency-tolerant work; omit for standard interactive requests.
     /// </summary>

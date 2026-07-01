@@ -512,6 +512,11 @@ public class GeminiClient : IGeminiClient
             payload["service_tier"] = request.ServiceTier;
         }
 
+        if (!string.IsNullOrWhiteSpace(request.CachedContentName))
+        {
+            payload["cachedContent"] = request.CachedContentName;
+        }
+
         var generationConfig = BuildGenerationConfig(request);
         if (generationConfig.Count > 0)
         {
