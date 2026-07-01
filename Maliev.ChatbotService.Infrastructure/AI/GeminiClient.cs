@@ -3,6 +3,7 @@ using Maliev.ChatbotService.Infrastructure.Metrics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Globalization;
+using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -24,6 +25,8 @@ public class GeminiClient : IGeminiClient
     private readonly ConversationMetrics _metrics;
     private readonly string _apiKey;
     private readonly string _modelName;
+    private readonly int _flexRetryMaxAttempts;
+    private readonly TimeSpan _flexRetryBaseDelay;
 
     private int _totalApiCalls;
     private int _successfulApiCalls;
@@ -47,6 +50,9 @@ public class GeminiClient : IGeminiClient
                 "dotnet user-secrets set \"Gemini:ApiKey\" \"<your-key>\" --project Maliev.ChatbotService.Api");
         _apiKey = apiKey;
         _modelName = configuration["Gemini:MainModelName"] ?? "gemini-2.5-flash";
+        _flexRetryMaxAttempts = Math.Clamp(configuration.GetValue<int?>("Gemini:FlexRetryMaxAttempts") ?? 3, 1, 5);
+        _flexRetryBaseDelay = TimeSpan.FromMilliseconds(
+            Math.Max(0, configuration.GetValue<double?>("Gemini:FlexRetryBaseDelayMs") ?? 5000));
         _totalApiCalls = 0;
         _successfulApiCalls = 0;
     }
@@ -70,39 +76,63 @@ public class GeminiClient : IGeminiClient
 
             var url = $"v1beta/models/{modelName}:generateContent";
             var json = BuildGeminiPayloadJson(request);
-
-            using var messageRequest = new HttpRequestMessage(HttpMethod.Post, url);
-            AddGeminiHeaders(messageRequest, request);
-            messageRequest.Content = new StringContent(json, Encoding.UTF8, "application/json");
-
-            var response = await _httpClient.SendAsync(messageRequest, cts.Token);
-            var responseContent = await response.Content.ReadAsStringAsync(cts.Token);
-
-            if (!response.IsSuccessStatusCode)
+            var maxAttempts = ResolveMaxAttempts(request);
+            for (var attempt = 1; attempt <= maxAttempts; attempt++)
             {
-                if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                using var messageRequest = new HttpRequestMessage(HttpMethod.Post, url);
+                AddGeminiHeaders(messageRequest, request);
+                messageRequest.Content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                var response = await _httpClient.SendAsync(messageRequest, cts.Token);
+                var responseContent = await response.Content.ReadAsStringAsync(cts.Token);
+
+                if (!response.IsSuccessStatusCode)
                 {
-                    _logger.LogWarning("Gemini API rate limit exceeded (429)");
+                    if (ShouldRetryFlexFailure(request, response.StatusCode, attempt, maxAttempts))
+                    {
+                        var retryDelay = ResolveFlexRetryDelay(attempt);
+                        _logger.LogWarning(
+                            "Gemini Flex request returned {StatusCode} on attempt {Attempt}/{MaxAttempts}. Retrying as Flex after {DelayMs}ms.",
+                            response.StatusCode,
+                            attempt,
+                            maxAttempts,
+                            retryDelay.TotalMilliseconds);
+
+                        if (retryDelay > TimeSpan.Zero)
+                        {
+                            await Task.Delay(retryDelay, cts.Token);
+                        }
+
+                        continue;
+                    }
+
+                    if (response.StatusCode == HttpStatusCode.TooManyRequests)
+                    {
+                        _logger.LogWarning("Gemini API rate limit exceeded (429)");
+                        UpdateSuccessRate();
+                        return GetFallbackResponse("GeminiAPIRateLimit");
+                    }
+
+                    _logger.LogError("Gemini API returned error: {StatusCode} - {Content}", response.StatusCode, responseContent);
                     UpdateSuccessRate();
-                    return GetFallbackResponse("GeminiAPIRateLimit");
+                    return GetFallbackResponse("GeminiAPIError");
                 }
 
-                _logger.LogError("Gemini API returned error: {StatusCode} - {Content}", response.StatusCode, responseContent);
-                UpdateSuccessRate();
-                return GetFallbackResponse("GeminiAPIError");
-            }
+                using var document = JsonDocument.Parse(responseContent);
+                var parsed = ParseGeminiResponse(document.RootElement);
+                if (!parsed.Success)
+                {
+                    return parsed;
+                }
 
-            using var document = JsonDocument.Parse(responseContent);
-            var parsed = ParseGeminiResponse(document.RootElement);
-            if (!parsed.Success)
-            {
+                Interlocked.Increment(ref _successfulApiCalls);
+                UpdateSuccessRate();
+
                 return parsed;
             }
 
-            Interlocked.Increment(ref _successfulApiCalls);
             UpdateSuccessRate();
-
-            return parsed;
+            return GetFallbackResponse("GeminiAPIError");
         }
         catch (OperationCanceledException)
         {
@@ -323,6 +353,29 @@ public class GeminiClient : IGeminiClient
             messageRequest.Headers.Add("X-Server-Timeout", request.TimeoutSeconds.ToString(CultureInfo.InvariantCulture));
         }
     }
+
+    private int ResolveMaxAttempts(GeminiRequest request) =>
+        string.Equals(request.ServiceTier, "flex", StringComparison.OrdinalIgnoreCase)
+            ? _flexRetryMaxAttempts
+            : 1;
+
+    private static bool ShouldRetryFlexFailure(
+        GeminiRequest request,
+        HttpStatusCode statusCode,
+        int attempt,
+        int maxAttempts)
+    {
+        if (!string.Equals(request.ServiceTier, "flex", StringComparison.OrdinalIgnoreCase) ||
+            attempt >= maxAttempts)
+        {
+            return false;
+        }
+
+        return statusCode is HttpStatusCode.ServiceUnavailable or HttpStatusCode.TooManyRequests;
+    }
+
+    private TimeSpan ResolveFlexRetryDelay(int failedAttempt) =>
+        TimeSpan.FromMilliseconds(_flexRetryBaseDelay.TotalMilliseconds * Math.Pow(2, failedAttempt - 1));
 
     /// <summary>
     /// Builds the Gemini <c>contents</c> array, emitting native functionCall/functionResponse parts

@@ -255,6 +255,46 @@ public sealed class GeminiClientFunctionCallSerializationTests
         Assert.Equal("600", Assert.Single(serverTimeout));
     }
 
+    [Theory]
+    [InlineData(HttpStatusCode.ServiceUnavailable)]
+    [InlineData(HttpStatusCode.TooManyRequests)]
+    public async Task SendMessageAsync_FlexTransientFailure_RetriesWithFlexTier(HttpStatusCode statusCode)
+    {
+        var handler = new SequencedHandler(
+        [
+            new HttpResponseMessage(statusCode)
+            {
+                Content = new StringContent("""{"error":{"message":"Flex transient failure"}}""", Encoding.UTF8, "application/json")
+            },
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}""", Encoding.UTF8, "application/json")
+            }
+        ]);
+        var client = CreateClient(handler, new Dictionary<string, string?>
+        {
+            ["Gemini:FlexRetryBaseDelayMs"] = "0"
+        });
+
+        var response = await client.SendMessageAsync(new GeminiRequest
+        {
+            SystemInstruction = "sys",
+            ServiceTier = "flex",
+            TimeoutSeconds = GeminiRequest.FlexInferenceTimeoutSeconds,
+            Messages = [new GeminiMessage { Role = "user", Content = "Summarize this background record." }]
+        });
+
+        Assert.True(response.Success);
+        Assert.Equal("ok", response.Content);
+        Assert.Equal(2, handler.RequestBodies.Count);
+
+        foreach (var body in handler.RequestBodies)
+        {
+            using var doc = JsonDocument.Parse(body);
+            Assert.Equal("flex", doc.RootElement.GetProperty("service_tier").GetString());
+        }
+    }
+
     [Fact]
     public async Task SendMessageAsync_BuiltInSearchOnly_DoesNotSerializeFunctionCallingConfig()
     {
@@ -333,14 +373,26 @@ public sealed class GeminiClientFunctionCallSerializationTests
         Assert.Equal(145, response.TokenUsage.TotalTokens);
     }
 
-    private static GeminiClient CreateClient(HttpMessageHandler handler)
+    private static GeminiClient CreateClient(
+        HttpMessageHandler handler,
+        IReadOnlyDictionary<string, string?>? extraConfiguration = null)
     {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
+        var configurationValues = new Dictionary<string, string?>
+        {
+            ["Gemini:ApiKey"] = "test-key",
+            ["Gemini:MainModelName"] = "gemini-test"
+        };
+
+        if (extraConfiguration is not null)
+        {
+            foreach (var item in extraConfiguration)
             {
-                ["Gemini:ApiKey"] = "test-key",
-                ["Gemini:MainModelName"] = "gemini-test"
-            })
+                configurationValues[item.Key] = item.Value;
+            }
+        }
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(configurationValues)
             .Build();
 
         return new GeminiClient(
@@ -397,6 +449,24 @@ public sealed class GeminiClientFunctionCallSerializationTests
             {
                 Content = new StringContent(responseFactory(request), Encoding.UTF8, "application/json")
             };
+        }
+    }
+
+    private sealed class SequencedHandler(IReadOnlyList<HttpResponseMessage> responses) : HttpMessageHandler
+    {
+        private int _index;
+
+        public List<string> RequestBodies { get; } = new();
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            RequestBodies.Add(request.Content is null
+                ? string.Empty
+                : await request.Content.ReadAsStringAsync(cancellationToken));
+
+            var response = responses[Math.Min(_index, responses.Count - 1)];
+            _index++;
+            return response;
         }
     }
 }
