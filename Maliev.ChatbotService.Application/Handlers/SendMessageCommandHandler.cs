@@ -1,4 +1,5 @@
 using Maliev.ChatbotService.Application.Commands;
+using Maliev.ChatbotService.Application.Costing;
 using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Application.Validators;
 using Maliev.ChatbotService.Domain.Entities;
@@ -43,6 +44,7 @@ public class SendMessageCommandHandler
     private readonly ILogger<SendMessageCommandHandler> _logger;
     private readonly bool _webSearchGloballyEnabled;
     private readonly long _fileApiInlineThresholdBytes;
+    private readonly string _defaultChatModelName;
 
     // Must exceed the worst-case agent loop so the per-session lock cannot expire mid-turn and let a
     // concurrent message interleave (C2). AgentChatHandler runs up to MaxIterations (10) iterations,
@@ -147,6 +149,7 @@ public class SendMessageCommandHandler
             0,
             configuration?.GetValue<long?>("Gemini:FileApiInlineThresholdBytes") ??
                 DefaultFileApiInlineThresholdBytes);
+        _defaultChatModelName = configuration?["Gemini:MainModelName"] ?? "gemini-2.5-flash";
     }
 
     /// <summary>
@@ -664,7 +667,12 @@ public class SendMessageCommandHandler
 
                         tokenUsage = BuildTokenUsageMetadata(geminiResponse.TokenUsage),
 
-                        serviceTier = geminiResponse.ServiceTier
+                        serviceTier = geminiResponse.ServiceTier,
+
+                        costEstimate = BuildCostEstimateMetadata(
+                            geminiRequest.ModelName ?? _defaultChatModelName,
+                            geminiResponse.ServiceTier ?? geminiRequest.ServiceTier,
+                            geminiResponse.TokenUsage)
 
                     })
 
@@ -1232,7 +1240,45 @@ public class SendMessageCommandHandler
                 toolUsePromptTokens = tokenUsage.ToolUsePromptTokens,
                 thoughtTokens = tokenUsage.ThoughtTokens,
                 completionTokens = tokenUsage.CompletionTokens,
-                totalTokens = tokenUsage.TotalTokens
+                totalTokens = tokenUsage.TotalTokens,
+                promptTokenDetails = BuildModalityTokenDetails(tokenUsage.PromptTokenDetails),
+                cachedTokenDetails = BuildModalityTokenDetails(tokenUsage.CachedTokenDetails),
+                candidateTokenDetails = BuildModalityTokenDetails(tokenUsage.CandidateTokenDetails),
+                toolUsePromptTokenDetails = BuildModalityTokenDetails(tokenUsage.ToolUsePromptTokenDetails)
+            };
+    }
+
+    private static object[] BuildModalityTokenDetails(IReadOnlyCollection<GeminiModalityTokenCount> details)
+    {
+        return details
+            .Select(detail => new
+            {
+                modality = detail.Modality,
+                tokenCount = detail.TokenCount
+            })
+            .ToArray();
+    }
+
+    private static object? BuildCostEstimateMetadata(
+        string? modelName,
+        string? serviceTier,
+        GeminiTokenUsage? tokenUsage)
+    {
+        var estimate = GeminiCostEstimator.Estimate(modelName, serviceTier, tokenUsage);
+        return estimate is null
+            ? null
+            : new
+            {
+                modelName = estimate.ModelName,
+                serviceTier = estimate.ServiceTier,
+                pricingBasis = estimate.PricingBasis,
+                uncachedPromptTokens = estimate.UncachedPromptTokens,
+                cachedPromptTokens = estimate.CachedPromptTokens,
+                outputTokens = estimate.OutputTokens,
+                uncachedPromptMicroUsd = estimate.UncachedPromptMicroUsd,
+                cachedPromptMicroUsd = estimate.CachedPromptMicroUsd,
+                outputMicroUsd = estimate.OutputMicroUsd,
+                totalMicroUsd = estimate.TotalMicroUsd
             };
     }
 

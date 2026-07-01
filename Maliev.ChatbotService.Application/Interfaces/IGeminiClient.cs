@@ -298,6 +298,42 @@ public class GeminiTokenUsage
     /// Gets or sets the total number of tokens.
     /// </summary>
     public int TotalTokens { get; set; }
+
+    /// <summary>
+    /// Gets or sets token counts by input modality for the effective prompt.
+    /// </summary>
+    public List<GeminiModalityTokenCount> PromptTokenDetails { get; set; } = [];
+
+    /// <summary>
+    /// Gets or sets token counts by cached input modality.
+    /// </summary>
+    public List<GeminiModalityTokenCount> CachedTokenDetails { get; set; } = [];
+
+    /// <summary>
+    /// Gets or sets token counts by generated candidate modality.
+    /// </summary>
+    public List<GeminiModalityTokenCount> CandidateTokenDetails { get; set; } = [];
+
+    /// <summary>
+    /// Gets or sets token counts by tool-use prompt modality.
+    /// </summary>
+    public List<GeminiModalityTokenCount> ToolUsePromptTokenDetails { get; set; } = [];
+}
+
+/// <summary>
+/// Token count reported by Gemini for a single modality.
+/// </summary>
+public class GeminiModalityTokenCount
+{
+    /// <summary>
+    /// Gets or sets the Gemini modality name, such as TEXT, IMAGE, VIDEO, AUDIO, or DOCUMENT.
+    /// </summary>
+    public string Modality { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the token count for the modality.
+    /// </summary>
+    public int TokenCount { get; set; }
 }
 
 /// <summary>

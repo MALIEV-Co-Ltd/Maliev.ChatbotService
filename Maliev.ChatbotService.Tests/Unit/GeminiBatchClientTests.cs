@@ -98,7 +98,16 @@ public sealed class GeminiBatchClientTests
                       "metadata":{"sessionId":"session-1"},
                       "response":{
                         "candidates":[{"content":{"parts":[{"text":"{\"topics\":[]}"}]}}],
-                        "usageMetadata":{"totalTokenCount":25}
+                        "usageMetadata":{
+                          "promptTokenCount":20,
+                          "cachedContentTokenCount":5,
+                          "candidatesTokenCount":5,
+                          "totalTokenCount":25,
+                          "serviceTier":"flex",
+                          "promptTokensDetails":[{"modality":"TEXT","tokenCount":20}],
+                          "cacheTokensDetails":[{"modality":"TEXT","tokenCount":5}],
+                          "candidatesTokensDetails":[{"modality":"TEXT","tokenCount":5}]
+                        }
                       }
                     }]
                   }
@@ -119,6 +128,16 @@ public sealed class GeminiBatchClientTests
         Assert.NotNull(response.Response);
         Assert.Equal("{\"topics\":[]}", response.Response!.Content);
         Assert.Equal(25, response.Response.TokenUsage!.TotalTokens);
+        Assert.Equal("flex", response.Response.ServiceTier);
+        var promptDetail = Assert.Single(response.Response.TokenUsage.PromptTokenDetails);
+        Assert.Equal("TEXT", promptDetail.Modality);
+        Assert.Equal(20, promptDetail.TokenCount);
+        var cacheDetail = Assert.Single(response.Response.TokenUsage.CachedTokenDetails);
+        Assert.Equal("TEXT", cacheDetail.Modality);
+        Assert.Equal(5, cacheDetail.TokenCount);
+        var candidateDetail = Assert.Single(response.Response.TokenUsage.CandidateTokenDetails);
+        Assert.Equal("TEXT", candidateDetail.Modality);
+        Assert.Equal(5, candidateDetail.TokenCount);
         Assert.Equal(HttpMethod.Get, handler.Request!.Method);
         Assert.Equal("/v1beta/batches/batch-123", handler.Request.RequestUri!.AbsolutePath);
     }

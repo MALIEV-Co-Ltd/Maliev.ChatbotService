@@ -391,12 +391,24 @@ public sealed class SendMessageCommandHandlerCostTests
         var result = await SendWebsiteMessageAsync(
             tokenUsage: new GeminiTokenUsage
             {
-                PromptTokens = 100,
-                CachedPromptTokens = 35,
+                PromptTokens = 1000,
+                CachedPromptTokens = 400,
                 ToolUsePromptTokens = 12,
                 ThoughtTokens = 0,
-                CompletionTokens = 25,
-                TotalTokens = 137
+                CompletionTokens = 80,
+                TotalTokens = 1080,
+                PromptTokenDetails =
+                [
+                    new GeminiModalityTokenCount { Modality = "TEXT", TokenCount = 1000 }
+                ],
+                CachedTokenDetails =
+                [
+                    new GeminiModalityTokenCount { Modality = "TEXT", TokenCount = 400 }
+                ],
+                CandidateTokenDetails =
+                [
+                    new GeminiModalityTokenCount { Modality = "TEXT", TokenCount = 80 }
+                ]
             },
             responseServiceTier: "flex");
 
@@ -404,13 +416,26 @@ public sealed class SendMessageCommandHandlerCostTests
         Assert.NotNull(assistantMessage.MetadataJson);
         using var metadata = JsonDocument.Parse(assistantMessage.MetadataJson!);
         var tokenUsage = metadata.RootElement.GetProperty("tokenUsage");
-        Assert.Equal(100, tokenUsage.GetProperty("promptTokens").GetInt32());
-        Assert.Equal(35, tokenUsage.GetProperty("cachedPromptTokens").GetInt32());
+        Assert.Equal(1000, tokenUsage.GetProperty("promptTokens").GetInt32());
+        Assert.Equal(400, tokenUsage.GetProperty("cachedPromptTokens").GetInt32());
         Assert.Equal(12, tokenUsage.GetProperty("toolUsePromptTokens").GetInt32());
         Assert.Equal(0, tokenUsage.GetProperty("thoughtTokens").GetInt32());
-        Assert.Equal(25, tokenUsage.GetProperty("completionTokens").GetInt32());
-        Assert.Equal(137, tokenUsage.GetProperty("totalTokens").GetInt32());
+        Assert.Equal(80, tokenUsage.GetProperty("completionTokens").GetInt32());
+        Assert.Equal(1080, tokenUsage.GetProperty("totalTokens").GetInt32());
+        var promptDetail = Assert.Single(tokenUsage.GetProperty("promptTokenDetails").EnumerateArray());
+        Assert.Equal("TEXT", promptDetail.GetProperty("modality").GetString());
+        Assert.Equal(1000, promptDetail.GetProperty("tokenCount").GetInt32());
         Assert.Equal("flex", metadata.RootElement.GetProperty("serviceTier").GetString());
+        var costEstimate = metadata.RootElement.GetProperty("costEstimate");
+        Assert.Equal("gemini-2.5-flash", costEstimate.GetProperty("modelName").GetString());
+        Assert.Equal("flex", costEstimate.GetProperty("serviceTier").GetString());
+        Assert.Equal(600, costEstimate.GetProperty("uncachedPromptTokens").GetInt32());
+        Assert.Equal(400, costEstimate.GetProperty("cachedPromptTokens").GetInt32());
+        Assert.Equal(80, costEstimate.GetProperty("outputTokens").GetInt32());
+        Assert.Equal(90, costEstimate.GetProperty("uncachedPromptMicroUsd").GetInt64());
+        Assert.Equal(12, costEstimate.GetProperty("cachedPromptMicroUsd").GetInt64());
+        Assert.Equal(100, costEstimate.GetProperty("outputMicroUsd").GetInt64());
+        Assert.Equal(202, costEstimate.GetProperty("totalMicroUsd").GetInt64());
     }
 
     [Fact]
@@ -695,7 +720,8 @@ public sealed class SendMessageCommandHandlerCostTests
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["Features:WebSearchEnabled"] = globalWebSearchEnabled.ToString(),
-                ["Gemini:FileApiInlineThresholdBytes"] = fileApiInlineThresholdBytes?.ToString()
+                ["Gemini:FileApiInlineThresholdBytes"] = fileApiInlineThresholdBytes?.ToString(),
+                ["Gemini:MainModelName"] = "gemini-2.5-flash"
             })
             .Build();
         var database = new Mock<IDatabase>();

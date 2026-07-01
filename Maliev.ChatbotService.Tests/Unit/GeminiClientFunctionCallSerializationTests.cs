@@ -504,7 +504,20 @@ public sealed class GeminiClientFunctionCallSerializationTests
                 "toolUsePromptTokenCount":10,
                 "thoughtsTokenCount":15,
                 "candidatesTokenCount":20,
-                "totalTokenCount":145
+                "totalTokenCount":145,
+                "promptTokensDetails":[
+                  {"modality":"TEXT","tokenCount":70},
+                  {"modality":"AUDIO","tokenCount":30}
+                ],
+                "cacheTokensDetails":[
+                  {"modality":"TEXT","tokenCount":25}
+                ],
+                "candidatesTokensDetails":[
+                  {"modality":"TEXT","tokenCount":20}
+                ],
+                "toolUsePromptTokensDetails":[
+                  {"modality":"TEXT","tokenCount":10}
+                ]
               }
             }
             """);
@@ -522,6 +535,27 @@ public sealed class GeminiClientFunctionCallSerializationTests
         Assert.Equal(15, response.TokenUsage.ThoughtTokens);
         Assert.Equal(20, response.TokenUsage.CompletionTokens);
         Assert.Equal(145, response.TokenUsage.TotalTokens);
+        Assert.Collection(
+            response.TokenUsage.PromptTokenDetails,
+            item =>
+            {
+                Assert.Equal("TEXT", item.Modality);
+                Assert.Equal(70, item.TokenCount);
+            },
+            item =>
+            {
+                Assert.Equal("AUDIO", item.Modality);
+                Assert.Equal(30, item.TokenCount);
+            });
+        var cachedDetail = Assert.Single(response.TokenUsage.CachedTokenDetails);
+        Assert.Equal("TEXT", cachedDetail.Modality);
+        Assert.Equal(25, cachedDetail.TokenCount);
+        var candidateDetail = Assert.Single(response.TokenUsage.CandidateTokenDetails);
+        Assert.Equal("TEXT", candidateDetail.Modality);
+        Assert.Equal(20, candidateDetail.TokenCount);
+        var toolDetail = Assert.Single(response.TokenUsage.ToolUsePromptTokenDetails);
+        Assert.Equal("TEXT", toolDetail.Modality);
+        Assert.Equal(10, toolDetail.TokenCount);
     }
 
     [Fact]

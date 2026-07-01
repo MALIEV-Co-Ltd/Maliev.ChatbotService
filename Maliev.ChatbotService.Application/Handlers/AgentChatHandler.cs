@@ -94,6 +94,10 @@ public class AgentChatHandler
                 accumulatedUsage.ToolUsePromptTokens += usage.ToolUsePromptTokens;
                 accumulatedUsage.ThoughtTokens += usage.ThoughtTokens;
                 accumulatedUsage.TotalTokens += usage.TotalTokens;
+                AddTokenDetails(accumulatedUsage.PromptTokenDetails, usage.PromptTokenDetails);
+                AddTokenDetails(accumulatedUsage.CachedTokenDetails, usage.CachedTokenDetails);
+                AddTokenDetails(accumulatedUsage.CandidateTokenDetails, usage.CandidateTokenDetails);
+                AddTokenDetails(accumulatedUsage.ToolUsePromptTokenDetails, usage.ToolUsePromptTokenDetails);
                 sawUsage = true;
             }
 
@@ -313,6 +317,20 @@ public class AgentChatHandler
             Success = false,
             ErrorMessage = "Gemini streaming ended without a final response."
         };
+    }
+
+    private static void AddTokenDetails(
+        List<GeminiModalityTokenCount> target,
+        IReadOnlyCollection<GeminiModalityTokenCount> source)
+    {
+        foreach (var detail in source)
+        {
+            target.Add(new GeminiModalityTokenCount
+            {
+                Modality = detail.Modality,
+                TokenCount = detail.TokenCount
+            });
+        }
     }
 }
 

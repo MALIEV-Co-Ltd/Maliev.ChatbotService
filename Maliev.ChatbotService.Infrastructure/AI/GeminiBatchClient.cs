@@ -276,7 +276,11 @@ public sealed class GeminiBatchClient : IModelBatchClient
             Content = string.Join("", textParts),
             TokenUsage = generateContentResponse.TryGetProperty("usageMetadata", out var usageMetadata)
                 ? ParseTokenUsage(usageMetadata)
-                : null
+                : null,
+            ServiceTier = usageMetadata.ValueKind == JsonValueKind.Object &&
+                usageMetadata.TryGetProperty("serviceTier", out var serviceTierElement)
+                    ? serviceTierElement.GetString()
+                    : null
         };
     }
 
@@ -288,8 +292,39 @@ public sealed class GeminiBatchClient : IModelBatchClient
             ToolUsePromptTokens = usageMetadata.TryGetProperty("toolUsePromptTokenCount", out var toolUsePromptTokens) ? toolUsePromptTokens.GetInt32() : 0,
             ThoughtTokens = usageMetadata.TryGetProperty("thoughtsTokenCount", out var thoughtTokens) ? thoughtTokens.GetInt32() : 0,
             CompletionTokens = usageMetadata.TryGetProperty("candidatesTokenCount", out var completionTokens) ? completionTokens.GetInt32() : 0,
-            TotalTokens = usageMetadata.TryGetProperty("totalTokenCount", out var totalTokens) ? totalTokens.GetInt32() : 0
+            TotalTokens = usageMetadata.TryGetProperty("totalTokenCount", out var totalTokens) ? totalTokens.GetInt32() : 0,
+            PromptTokenDetails = ParseModalityTokenDetails(usageMetadata, "promptTokensDetails"),
+            CachedTokenDetails = ParseModalityTokenDetails(usageMetadata, "cacheTokensDetails"),
+            CandidateTokenDetails = ParseModalityTokenDetails(usageMetadata, "candidatesTokensDetails"),
+            ToolUsePromptTokenDetails = ParseModalityTokenDetails(usageMetadata, "toolUsePromptTokensDetails")
         };
+
+    private static List<GeminiModalityTokenCount> ParseModalityTokenDetails(
+        JsonElement usageMetadata,
+        string propertyName)
+    {
+        if (!usageMetadata.TryGetProperty(propertyName, out var details) ||
+            details.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var tokenCounts = new List<GeminiModalityTokenCount>();
+        foreach (var detail in details.EnumerateArray())
+        {
+            tokenCounts.Add(new GeminiModalityTokenCount
+            {
+                Modality = detail.TryGetProperty("modality", out var modality)
+                    ? modality.GetString() ?? string.Empty
+                    : string.Empty,
+                TokenCount = detail.TryGetProperty("tokenCount", out var tokenCount)
+                    ? tokenCount.GetInt32()
+                    : 0
+            });
+        }
+
+        return tokenCounts;
+    }
 
     private static Dictionary<string, object?> ParseMetadata(JsonElement item)
     {
