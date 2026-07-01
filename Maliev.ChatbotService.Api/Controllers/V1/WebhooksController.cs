@@ -1,10 +1,12 @@
 using Asp.Versioning;
 using Maliev.ChatbotService.Api.Models.Webhooks;
+using Maliev.ChatbotService.Api.Security;
 using Maliev.ChatbotService.Application.Commands;
 using Maliev.ChatbotService.Application.Handlers;
 using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Domain.Enums;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Distributed;
 using System.Text;
 using System.Text.Json;
 
@@ -18,9 +20,17 @@ namespace Maliev.ChatbotService.Api.Controllers.V1;
 [Route("chatbot/v{version:apiVersion}/webhooks")]
 public class WebhooksController : ControllerBase
 {
+    private const string GeminiWebhookSigningSecretKey = "Gemini:Webhooks:SigningSecret";
+    private static readonly DistributedCacheEntryOptions GeminiWebhookDedupeCacheOptions = new()
+    {
+        AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10)
+    };
+
     private readonly ProcessWebhookCommandHandler _webhookHandler;
     private readonly ILineClient _lineClient;
     private readonly IMetaClient _metaClient;
+    private readonly IGeminiBatchWebhookQueue _geminiBatchWebhookQueue;
+    private readonly IDistributedCache _cache;
     private readonly IConfiguration _configuration;
     private readonly ILogger<WebhooksController> _logger;
 
@@ -30,18 +40,24 @@ public class WebhooksController : ControllerBase
     /// <param name="webhookHandler">The webhook command handler.</param>
     /// <param name="lineClient">The LINE client.</param>
     /// <param name="metaClient">The Meta client.</param>
+    /// <param name="geminiBatchWebhookQueue">The Gemini batch webhook queue.</param>
+    /// <param name="cache">The distributed cache.</param>
     /// <param name="configuration">The configuration.</param>
     /// <param name="logger">The logger.</param>
     public WebhooksController(
         ProcessWebhookCommandHandler webhookHandler,
         ILineClient lineClient,
         IMetaClient metaClient,
+        IGeminiBatchWebhookQueue geminiBatchWebhookQueue,
+        IDistributedCache cache,
         IConfiguration configuration,
         ILogger<WebhooksController> logger)
     {
         _webhookHandler = webhookHandler;
         _lineClient = lineClient;
         _metaClient = metaClient;
+        _geminiBatchWebhookQueue = geminiBatchWebhookQueue;
+        _cache = cache;
         _configuration = configuration;
         _logger = logger;
     }
@@ -226,6 +242,90 @@ public class WebhooksController : ControllerBase
     }
 
     /// <summary>
+    /// Handles Gemini Batch API webhook events.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>HTTP 200 OK if the verified webhook was accepted.</returns>
+    [HttpPost("gemini")]
+    public async Task<IActionResult> HandleGeminiWebhook(CancellationToken cancellationToken)
+    {
+        var requestBody = await ReadRequestBodyAsync();
+        var signingSecret = _configuration[GeminiWebhookSigningSecretKey];
+        if (string.IsNullOrWhiteSpace(signingSecret))
+        {
+            _logger.LogError("Gemini webhook signing secret is not configured");
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = "Gemini webhook is not configured" });
+        }
+
+        var webhookId = Request.Headers["webhook-id"].ToString();
+        var webhookTimestamp = Request.Headers["webhook-timestamp"].ToString();
+        var webhookSignature = Request.Headers["webhook-signature"].ToString();
+
+        if (!StandardWebhookVerifier.TryVerify(
+            signingSecret,
+            webhookId,
+            webhookTimestamp,
+            webhookSignature,
+            requestBody,
+            DateTimeOffset.UtcNow,
+            out var failureReason))
+        {
+            _logger.LogWarning("Invalid Gemini webhook signature: {FailureReason}", failureReason);
+            return Unauthorized(new { error = "Invalid signature" });
+        }
+
+        GeminiWebhookEvent? webhookEvent;
+        try
+        {
+            webhookEvent = JsonSerializer.Deserialize<GeminiWebhookEvent>(
+                requestBody,
+                new JsonSerializerOptions
+                {
+                    PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+                    PropertyNameCaseInsensitive = true
+                });
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "Invalid Gemini webhook JSON payload");
+            return BadRequest(new { error = "Invalid webhook payload" });
+        }
+
+        if (string.IsNullOrWhiteSpace(webhookEvent?.Type))
+        {
+            return BadRequest(new { error = "Missing webhook event type" });
+        }
+
+        if (IsGeminiBatchTerminalEvent(webhookEvent.Type))
+        {
+            if (await TryMarkGeminiWebhookReceivedAsync(webhookId, cancellationToken))
+            {
+                await _geminiBatchWebhookQueue.EnqueueAsync(
+                    new GeminiBatchWebhookNotification(
+                        webhookId,
+                        webhookEvent.Type,
+                        webhookEvent.Data?.Id),
+                    cancellationToken);
+
+                _logger.LogInformation(
+                    "Queued Gemini batch webhook {WebhookId} ({EventType}) for {BatchName}",
+                    webhookId,
+                    webhookEvent.Type,
+                    webhookEvent.Data?.Id ?? "unknown batch");
+            }
+            else
+            {
+                _logger.LogInformation(
+                    "Skipping duplicate Gemini webhook {WebhookId} ({EventType})",
+                    webhookId,
+                    webhookEvent.Type);
+            }
+        }
+
+        return Ok(new { status = "received" });
+    }
+
+    /// <summary>
     /// Reads the raw request body as a string.
     /// </summary>
     /// <returns>The request body as a string.</returns>
@@ -241,6 +341,32 @@ public class WebhooksController : ControllerBase
 
         return body;
     }
+
+    private async Task<bool> TryMarkGeminiWebhookReceivedAsync(
+        string webhookId,
+        CancellationToken cancellationToken)
+    {
+        var cacheKey = $"gemini:webhooks:{webhookId}";
+        var existing = await _cache.GetStringAsync(cacheKey, cancellationToken);
+        if (!string.IsNullOrEmpty(existing))
+        {
+            return false;
+        }
+
+        await _cache.SetStringAsync(
+            cacheKey,
+            "1",
+            GeminiWebhookDedupeCacheOptions,
+            cancellationToken);
+
+        return true;
+    }
+
+    private static bool IsGeminiBatchTerminalEvent(string eventType)
+        => eventType.Equals("batch.succeeded", StringComparison.OrdinalIgnoreCase)
+            || eventType.Equals("batch.failed", StringComparison.OrdinalIgnoreCase)
+            || eventType.Equals("batch.cancelled", StringComparison.OrdinalIgnoreCase)
+            || eventType.Equals("batch.expired", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Maps Meta object type to Channel enum.

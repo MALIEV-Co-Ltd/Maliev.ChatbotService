@@ -152,6 +152,7 @@ try
     builder.Services.AddScoped<ISystemInstructionService, SystemInstructionService>();
     builder.Services.AddScoped<IConversationSummaryService, ConversationSummaryService>();
     builder.Services.AddScoped<IConversationSummaryBatchService, ConversationSummaryBatchService>();
+    builder.Services.AddSingleton<IGeminiBatchWebhookQueue, GeminiBatchWebhookQueue>();
     builder.Services.AddScoped<IRateLimitService, RateLimitService>();
     builder.Services.AddScoped<IUsageBudgetService, RedisUsageBudgetService>();
     builder.Services.AddSingleton<IWebhookBufferQueue, RedisWebhookBufferQueue>();
@@ -170,6 +171,7 @@ try
 
     // Background Services
     builder.Services.AddHostedService<Maliev.ChatbotService.Infrastructure.BackgroundServices.SessionExpiryBackgroundService>();
+    builder.Services.AddHostedService<Maliev.ChatbotService.Infrastructure.BackgroundServices.GeminiBatchWebhookProcessorBackgroundService>();
     builder.Services.AddHostedService<Maliev.ChatbotService.Infrastructure.Services.PromptFileLoaderService>();
 
     // The webhook buffer poller is disabled under integration tests (a 1s loop racing the per-test
