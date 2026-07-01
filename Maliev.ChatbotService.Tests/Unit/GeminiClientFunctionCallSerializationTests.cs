@@ -256,6 +256,26 @@ public sealed class GeminiClientFunctionCallSerializationTests
     }
 
     [Fact]
+    public async Task SendMessageAsync_BuiltInSearchOnly_DoesNotSerializeFunctionCallingConfig()
+    {
+        var handler = new CapturingHandler("""{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}""");
+        var client = CreateClient(handler);
+
+        await client.SendMessageAsync(new GeminiRequest
+        {
+            SystemInstruction = "sys",
+            EnableWebSearch = true,
+            Messages = [new GeminiMessage { Role = "user", Content = "What is ISO 9001?" }]
+        });
+
+        using var doc = JsonDocument.Parse(handler.RequestBody!);
+        var tools = doc.RootElement.GetProperty("tools").EnumerateArray().ToArray();
+        Assert.Single(tools);
+        Assert.True(tools[0].TryGetProperty("googleSearch", out _));
+        Assert.False(doc.RootElement.TryGetProperty("toolConfig", out _));
+    }
+
+    [Fact]
     public async Task SendMessageAsync_MaxPromptTokensExceeded_CountsTokensAndSkipsGeneration()
     {
         var handler = new RoutingHandler(_ => """{"totalTokens":20001}""");

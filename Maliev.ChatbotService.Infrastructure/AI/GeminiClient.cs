@@ -478,10 +478,13 @@ public class GeminiClient : IGeminiClient
             }
 
             payload["tools"] = toolsList;
-            payload["toolConfig"] = new
+            if (hasTools)
             {
-                functionCallingConfig = new { mode = request.ToolConfig?.Mode ?? "AUTO" }
-            };
+                payload["toolConfig"] = new
+                {
+                    functionCallingConfig = new { mode = request.ToolConfig?.Mode ?? "AUTO" }
+                };
+            }
         }
 
         return payload;
