@@ -198,7 +198,7 @@ public class MessagesController : ControllerBase
                     _ => ContentType.Image
                 },
                 Data = a.Url,
-                MimeType = a.MimeType ?? string.Empty,
+                MimeType = ResolveAttachmentMimeType(a),
                 SizeBytes = a.SizeBytes ?? 0
             }).ToList(),
             ResponseMimeType = request.ResponseMimeType,
@@ -244,6 +244,70 @@ public class MessagesController : ControllerBase
         command.ThinkingStepCallback = thinkingCallback;
         return command;
     }
+
+    private static string ResolveAttachmentMimeType(Attachment attachment)
+    {
+        if (!string.IsNullOrWhiteSpace(attachment.MimeType))
+        {
+            return attachment.MimeType.Trim();
+        }
+
+        var extension = GetAttachmentExtension(attachment.Url);
+        if (!string.IsNullOrWhiteSpace(extension) &&
+            ExtensionMimeTypes.TryGetValue(extension, out var inferredMimeType))
+        {
+            return inferredMimeType;
+        }
+
+        return attachment.Type?.ToLowerInvariant() switch
+        {
+            "pdf" => "application/pdf",
+            _ => string.Empty
+        };
+    }
+
+    private static string GetAttachmentExtension(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return string.Empty;
+        }
+
+        var candidate = Uri.TryCreate(url, UriKind.Absolute, out var uri)
+            ? uri.AbsolutePath
+            : url.Split('?', '#')[0];
+
+        return Path.GetExtension(candidate).ToLowerInvariant();
+    }
+
+    private static readonly IReadOnlyDictionary<string, string> ExtensionMimeTypes =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            [".html"] = "text/html",
+            [".htm"] = "text/html",
+            [".css"] = "text/css",
+            [".txt"] = "text/plain",
+            [".xml"] = "text/xml",
+            [".csv"] = "text/csv",
+            [".rtf"] = "text/rtf",
+            [".js"] = "text/javascript",
+            [".json"] = "application/json",
+            [".pdf"] = "application/pdf",
+            [".bmp"] = "image/bmp",
+            [".jpg"] = "image/jpeg",
+            [".jpeg"] = "image/jpeg",
+            [".png"] = "image/png",
+            [".webp"] = "image/webp",
+            [".mp4"] = "video/mp4",
+            [".mpeg"] = "video/mpeg",
+            [".mpg"] = "video/mpg",
+            [".mov"] = "video/quicktime",
+            [".avi"] = "video/avi",
+            [".flv"] = "video/x-flv",
+            [".webm"] = "video/webm",
+            [".wmv"] = "video/wmv",
+            [".3gp"] = "video/3gpp"
+        };
 
     private static MessageResponse MapMessageResponse(SendMessageResult result)
     {

@@ -1,3 +1,4 @@
+using Maliev.ChatbotService.Application.Handlers;
 using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Infrastructure.Metrics;
 using Microsoft.Extensions.Configuration;
@@ -330,20 +331,7 @@ public class GeminiClient : IGeminiClient
     }
 
     private static bool IsSupportedExternalFileMimeType(string mimeType)
-    {
-        if (string.IsNullOrWhiteSpace(mimeType))
-        {
-            return false;
-        }
-
-        var normalizedMimeType = mimeType.Trim();
-        return normalizedMimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) ||
-            normalizedMimeType.StartsWith("video/", StringComparison.OrdinalIgnoreCase) ||
-            normalizedMimeType.StartsWith("audio/", StringComparison.OrdinalIgnoreCase) ||
-            normalizedMimeType.Equals("application/pdf", StringComparison.OrdinalIgnoreCase) ||
-            normalizedMimeType.StartsWith("text/", StringComparison.OrdinalIgnoreCase) ||
-            normalizedMimeType.Equals("application/json", StringComparison.OrdinalIgnoreCase);
-    }
+        => MessagePipelinePolicy.IsSupportedGeminiExternalUrlMimeType(mimeType);
 
     private void AddGeminiHeaders(HttpRequestMessage messageRequest, GeminiRequest request)
     {

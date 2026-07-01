@@ -257,6 +257,38 @@ public sealed class SendMessageCommandHandlerCostTests
     }
 
     [Fact]
+    public async Task HandleAsync_ExternalHttpsAttachmentWithoutKnownSize_IsRejectedBeforeGeminiCall()
+    {
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => SendWebsiteMessageAsync([
+            new AttachmentDto
+            {
+                ContentType = ContentType.PDF,
+                Data = "https://signed.example.test/drawing.pdf?token=abc",
+                MimeType = "application/pdf",
+                SizeBytes = 0
+            }
+        ]));
+
+        Assert.Contains("Attachment size must be provided", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task HandleAsync_UnsupportedExternalHttpsAttachmentMime_IsRejectedBeforeGeminiCall()
+    {
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => SendWebsiteMessageAsync([
+            new AttachmentDto
+            {
+                ContentType = ContentType.Image,
+                Data = "https://signed.example.test/photo.heic?token=abc",
+                MimeType = "image/heic",
+                SizeBytes = 1024
+            }
+        ]));
+
+        Assert.Contains("Unsupported external attachment MIME type", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task HandleAsync_GeminiTokenUsage_PersistsCostBreakdownInAssistantMetadata()
     {
         var result = await SendWebsiteMessageAsync(tokenUsage: new GeminiTokenUsage

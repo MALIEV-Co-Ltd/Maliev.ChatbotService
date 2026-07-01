@@ -16,6 +16,32 @@ public static class MessagePipelinePolicy
     /// <summary>Maximum accepted length of a single customer message, in characters.</summary>
     public const int MaxContentCharacters = 8000;
 
+    private static readonly HashSet<string> GeminiExternalUrlMimeTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "text/html",
+        "text/css",
+        "text/plain",
+        "text/xml",
+        "text/csv",
+        "text/rtf",
+        "text/javascript",
+        "application/json",
+        "application/pdf",
+        "image/bmp",
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "video/mp4",
+        "video/mpeg",
+        "video/quicktime",
+        "video/avi",
+        "video/x-flv",
+        "video/mpg",
+        "video/webm",
+        "video/wmv",
+        "video/3gpp"
+    };
+
     private const double TopicConfidenceThreshold = 0.7;
 
     /// <summary>
@@ -113,6 +139,59 @@ public static class MessagePipelinePolicy
     }
 
     /// <summary>
+    /// Validates a new model-fetched attachment reference before Gemini processing. URL/GCS/File API
+    /// references must carry a caller-supplied size so per-message cost limits are meaningful.
+    /// </summary>
+    public static bool TryValidateGeminiAttachmentReference(
+        string? data,
+        string? mimeType,
+        long sizeBytes,
+        out string? error)
+    {
+        if (!IsModelFetchedAttachmentReference(data))
+        {
+            error = null;
+            return true;
+        }
+
+        if (data!.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+        {
+            error = "URL-based attachments must use HTTPS, a Gemini File API URI, or gs:// storage reference.";
+            return false;
+        }
+
+        if (sizeBytes <= 0)
+        {
+            error = "Attachment size must be provided for URL-based files before Gemini processing.";
+            return false;
+        }
+
+        if (IsExternalHttpsUrl(data) && !IsSupportedGeminiExternalUrlMimeType(mimeType))
+        {
+            error = $"Unsupported external attachment MIME type '{mimeType}'. " +
+                "Use a supported text, JSON, PDF, image, or video MIME type.";
+            return false;
+        }
+
+        error = null;
+        return true;
+    }
+
+    /// <summary>
+    /// Indicates whether a public or signed HTTPS file URL MIME type is in the Gemini documented
+    /// external URL allowlist for generateContent fileData.
+    /// </summary>
+    public static bool IsSupportedGeminiExternalUrlMimeType(string? mimeType)
+    {
+        if (string.IsNullOrWhiteSpace(mimeType))
+        {
+            return false;
+        }
+
+        return GeminiExternalUrlMimeTypes.Contains(mimeType.Trim());
+    }
+
+    /// <summary>
     /// Serializes URL/GCS-style attachment references for persistence on a message so later turns can
     /// re-hydrate them (C3). Inline base64 data is intentionally skipped to avoid bloating the store.
     /// Returns null when there is nothing persistable.
@@ -184,6 +263,16 @@ public static class MessagePipelinePolicy
         !string.IsNullOrWhiteSpace(data) &&
         (data.StartsWith("http", StringComparison.OrdinalIgnoreCase) ||
          data.StartsWith("gs://", StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsModelFetchedAttachmentReference(string? data) =>
+        !string.IsNullOrWhiteSpace(data) &&
+        (data.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+         data.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
+         data.StartsWith("gs://", StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsExternalHttpsUrl(string data) =>
+        data.StartsWith("https://", StringComparison.OrdinalIgnoreCase) &&
+        !data.StartsWith("https://generativelanguage.googleapis.com/", StringComparison.OrdinalIgnoreCase);
 
     private sealed class AttachmentMetadata
     {

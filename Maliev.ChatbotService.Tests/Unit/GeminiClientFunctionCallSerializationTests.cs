@@ -286,6 +286,40 @@ public sealed class GeminiClientFunctionCallSerializationTests
     }
 
     [Fact]
+    public async Task SendMessageAsync_UnsupportedExternalHttpsAttachmentMime_SerializesAsTextReference()
+    {
+        var handler = new CapturingHandler("""{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}""");
+        var client = CreateClient(handler);
+
+        var request = new GeminiRequest
+        {
+            Messages =
+            [
+                new GeminiMessage
+                {
+                    Role = "user",
+                    Content = "Review this photo.",
+                    Attachments =
+                    [
+                        new GeminiAttachment
+                        {
+                            MimeType = "image/heic",
+                            Data = "https://signed.example.test/photo.heic?token=abc"
+                        }
+                    ]
+                }
+            ]
+        };
+
+        await client.SendMessageAsync(request);
+
+        using var doc = JsonDocument.Parse(handler.RequestBody!);
+        var parts = doc.RootElement.GetProperty("contents")[0].GetProperty("parts").EnumerateArray().ToArray();
+        Assert.False(parts[1].TryGetProperty("fileData", out _));
+        Assert.Contains("Attached file reference", parts[1].GetProperty("text").GetString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task SendMessageAsync_GcsAttachment_SerializesAsGeminiFileData()
     {
         var handler = new CapturingHandler("""{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}""");

@@ -214,6 +214,15 @@ public class SendMessageCommandHandler
             {
                 foreach (var attachment in command.Attachments)
                 {
+                    if (!MessagePipelinePolicy.TryValidateGeminiAttachmentReference(
+                            attachment.Data,
+                            attachment.MimeType,
+                            attachment.SizeBytes,
+                            out var referenceError))
+                    {
+                        throw new InvalidOperationException(referenceError);
+                    }
+
                     const long maxImageSize = 10 * 1024 * 1024; // 10 MB
                     const long maxPdfSize = 20 * 1024 * 1024; // 20 MB
                     const long maxVideoSize = 50 * 1024 * 1024; // 50 MB
