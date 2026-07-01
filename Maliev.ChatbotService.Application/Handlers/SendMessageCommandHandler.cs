@@ -4,6 +4,7 @@ using Maliev.ChatbotService.Application.Validators;
 using Maliev.ChatbotService.Domain.Entities;
 using Maliev.ChatbotService.Domain.Enums;
 using Maliev.ChatbotService.Domain.Events;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using System.Text.Json;
@@ -38,6 +39,7 @@ public class SendMessageCommandHandler
     private readonly IToolExecutorService _toolExecutor;
     private readonly StackExchange.Redis.IConnectionMultiplexer _redis;
     private readonly ILogger<SendMessageCommandHandler> _logger;
+    private readonly bool _webSearchGloballyEnabled;
 
     // Must exceed the worst-case agent loop so the per-session lock cannot expire mid-turn and let a
     // concurrent message interleave (C2). AgentChatHandler runs up to MaxIterations (10) iterations,
@@ -80,6 +82,7 @@ public class SendMessageCommandHandler
     /// <param name="toolExecutor">The tool executor service.</param>
     /// <param name="redis">The Redis connection multiplexer.</param>
     /// <param name="logger">The logger.</param>
+    /// <param name="configuration">Application configuration.</param>
     public SendMessageCommandHandler(
         IConversationSessionRepository sessionRepository,
         IMessageRepository messageRepository,
@@ -103,7 +106,8 @@ public class SendMessageCommandHandler
         AgentChatHandler agentChatHandler,
         IToolExecutorService toolExecutor,
         StackExchange.Redis.IConnectionMultiplexer redis,
-        ILogger<SendMessageCommandHandler> logger)
+        ILogger<SendMessageCommandHandler> logger,
+        IConfiguration? configuration = null)
     {
         _sessionRepository = sessionRepository;
         _messageRepository = messageRepository;
@@ -128,6 +132,7 @@ public class SendMessageCommandHandler
         _toolExecutor = toolExecutor;
         _redis = redis;
         _logger = logger;
+        _webSearchGloballyEnabled = configuration?.GetValue<bool>("Features:WebSearchEnabled") ?? false;
     }
 
     /// <summary>
@@ -440,6 +445,7 @@ public class SendMessageCommandHandler
             // Check if Gemini built-in search should be triggered
             bool enableGeminiSearch = false;
             if (coreInstruction != null &&
+                _webSearchGloballyEnabled &&
                 coreInstruction.EnableWebSearch &&
                 ShouldTriggerWebSearch(command.Content))
             {

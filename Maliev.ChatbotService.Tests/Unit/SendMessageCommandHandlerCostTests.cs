@@ -5,6 +5,7 @@ using Maliev.ChatbotService.Application.Validators;
 using Maliev.ChatbotService.Domain.Entities;
 using Maliev.ChatbotService.Domain.Enums;
 using Maliev.ChatbotService.Domain.Events;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
 using StackExchange.Redis;
@@ -119,6 +120,29 @@ public sealed class SendMessageCommandHandlerCostTests
         result.IntentClassificationService.Verify(
             item => item.ClassifyIntentAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Never);
+    }
+
+    [Fact]
+    public async Task HandleAsync_GlobalWebSearchDisabled_DoesNotEnableGeminiSearch()
+    {
+        var result = await SendWebsiteMessageAsync(
+            messageContent: "What does ISO 9001 require?",
+            instructionEnableWebSearch: true);
+
+        Assert.NotNull(result.CapturedRequest);
+        Assert.False(result.CapturedRequest!.EnableWebSearch);
+    }
+
+    [Fact]
+    public async Task HandleAsync_GlobalAndInstructionWebSearchEnabled_EnablesGeminiSearchForTechnicalQuery()
+    {
+        var result = await SendWebsiteMessageAsync(
+            messageContent: "What does ISO 9001 require?",
+            instructionEnableWebSearch: true,
+            globalWebSearchEnabled: true);
+
+        Assert.NotNull(result.CapturedRequest);
+        Assert.True(result.CapturedRequest!.EnableWebSearch);
     }
 
     [Fact]
@@ -337,7 +361,10 @@ public sealed class SendMessageCommandHandlerCostTests
         string? modelName = null,
         string? responseMimeType = null,
         object? responseSchema = null,
-        List<GeminiToolDeclaration>? toolDeclarations = null)
+        List<GeminiToolDeclaration>? toolDeclarations = null,
+        string messageContent = "What materials can you print?",
+        bool instructionEnableWebSearch = false,
+        bool globalWebSearchEnabled = false)
     {
         var sessionId = Guid.NewGuid();
         var userProfileId = Guid.NewGuid();
@@ -372,13 +399,13 @@ public sealed class SendMessageCommandHandlerCostTests
                     new Message
                     {
                         Id = Guid.NewGuid(),
-                        SessionId = sessionId,
-                        Role = MessageRole.User,
-                        Content = "What materials can you print?",
-                        ContentType = ContentType.Text,
-                        CreatedAt = DateTimeOffset.UtcNow
-                    }
-                ]).ToList());
+                    SessionId = sessionId,
+                    Role = MessageRole.User,
+                    Content = messageContent,
+                    ContentType = ContentType.Text,
+                    CreatedAt = DateTimeOffset.UtcNow
+                }
+            ]).ToList());
 
         var userProfileRepository = new Mock<IUserProfileRepository>();
         userProfileRepository
@@ -435,7 +462,7 @@ public sealed class SendMessageCommandHandlerCostTests
             .ReturnsAsync("You are MALIEV's customer assistant.");
         systemInstructionService
             .Setup(item => item.GetActiveInstructionAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new SystemInstruction { EnableWebSearch = false });
+            .ReturnsAsync(new SystemInstruction { EnableWebSearch = instructionEnableWebSearch });
 
         var intentClassificationService = new Mock<IIntentClassificationService>();
         intentClassificationService
@@ -460,6 +487,12 @@ public sealed class SendMessageCommandHandlerCostTests
         toolExecutor
             .Setup(item => item.GetToolDeclarations(It.IsAny<string>()))
             .Returns(toolDeclarations ?? new List<GeminiToolDeclaration>());
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Features:WebSearchEnabled"] = globalWebSearchEnabled.ToString()
+            })
+            .Build();
         var database = new Mock<IDatabase>();
         database
             .Setup(item => item.LockTakeAsync(
@@ -502,14 +535,15 @@ public sealed class SendMessageCommandHandlerCostTests
             new AgentChatHandler(geminiClient.Object, toolExecutor.Object, Mock.Of<ILogger<AgentChatHandler>>()),
             toolExecutor.Object,
             redis.Object,
-            Mock.Of<ILogger<SendMessageCommandHandler>>());
+            Mock.Of<ILogger<SendMessageCommandHandler>>(),
+            configuration);
 
         await handler.HandleAsync(new SendMessageCommand
         {
             SessionId = sessionId,
             Content = attachments is { Count: > 0 }
                 ? "What can you tell from this attachment?"
-                : "What materials can you print?",
+                : messageContent,
             ModelName = modelName,
             Language = "en",
             Attachments = attachments,
