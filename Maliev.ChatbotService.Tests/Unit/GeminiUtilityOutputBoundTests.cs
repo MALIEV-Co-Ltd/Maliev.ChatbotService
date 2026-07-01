@@ -46,6 +46,7 @@ public sealed class GeminiUtilityOutputBoundTests
         Assert.Equal(4096, capturedRequest.MaxPromptTokens);
         Assert.Null(capturedRequest.ServiceTier);
         Assert.Equal(5, capturedRequest.TimeoutSeconds);
+        Assert.False(capturedRequest.Store.GetValueOrDefault(true));
     }
 
     [Fact]
@@ -114,6 +115,7 @@ public sealed class GeminiUtilityOutputBoundTests
         Assert.Equal(4096, capturedRequest.MaxPromptTokens);
         Assert.Null(capturedRequest.ServiceTier);
         Assert.Equal(5, capturedRequest.TimeoutSeconds);
+        Assert.False(capturedRequest.Store.GetValueOrDefault(true));
     }
 
     [Fact]
@@ -180,6 +182,7 @@ public sealed class GeminiUtilityOutputBoundTests
         Assert.Equal(16000, capturedRequest.MaxPromptTokens);
         Assert.Equal("flex", capturedRequest.ServiceTier);
         Assert.Equal(600, capturedRequest.TimeoutSeconds);
+        Assert.False(capturedRequest.Store.GetValueOrDefault(true));
     }
 
     private static IConfiguration CreateUtilityFlexConfiguration()

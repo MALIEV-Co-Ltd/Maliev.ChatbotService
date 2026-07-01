@@ -36,6 +36,15 @@ public sealed class SendMessageCommandHandlerCostTests
     }
 
     [Fact]
+    public async Task HandleAsync_WebsiteCustomerMessage_DisablesProviderRequestStorage()
+    {
+        var result = await SendWebsiteMessageAsync();
+
+        Assert.NotNull(result.CapturedRequest);
+        Assert.False(result.CapturedRequest!.Store.GetValueOrDefault(true));
+    }
+
+    [Fact]
     public async Task HandleAsync_UnsupportedModelOverride_UsesConfiguredDefaultModel()
     {
         var result = await SendWebsiteMessageAsync(modelName: "gemini-2.5-pro");

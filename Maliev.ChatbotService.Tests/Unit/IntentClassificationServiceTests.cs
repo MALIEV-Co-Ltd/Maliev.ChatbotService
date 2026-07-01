@@ -48,6 +48,7 @@ public sealed class IntentClassificationServiceTests
         Assert.Equal(0.1, capturedRequest.Temperature);
         Assert.Null(capturedRequest.ServiceTier);
         Assert.Equal(5, capturedRequest.TimeoutSeconds);
+        Assert.False(capturedRequest.Store.GetValueOrDefault(true));
 
         var schemaJson = JsonSerializer.Serialize(capturedRequest.ResponseSchema);
         Assert.Contains("intent", schemaJson);

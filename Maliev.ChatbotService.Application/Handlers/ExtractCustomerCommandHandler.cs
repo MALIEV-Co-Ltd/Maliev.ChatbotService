@@ -191,7 +191,8 @@ public class ExtractCustomerCommandHandler
                 MaxPromptTokens = MaxExtractionPromptTokens,
                 MediaResolution = attachments.Count > 0 ? "MEDIA_RESOLUTION_MEDIUM" : null,
                 ServiceTier = "flex",
-                TimeoutSeconds = GeminiRequest.FlexInferenceTimeoutSeconds
+                TimeoutSeconds = GeminiRequest.FlexInferenceTimeoutSeconds,
+                Store = false
             };
 
             var cacheReference = await _modelContextCacheService.GetOrCreateSystemInstructionCacheAsync(

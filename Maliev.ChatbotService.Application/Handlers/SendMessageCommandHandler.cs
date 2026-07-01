@@ -552,7 +552,8 @@ public class SendMessageCommandHandler
                 EnableWebSearch = enableGeminiSearch,
                 IncludeThoughts = allowModelThoughts,
                 ThinkingBudget = allowModelThoughts ? AgentThinkingBudgetTokens : 0,
-                MediaResolution = ResolveMediaResolution(geminiMessages)
+                MediaResolution = ResolveMediaResolution(geminiMessages),
+                Store = false
             };
 
             var cacheReference = await _modelContextCacheService.GetOrCreateSystemInstructionCacheAsync(

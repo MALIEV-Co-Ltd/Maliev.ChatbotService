@@ -75,7 +75,8 @@ public class IntentClassificationService : IIntentClassificationService
             ResponseMimeType = "application/json",
             ResponseSchema = IntentClassificationSchema,
             ServiceTier = _requestOptions.ServiceTier,
-            TimeoutSeconds = _requestOptions.TimeoutSeconds
+            TimeoutSeconds = _requestOptions.TimeoutSeconds,
+            Store = false
         };
 
         try

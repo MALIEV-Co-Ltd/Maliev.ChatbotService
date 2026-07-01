@@ -80,7 +80,8 @@ public class AgentChatHandler
                 IncludeThoughts = request.IncludeThoughts,
                 ThinkingBudget = request.ThinkingBudget,
                 MediaResolution = request.MediaResolution,
-                ServiceTier = request.ServiceTier
+                ServiceTier = request.ServiceTier,
+                Store = request.Store
             };
 
             var response = await SendGeminiMaybeStreamingAsync(iterationRequest, onTextDelta, onThoughtDelta, cancellationToken);

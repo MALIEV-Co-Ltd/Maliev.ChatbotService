@@ -64,6 +64,7 @@ public sealed class ConversationSummaryBatchServiceTests
         Assert.Equal(0, request.Request.ThinkingBudget);
         Assert.Null(request.Request.ServiceTier);
         Assert.Equal(10, request.Request.TimeoutSeconds);
+        Assert.False(request.Request.Store.GetValueOrDefault(true));
 
         Assert.NotNull(capturedBatchJob);
         Assert.Equal("batches/summary-1", capturedBatchJob!.BatchName);

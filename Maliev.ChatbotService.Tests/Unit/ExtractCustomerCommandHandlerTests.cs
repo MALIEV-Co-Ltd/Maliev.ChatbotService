@@ -69,6 +69,7 @@ public sealed class ExtractCustomerCommandHandlerTests
         Assert.Equal(4096, capturedRequest.MaxTokens);
         Assert.Equal("flex", capturedRequest.ServiceTier);
         Assert.Equal(600, capturedRequest.TimeoutSeconds);
+        Assert.False(capturedRequest.Store.GetValueOrDefault(true));
         Assert.NotNull(capturedRequest.Attachments);
         Assert.Single(capturedRequest.Attachments);
         Assert.Equal("application/pdf", capturedRequest.Attachments![0].MimeType);

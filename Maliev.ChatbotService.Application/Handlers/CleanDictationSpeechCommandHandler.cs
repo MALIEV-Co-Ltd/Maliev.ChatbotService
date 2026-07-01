@@ -58,6 +58,7 @@ public class CleanDictationSpeechCommandHandler
             MaxPromptTokens = MaxCleanupPromptTokens,
             ServiceTier = _requestOptions.ServiceTier,
             TimeoutSeconds = _requestOptions.TimeoutSeconds,
+            Store = false
         };
 
         try

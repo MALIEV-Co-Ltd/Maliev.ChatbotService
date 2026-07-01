@@ -74,7 +74,8 @@ public class ExtractCustomerIntentCommandHandler
             ServiceTier = _requestOptions.ServiceTier,
             TimeoutSeconds = _requestOptions.TimeoutSeconds,
             ResponseMimeType = "application/json",
-            ResponseSchema = schema
+            ResponseSchema = schema,
+            Store = false
         };
 
         try

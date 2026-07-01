@@ -37,7 +37,8 @@ public class AgentChatHandlerTests
         // Arrange
         var initialRequest = new GeminiRequest
         {
-            Messages = new List<GeminiMessage> { new GeminiMessage { Role = "user", Content = "Read this NDA" } }
+            Messages = new List<GeminiMessage> { new GeminiMessage { Role = "user", Content = "Read this NDA" } },
+            Store = false
         };
 
         var pdfData = "JVBERi0xLjQKJ..."; // Mock base64
@@ -56,7 +57,7 @@ public class AgentChatHandlerTests
         // Use a list to capture calls for manual assertion
         var capturedRequests = new List<GeminiRequest>();
         _geminiClientMock.Setup(x => x.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()))
-            .Callback<GeminiRequest, CancellationToken>((r, c) => capturedRequests.Add(new GeminiRequest { Messages = new List<GeminiMessage>(r.Messages) }))
+            .Callback<GeminiRequest, CancellationToken>((r, c) => capturedRequests.Add(new GeminiRequest { Messages = new List<GeminiMessage>(r.Messages), Store = r.Store }))
             .ReturnsAsync((GeminiRequest r, CancellationToken c) =>
             {
                 if (capturedRequests.Count == 1)
@@ -86,6 +87,7 @@ public class AgentChatHandlerTests
         // Assert
         Assert.True(result.Success);
         Assert.Equal(2, capturedRequests.Count);
+        Assert.All(capturedRequests, request => Assert.False(request.Store.GetValueOrDefault(true)));
 
         // First call: 1 message, no attachments
         Assert.Single(capturedRequests[0].Messages);
