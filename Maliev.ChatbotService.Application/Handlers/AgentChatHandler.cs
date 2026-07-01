@@ -80,6 +80,7 @@ public class AgentChatHandler
                 IncludeThoughts = request.IncludeThoughts,
                 ThinkingBudget = request.ThinkingBudget,
                 MediaResolution = request.MediaResolution,
+                CachedContentName = request.CachedContentName,
                 ServiceTier = request.ServiceTier,
                 Store = request.Store
             };
