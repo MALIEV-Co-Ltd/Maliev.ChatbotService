@@ -76,6 +76,91 @@ public sealed class ExtractCustomerCommandHandlerTests
     }
 
     [Fact]
+    public async Task HandleAsync_WithConfiguredMediaResolution_UsesConfiguredGeminiMediaResolution()
+    {
+        var instructionRepository = new Mock<ISystemInstructionRepository>();
+        var geminiClient = new Mock<IGeminiClient>();
+        var modelContextCacheService = new Mock<IModelContextCacheService>();
+        var modelFileStagingService = new Mock<IModelFileStagingService>();
+        GeminiRequest? capturedRequest = null;
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Gemini:Extraction:MediaResolution"] = "low"
+            })
+            .Build();
+
+        instructionRepository
+            .Setup(item => item.GetActiveByTopicsAsync(
+                It.IsAny<IEnumerable<string>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<SystemInstruction>());
+        modelContextCacheService
+            .Setup(item => item.GetOrCreateSystemInstructionCacheAsync(
+                It.IsAny<ModelContextCacheRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ModelContextCacheReference?)null);
+        modelFileStagingService
+            .Setup(item => item.StageFileAsync(It.IsAny<ModelFileStagingRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ModelFileReference?)null);
+
+        geminiClient
+            .Setup(item => item.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<GeminiRequest, CancellationToken>((request, _) => capturedRequest = request)
+            .ReturnsAsync(new GeminiResponse
+            {
+                Success = true,
+                Content = """{"first_name":"Jane","last_name":"Customer"}"""
+            });
+
+        var handler = new ExtractCustomerCommandHandler(
+            instructionRepository.Object,
+            geminiClient.Object,
+            modelContextCacheService.Object,
+            modelFileStagingService.Object,
+            NullLogger<ExtractCustomerCommandHandler>.Instance,
+            configuration);
+
+        var result = await handler.HandleAsync(new ExtractCustomerCommand
+        {
+            Files =
+            [
+                new ExtractionFileData
+                {
+                    FileName = "customer-form.pdf",
+                    MimeType = "application/pdf",
+                    Base64Data = Convert.ToBase64String("test document"u8)
+                }
+            ]
+        });
+
+        Assert.True(result.Success);
+        Assert.NotNull(capturedRequest);
+        Assert.Equal("MEDIA_RESOLUTION_LOW", capturedRequest!.MediaResolution);
+    }
+
+    [Fact]
+    public void Constructor_WithUnsupportedMediaResolution_ThrowsConfigurationError()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Gemini:Extraction:MediaResolution"] = "max-detail"
+            })
+            .Build();
+
+        var exception = Assert.Throws<InvalidOperationException>(() => new ExtractCustomerCommandHandler(
+            Mock.Of<ISystemInstructionRepository>(),
+            Mock.Of<IGeminiClient>(),
+            Mock.Of<IModelContextCacheService>(),
+            Mock.Of<IModelFileStagingService>(),
+            NullLogger<ExtractCustomerCommandHandler>.Instance,
+            configuration));
+
+        Assert.Contains("Gemini:Extraction:MediaResolution", exception.Message);
+    }
+
+    [Fact]
     public async Task HandleAsync_WithOversizedFileAttachment_StagesFileBeforeGeminiRequest()
     {
         var instructionRepository = new Mock<ISystemInstructionRepository>();

@@ -18,6 +18,7 @@ public class ExtractCustomerCommandHandler
     private const int MaxExtractionPromptTokens = 20000;
     private const int MaxExtractionOutputTokens = 4096;
     private const long DefaultFileApiInlineThresholdBytes = 5L * 1024 * 1024;
+    private const string DefaultExtractionMediaResolution = "MEDIA_RESOLUTION_MEDIUM";
 
     private readonly ISystemInstructionRepository _instructionRepository;
     private readonly IGeminiClient _geminiClient;
@@ -26,6 +27,7 @@ public class ExtractCustomerCommandHandler
     private readonly ILogger<ExtractCustomerCommandHandler> _logger;
     private readonly string _modelName;
     private readonly long _fileApiInlineThresholdBytes;
+    private readonly string _extractionMediaResolution;
 
     private static readonly object CustomerExtractionSchema = new
     {
@@ -98,6 +100,8 @@ public class ExtractCustomerCommandHandler
             0,
             configuration?.GetValue<long?>("Gemini:FileApiInlineThresholdBytes") ??
                 DefaultFileApiInlineThresholdBytes);
+        _extractionMediaResolution = ResolveMediaResolution(
+            configuration?["Gemini:Extraction:MediaResolution"]);
     }
 
     /// <summary>
@@ -189,7 +193,7 @@ public class ExtractCustomerCommandHandler
                 ThinkingBudget = 0,
                 MaxTokens = MaxExtractionOutputTokens,
                 MaxPromptTokens = MaxExtractionPromptTokens,
-                MediaResolution = attachments.Count > 0 ? "MEDIA_RESOLUTION_MEDIUM" : null,
+                MediaResolution = attachments.Count > 0 ? _extractionMediaResolution : null,
                 ServiceTier = "flex",
                 TimeoutSeconds = GeminiRequest.FlexInferenceTimeoutSeconds,
                 Store = false
@@ -413,6 +417,25 @@ public class ExtractCustomerCommandHandler
             : payload.EndsWith("=", StringComparison.Ordinal) ? 1 : 0;
         decodedLength = (payload.Length / 4L * 3L) - padding;
         return decodedLength >= 0;
+    }
+
+    private static string ResolveMediaResolution(string? configuredValue)
+    {
+        if (string.IsNullOrWhiteSpace(configuredValue))
+        {
+            return DefaultExtractionMediaResolution;
+        }
+
+        return configuredValue.Trim().ToUpperInvariant() switch
+        {
+            "LOW" or "MEDIA_RESOLUTION_LOW" => "MEDIA_RESOLUTION_LOW",
+            "MEDIUM" or "MEDIA_RESOLUTION_MEDIUM" => "MEDIA_RESOLUTION_MEDIUM",
+            "HIGH" or "MEDIA_RESOLUTION_HIGH" => "MEDIA_RESOLUTION_HIGH",
+            "UNSPECIFIED" or "MEDIA_RESOLUTION_UNSPECIFIED" => "MEDIA_RESOLUTION_UNSPECIFIED",
+            _ => throw new InvalidOperationException(
+                "Unsupported Gemini media resolution configured at 'Gemini:Extraction:MediaResolution'. " +
+                "Use low, medium, high, unspecified, or the matching MEDIA_RESOLUTION_* enum value.")
+        };
     }
 
     private sealed record BuiltExtractionAttachment(GeminiAttachment Attachment, string? StagedFileName);
