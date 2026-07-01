@@ -1,3 +1,5 @@
+using Maliev.ChatbotService.Application.Costing;
+
 namespace Maliev.ChatbotService.Application.Interfaces;
 
 /// <summary>
@@ -41,4 +43,14 @@ public sealed class ModelContextCacheReference
     /// Gets or sets the provider cache resource name.
     /// </summary>
     public string CachedContentName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the input token count stored in the provider cache when this process created it.
+    /// </summary>
+    public int CachedInputTokens { get; set; }
+
+    /// <summary>
+    /// Gets or sets the estimated provider storage cost for the cache lifetime when this process created it.
+    /// </summary>
+    public GeminiContextCacheStorageEstimate? StorageCostEstimate { get; set; }
 }

@@ -19,20 +19,24 @@ public static class GeminiCostEstimator
 
     private static readonly Dictionary<string, ModelPricing> PricingByModel = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["gemini-2.5-flash"] = new ModelPricing(new Dictionary<string, TokenRates>(StringComparer.OrdinalIgnoreCase)
-        {
-            [StandardTier] = new TokenRates(0.30m, 1.00m, 0.03m, 0.10m, 2.50m, 35m),
-            [FlexTier] = new TokenRates(0.15m, 0.50m, 0.03m, 0.10m, 1.25m, 35m),
-            [BatchTier] = new TokenRates(0.15m, 0.50m, 0.03m, 0.10m, 1.25m, 35m),
-            [PriorityTier] = new TokenRates(0.54m, 1.80m, 0.054m, 0.18m, 4.50m, 35m)
-        }),
-        ["gemini-2.5-flash-lite"] = new ModelPricing(new Dictionary<string, TokenRates>(StringComparer.OrdinalIgnoreCase)
-        {
-            [StandardTier] = new TokenRates(0.10m, 0.30m, 0.01m, 0.03m, 0.40m, 35m),
-            [FlexTier] = new TokenRates(0.05m, 0.15m, 0.01m, 0.03m, 0.20m, 35m),
-            [BatchTier] = new TokenRates(0.05m, 0.15m, 0.01m, 0.03m, 0.20m, 35m),
-            [PriorityTier] = new TokenRates(0.18m, 0.54m, 0.018m, 0.054m, 0.72m, 35m)
-        })
+        ["gemini-2.5-flash"] = new ModelPricing(
+            new Dictionary<string, TokenRates>(StringComparer.OrdinalIgnoreCase)
+            {
+                [StandardTier] = new TokenRates(0.30m, 1.00m, 0.03m, 0.10m, 2.50m, 35m),
+                [FlexTier] = new TokenRates(0.15m, 0.50m, 0.03m, 0.10m, 1.25m, 35m),
+                [BatchTier] = new TokenRates(0.15m, 0.50m, 0.03m, 0.10m, 1.25m, 35m),
+                [PriorityTier] = new TokenRates(0.54m, 1.80m, 0.054m, 0.18m, 4.50m, 35m)
+            },
+            1.00m),
+        ["gemini-2.5-flash-lite"] = new ModelPricing(
+            new Dictionary<string, TokenRates>(StringComparer.OrdinalIgnoreCase)
+            {
+                [StandardTier] = new TokenRates(0.10m, 0.30m, 0.01m, 0.03m, 0.40m, 35m),
+                [FlexTier] = new TokenRates(0.05m, 0.15m, 0.01m, 0.03m, 0.20m, 35m),
+                [BatchTier] = new TokenRates(0.05m, 0.15m, 0.01m, 0.03m, 0.20m, 35m),
+                [PriorityTier] = new TokenRates(0.18m, 0.54m, 0.018m, 0.054m, 0.72m, 35m)
+            },
+            1.00m)
     };
 
     /// <summary>
@@ -121,6 +125,40 @@ public static class GeminiCostEstimator
                 toolUsePromptMicroUsd +
                 googleSearchGroundingMicroUsd +
                 outputMicroUsd
+        };
+    }
+
+    /// <summary>
+    /// Estimates explicit Gemini cached-content storage cost for a cache lifetime.
+    /// </summary>
+    /// <param name="modelName">The Gemini model name used for the cached content.</param>
+    /// <param name="cachedInputTokens">The number of input tokens stored in the cache.</param>
+    /// <param name="ttl">The provider cache time to live.</param>
+    /// <returns>The storage estimate, or null when the model or inputs are not estimable.</returns>
+    public static GeminiContextCacheStorageEstimate? EstimateContextCacheStorage(
+        string? modelName,
+        int cachedInputTokens,
+        TimeSpan ttl)
+    {
+        var normalizedModelName = NormalizeModelName(modelName);
+        if (string.IsNullOrWhiteSpace(normalizedModelName) ||
+            cachedInputTokens <= 0 ||
+            ttl <= TimeSpan.Zero ||
+            !PricingByModel.TryGetValue(normalizedModelName, out var modelPricing))
+        {
+            return null;
+        }
+
+        var ttlHours = (decimal)ttl.TotalHours;
+        var storageMicroUsd = ToMicroUsd(cachedInputTokens, modelPricing.ContextCacheStorageUsdPerMillionTokenHours, ttlHours);
+
+        return new GeminiContextCacheStorageEstimate
+        {
+            ModelName = normalizedModelName,
+            PricingBasis = PricingBasis,
+            CachedInputTokens = cachedInputTokens,
+            TtlSeconds = (int)Math.Ceiling(ttl.TotalSeconds),
+            StorageMicroUsd = storageMicroUsd
         };
     }
 
@@ -231,6 +269,16 @@ public static class GeminiCostEstimator
         return (long)Math.Round(tokens * usdPerMillionTokens, MidpointRounding.AwayFromZero);
     }
 
+    private static long ToMicroUsd(int tokens, decimal usdPerMillionTokenHours, decimal hours)
+    {
+        if (tokens <= 0 || hours <= 0)
+        {
+            return 0;
+        }
+
+        return (long)Math.Round(tokens * usdPerMillionTokenHours * hours, MidpointRounding.AwayFromZero);
+    }
+
     private static long ToPerThousandMicroUsd(int count, decimal usdPerThousand)
     {
         if (count <= 0)
@@ -265,7 +313,9 @@ public static class GeminiCostEstimator
             : normalized;
     }
 
-    private sealed record ModelPricing(IReadOnlyDictionary<string, TokenRates> Tiers);
+    private sealed record ModelPricing(
+        IReadOnlyDictionary<string, TokenRates> Tiers,
+        decimal ContextCacheStorageUsdPerMillionTokenHours);
 
     private sealed record TokenRates(
         decimal InputTextImageVideoUsdPerMillion,
@@ -322,4 +372,25 @@ public sealed class GeminiCostEstimate
 
     /// <summary>Gets or sets estimated total token cost in micro-USD.</summary>
     public long TotalMicroUsd { get; set; }
+}
+
+/// <summary>
+/// Gemini explicit context-cache storage cost estimate expressed in micro-USD.
+/// </summary>
+public sealed class GeminiContextCacheStorageEstimate
+{
+    /// <summary>Gets or sets the normalized Gemini model name.</summary>
+    public string ModelName { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the pricing table basis for the estimate.</summary>
+    public string PricingBasis { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets input tokens stored in the provider cache.</summary>
+    public int CachedInputTokens { get; set; }
+
+    /// <summary>Gets or sets the provider cache time to live in seconds.</summary>
+    public int TtlSeconds { get; set; }
+
+    /// <summary>Gets or sets estimated cache storage cost in micro-USD.</summary>
+    public long StorageMicroUsd { get; set; }
 }

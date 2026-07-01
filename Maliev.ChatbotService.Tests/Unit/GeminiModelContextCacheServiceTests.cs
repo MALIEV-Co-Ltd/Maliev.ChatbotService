@@ -88,6 +88,9 @@ public sealed class GeminiModelContextCacheServiceTests
 
         Assert.NotNull(result);
         Assert.Equal("cachedContents/created", result!.CachedContentName);
+        Assert.Equal(2048, result.CachedInputTokens);
+        Assert.NotNull(result.StorageCostEstimate);
+        Assert.Equal(2048, result.StorageCostEstimate!.StorageMicroUsd);
         Assert.Equal("cachedContents/created", storedValue.ToString());
         Assert.StartsWith("chatbot:gemini:context-cache:v1:system-instruction:gemini-2.5-flash:", storedKey.ToString());
         Assert.NotNull(storedExpiry);
@@ -207,6 +210,71 @@ public sealed class GeminiModelContextCacheServiceTests
                 It.IsAny<When>(),
                 It.IsAny<CommandFlags>()),
             Times.Never);
+    }
+
+    [Fact]
+    public async Task GetOrCreateSystemInstructionCacheAsync_StorageEstimateAboveConfiguredLimit_SkipsCacheCreate()
+    {
+        var handler = new CapturingHandler("""{"totalTokens":2048}""");
+        var database = CreateRedisDatabase();
+        database
+            .Setup(item => item.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync(RedisValue.Null);
+        database
+            .Setup(item => item.LockTakeAsync(
+                It.IsAny<RedisKey>(),
+                It.IsAny<RedisValue>(),
+                It.IsAny<TimeSpan>(),
+                It.IsAny<CommandFlags>()))
+            .ReturnsAsync(true);
+        database
+            .Setup(item => item.LockReleaseAsync(
+                It.IsAny<RedisKey>(),
+                It.IsAny<RedisValue>(),
+                It.IsAny<CommandFlags>()))
+            .ReturnsAsync(true);
+        database
+            .Setup(item => item.StringSetAsync(
+                It.IsAny<RedisKey>(),
+                It.IsAny<RedisValue>(),
+                It.IsAny<TimeSpan?>(),
+                It.IsAny<bool>(),
+                It.IsAny<When>(),
+                It.IsAny<CommandFlags>()))
+            .ReturnsAsync(true);
+
+        var service = CreateService(handler, database.Object, new Dictionary<string, string?>
+        {
+            ["Gemini:ContextCache:MaxStorageCostMicroUsd"] = "100"
+        });
+
+        var result = await service.GetOrCreateSystemInstructionCacheAsync(new ModelContextCacheRequest
+        {
+            ModelName = "gemini-2.5-flash",
+            SystemInstruction = new string('x', 9000)
+        });
+
+        Assert.Null(result);
+        Assert.Equal(1, handler.RequestCount);
+        Assert.Equal("/v1beta/models/gemini-2.5-flash:countTokens", Assert.Single(handler.RequestUris));
+        database.Verify(
+            item => item.StringSetAsync(
+                It.IsAny<RedisKey>(),
+                It.Is<RedisValue>(value => value.ToString().StartsWith("cachedContents/", StringComparison.Ordinal)),
+                It.IsAny<TimeSpan?>(),
+                It.IsAny<bool>(),
+                It.IsAny<When>(),
+                It.IsAny<CommandFlags>()),
+            Times.Never);
+        database.Verify(
+            item => item.StringSetAsync(
+                It.Is<RedisKey>(key => key.ToString().Contains(":storage-ineligible:", StringComparison.Ordinal)),
+                "1",
+                It.IsAny<TimeSpan?>(),
+                false,
+                When.Always,
+                CommandFlags.None),
+            Times.Once);
     }
 
     [Fact]
@@ -341,15 +409,27 @@ public sealed class GeminiModelContextCacheServiceTests
             Times.Never);
     }
 
-    private static GeminiModelContextCacheService CreateService(CapturingHandler handler, IDatabase database)
+    private static GeminiModelContextCacheService CreateService(
+        CapturingHandler handler,
+        IDatabase database,
+        Dictionary<string, string?>? configurationOverrides = null)
     {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
+        var configurationValues = new Dictionary<string, string?>
+        {
+            ["Gemini:ApiKey"] = "test-api-key",
+            ["Gemini:MainModelName"] = "gemini-2.5-flash",
+            ["Gemini:ContextCache:TtlSeconds"] = "3600"
+        };
+        if (configurationOverrides is not null)
+        {
+            foreach (var item in configurationOverrides)
             {
-                ["Gemini:ApiKey"] = "test-api-key",
-                ["Gemini:MainModelName"] = "gemini-2.5-flash",
-                ["Gemini:ContextCache:TtlSeconds"] = "3600"
-            })
+                configurationValues[item.Key] = item.Value;
+            }
+        }
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(configurationValues)
             .Build();
         var redis = new Mock<IConnectionMultiplexer>();
         redis

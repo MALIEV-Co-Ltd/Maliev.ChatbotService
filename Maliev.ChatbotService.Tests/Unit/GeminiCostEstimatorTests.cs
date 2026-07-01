@@ -129,6 +129,21 @@ public sealed class GeminiCostEstimatorTests
     }
 
     [Fact]
+    public void EstimateContextCacheStorage_FlashOneHour_UsesStorageRate()
+    {
+        var estimate = GeminiCostEstimator.EstimateContextCacheStorage(
+            "models/gemini-2.5-flash",
+            cachedInputTokens: 2048,
+            ttl: TimeSpan.FromHours(1));
+
+        Assert.NotNull(estimate);
+        Assert.Equal("gemini-2.5-flash", estimate!.ModelName);
+        Assert.Equal(2048, estimate.CachedInputTokens);
+        Assert.Equal(3600, estimate.TtlSeconds);
+        Assert.Equal(2048, estimate.StorageMicroUsd);
+    }
+
+    [Fact]
     public void Estimate_UnknownModel_ReturnsNull()
     {
         var estimate = GeminiCostEstimator.Estimate(

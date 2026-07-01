@@ -2,6 +2,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Maliev.ChatbotService.Application.Costing;
 using Maliev.ChatbotService.Application.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -20,6 +21,7 @@ public sealed class GeminiModelContextCacheService : IModelContextCacheService
     };
 
     private const string CacheKeyPrefix = "chatbot:gemini:context-cache:v1:system-instruction:";
+    private const long DefaultMaxStorageCostMicroUsd = 50_000;
     private static readonly TimeSpan LockExpiry = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan RedisExpirySafetyMargin = TimeSpan.FromMinutes(1);
 
@@ -30,6 +32,7 @@ public sealed class GeminiModelContextCacheService : IModelContextCacheService
     private readonly string _modelName;
     private readonly bool _enabled;
     private readonly int? _configuredMinInputTokens;
+    private readonly long _maxStorageCostMicroUsd;
     private readonly TimeSpan _ttl;
 
     /// <summary>
@@ -53,6 +56,9 @@ public sealed class GeminiModelContextCacheService : IModelContextCacheService
         _modelName = configuration["Gemini:MainModelName"] ?? "gemini-2.5-flash";
         _enabled = configuration.GetValue<bool?>("Gemini:ContextCache:Enabled") ?? true;
         _configuredMinInputTokens = configuration.GetValue<int?>("Gemini:ContextCache:MinInputTokens");
+        _maxStorageCostMicroUsd = Math.Max(
+            0,
+            configuration.GetValue<long?>("Gemini:ContextCache:MaxStorageCostMicroUsd") ?? DefaultMaxStorageCostMicroUsd);
 
         var ttlSeconds = Math.Max(60, configuration.GetValue<int?>("Gemini:ContextCache:TtlSeconds") ?? 3600);
         _ttl = TimeSpan.FromSeconds(ttlSeconds);
@@ -91,6 +97,13 @@ public sealed class GeminiModelContextCacheService : IModelContextCacheService
                 return null;
             }
 
+            var storageIneligibleKey = BuildStorageIneligibleCacheKey(cacheKey, _ttl, _maxStorageCostMicroUsd);
+            var storageIneligibleMarker = await db.StringGetAsync(storageIneligibleKey);
+            if (storageIneligibleMarker.HasValue)
+            {
+                return null;
+            }
+
             if (!await db.LockTakeAsync(lockKey, lockValue, LockExpiry))
             {
                 return null;
@@ -110,14 +123,34 @@ public sealed class GeminiModelContextCacheService : IModelContextCacheService
                     return null;
                 }
 
-                if (!await IsCacheTokenEligibleAsync(
-                        modelName,
-                        request.SystemInstruction,
-                        minimumTokens,
-                        cancellationToken))
+                storageIneligibleMarker = await db.StringGetAsync(storageIneligibleKey);
+                if (storageIneligibleMarker.HasValue)
+                {
+                    return null;
+                }
+
+                var cacheTokenCount = await GetEligibleCacheTokenCountAsync(
+                    modelName,
+                    request.SystemInstruction,
+                    minimumTokens,
+                    cancellationToken);
+                if (cacheTokenCount <= 0)
                 {
                     await db.StringSetAsync(
                         ineligibleKey,
+                        "1",
+                        ResolveRedisExpiry(),
+                        keepTtl: false,
+                        when: When.Always,
+                        flags: CommandFlags.None);
+                    return null;
+                }
+
+                var storageCostEstimate = GeminiCostEstimator.EstimateContextCacheStorage(modelName, cacheTokenCount, _ttl);
+                if (!IsStorageCostAllowed(modelName, cacheTokenCount, storageCostEstimate))
+                {
+                    await db.StringSetAsync(
+                        storageIneligibleKey,
                         "1",
                         ResolveRedisExpiry(),
                         keepTtl: false,
@@ -139,7 +172,19 @@ public sealed class GeminiModelContextCacheService : IModelContextCacheService
                     keepTtl: false,
                     when: When.Always,
                     flags: CommandFlags.None);
-                return new ModelContextCacheReference { CachedContentName = createdName };
+                _logger.LogInformation(
+                    "Created Gemini context cache {CacheName} for model {ModelName} with {CachedInputTokens} input tokens, TTL {TtlSeconds}s, estimated storage cost {StorageCostMicroUsd} micro-USD.",
+                    createdName,
+                    modelName,
+                    cacheTokenCount,
+                    (int)_ttl.TotalSeconds,
+                    storageCostEstimate?.StorageMicroUsd ?? 0);
+                return new ModelContextCacheReference
+                {
+                    CachedContentName = createdName,
+                    CachedInputTokens = cacheTokenCount,
+                    StorageCostEstimate = storageCostEstimate
+                };
             }
             finally
             {
@@ -157,7 +202,7 @@ public sealed class GeminiModelContextCacheService : IModelContextCacheService
         }
     }
 
-    private async Task<bool> IsCacheTokenEligibleAsync(
+    private async Task<int> GetEligibleCacheTokenCountAsync(
         string modelName,
         string systemInstruction,
         int minimumTokens,
@@ -168,7 +213,7 @@ public sealed class GeminiModelContextCacheService : IModelContextCacheService
             var tokenCount = await CountSystemInstructionTokensAsync(modelName, systemInstruction, cancellationToken);
             if (tokenCount >= minimumTokens)
             {
-                return true;
+                return tokenCount;
             }
 
             _logger.LogDebug(
@@ -176,7 +221,7 @@ public sealed class GeminiModelContextCacheService : IModelContextCacheService
                 modelName,
                 tokenCount,
                 minimumTokens);
-            return false;
+            return 0;
         }
         catch (OperationCanceledException)
         {
@@ -188,8 +233,40 @@ public sealed class GeminiModelContextCacheService : IModelContextCacheService
                 ex,
                 "Gemini context cache token count failed for model {ModelName}; continuing without explicit cache.",
                 modelName);
+            return 0;
+        }
+    }
+
+    private bool IsStorageCostAllowed(
+        string modelName,
+        int cacheTokenCount,
+        GeminiContextCacheStorageEstimate? storageCostEstimate)
+    {
+        if (_maxStorageCostMicroUsd <= 0)
+        {
+            return true;
+        }
+
+        if (storageCostEstimate is null)
+        {
+            _logger.LogWarning(
+                "Skipping Gemini context cache for model {ModelName}: storage cost could not be estimated for {CachedInputTokens} cached input tokens.",
+                modelName,
+                cacheTokenCount);
             return false;
         }
+
+        if (storageCostEstimate.StorageMicroUsd <= _maxStorageCostMicroUsd)
+        {
+            return true;
+        }
+
+        _logger.LogInformation(
+            "Skipping Gemini context cache for model {ModelName}: estimated storage cost {StorageCostMicroUsd} micro-USD exceeds configured cap {MaxStorageCostMicroUsd} micro-USD.",
+            modelName,
+            storageCostEstimate.StorageMicroUsd,
+            _maxStorageCostMicroUsd);
+        return false;
     }
 
     private async Task<int> CountSystemInstructionTokensAsync(
@@ -305,6 +382,14 @@ public sealed class GeminiModelContextCacheService : IModelContextCacheService
     private static RedisKey BuildIneligibleCacheKey(RedisKey cacheKey, int minimumTokens)
     {
         return $"{cacheKey}:ineligible:{minimumTokens}";
+    }
+
+    private static RedisKey BuildStorageIneligibleCacheKey(
+        RedisKey cacheKey,
+        TimeSpan ttl,
+        long maxStorageCostMicroUsd)
+    {
+        return $"{cacheKey}:storage-ineligible:{(int)ttl.TotalSeconds}:{maxStorageCostMicroUsd}";
     }
 
     private static string BuildShortHash(string modelName, string systemInstruction)
