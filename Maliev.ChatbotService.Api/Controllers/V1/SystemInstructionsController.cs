@@ -153,6 +153,7 @@ public class SystemInstructionsController : ControllerBase
     [HttpPost("refine")]
     [RequirePermission(ChatbotPermissions.InstructionsWrite)]
     [ProducesResponseType(typeof(RefinedSystemInstructionResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     [ProducesResponseType(StatusCodes.Status502BadGateway)]
     public async Task<ActionResult<RefinedSystemInstructionResponse>> RefineInstruction(
         [FromBody] RefineSystemInstructionRequest request,
@@ -160,6 +161,12 @@ public class SystemInstructionsController : ControllerBase
     {
         try
         {
+            var budgetExceededResult = await TryBuildDailyBudgetExceededResultAsync(cancellationToken);
+            if (budgetExceededResult is not null)
+            {
+                return budgetExceededResult;
+            }
+
             var command = new RefineSystemInstructionCommand
             {
                 Name = request.Name,
@@ -195,6 +202,22 @@ public class SystemInstructionsController : ControllerBase
         }
 
         await _usageBudgetService.RecordTokenUsageAsync(userProfileId, tokenUsage.TotalTokens, cancellationToken);
+    }
+
+    private async Task<ActionResult?> TryBuildDailyBudgetExceededResultAsync(CancellationToken cancellationToken)
+    {
+        if (!TryGetAuthenticatedUserProfileId(out var userProfileId))
+        {
+            return null;
+        }
+
+        var usageSnapshot = await _usageBudgetService.GetDailyTokenUsageSnapshotAsync(userProfileId, cancellationToken);
+        return usageSnapshot.IsExceeded
+            ? StatusCode(StatusCodes.Status429TooManyRequests, new
+            {
+                error = MessagePipelinePolicy.BuildDailyBudgetExceededMessage(Language.English)
+            })
+            : null;
     }
 
     private bool TryGetAuthenticatedUserProfileId(out Guid userProfileId)

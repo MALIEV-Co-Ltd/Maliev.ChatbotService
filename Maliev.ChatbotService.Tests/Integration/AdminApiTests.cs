@@ -6,6 +6,7 @@ using Maliev.ChatbotService.Api.Models.Responses;
 using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Tests.Infrastructure;
 using Maliev.ChatbotService.Domain.Enums;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Maliev.ChatbotService.Tests.Integration;
@@ -275,6 +276,38 @@ public class AdminApiTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// Tests that POST /v1/admin/instructions/refine refuses over-budget callers before issuing another Gemini call.
+    /// </summary>
+    [Fact]
+    public async Task RefineInstruction_WhenDailyTokenBudgetExceeded_ReturnsTooManyRequestsWithoutAddingUsage()
+    {
+        var userProfileId = Guid.NewGuid();
+        using var configuredFactory = _factory.WithWebHostBuilder(builder =>
+            builder.UseSetting("UsageBudget:DailyTokenBudget", "100"));
+        var client = CreateConfiguredAuthenticatedClient(configuredFactory, userProfileId, "chatbot.instructions.write");
+
+        using var scope = configuredFactory.Services.CreateScope();
+        var budgetService = scope.ServiceProvider.GetRequiredService<IUsageBudgetService>();
+        await budgetService.RecordTokenUsageAsync(userProfileId, 100);
+
+        var request = new RefineSystemInstructionRequest
+        {
+            Name = "Customer Website Assistant",
+            Category = SystemInstructionCategory.Core,
+            TopicKey = "website",
+            PersonaDefinition = "Mali answers website questions.",
+            BusinessConstraints = "Keep customer data safe."
+        };
+
+        var response = await client.PostAsJsonAsync("/chatbot/v1/admin/instructions/refine", request, _factory.JsonSerializerOptions);
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("usage limit", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(100, await budgetService.GetDailyTokenUsageAsync(userProfileId));
+    }
+
+    /// <summary>
     /// Tests that POST /v1/admin/instructions/refine requires write permission.
     /// </summary>
     [Fact]
@@ -364,6 +397,23 @@ public class AdminApiTests : IAsyncLifetime
 
         // Assert
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    private HttpClient CreateConfiguredAuthenticatedClient(
+        Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program> factory,
+        Guid userProfileId,
+        string permission)
+    {
+        var token = _factory.CreateTestJwtToken(
+            userId: userProfileId.ToString(),
+            additionalClaims: new Dictionary<string, string>
+            {
+                ["permission"] = permission
+            });
+
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {token}");
+        return client;
     }
 }
 

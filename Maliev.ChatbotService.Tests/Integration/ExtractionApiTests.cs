@@ -5,6 +5,7 @@ using Maliev.ChatbotService.Api.Models.Requests;
 using Maliev.ChatbotService.Api.Models.Responses;
 using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Tests.Infrastructure;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -87,6 +88,20 @@ public class ExtractionApiTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// Tests that ExtractCustomer refuses over-budget callers before issuing another Gemini call.
+    /// </summary>
+    [Fact]
+    public async Task ExtractCustomer_WhenDailyTokenBudgetExceeded_ReturnsTooManyRequestsWithoutAddingUsage()
+    {
+        await AssertExtractionEndpointRejectsExceededBudgetAsync(
+            "/chatbot/v1/extraction/customer",
+            new ExtractCustomerRequest
+            {
+                RawText = "John Doe from Acme Corp, email john@example.com"
+            });
+    }
+
+    /// <summary>
     /// Tests that ExtractCustomer requires authentication.
     /// </summary>
     [Fact]
@@ -145,6 +160,20 @@ public class ExtractionApiTests : IAsyncLifetime
         using var scope = _factory.Services.CreateScope();
         var budgetService = scope.ServiceProvider.GetRequiredService<IUsageBudgetService>();
         Assert.Equal(100, await budgetService.GetDailyTokenUsageAsync(userProfileId));
+    }
+
+    /// <summary>
+    /// Tests that ExtractCustomerIntent refuses over-budget callers before issuing another Gemini call.
+    /// </summary>
+    [Fact]
+    public async Task ExtractCustomerIntent_WhenDailyTokenBudgetExceeded_ReturnsTooManyRequestsWithoutAddingUsage()
+    {
+        await AssertExtractionEndpointRejectsExceededBudgetAsync(
+            "/chatbot/v1/extraction/customer-intent",
+            new ExtractCustomerIntentRequest
+            {
+                UserMessage = "Find Acme Corp contact info"
+            });
     }
 
     /// <summary>
@@ -249,6 +278,21 @@ public class ExtractionApiTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// Tests that CleanSpeech refuses over-budget callers before issuing another Gemini call.
+    /// </summary>
+    [Fact]
+    public async Task CleanSpeech_WhenDailyTokenBudgetExceeded_ReturnsTooManyRequestsWithoutAddingUsage()
+    {
+        await AssertExtractionEndpointRejectsExceededBudgetAsync(
+            "/chatbot/v1/extraction/clean-speech",
+            new CleanDictationSpeechRequest
+            {
+                Speech = "um hello test hello test",
+                Language = "en"
+            });
+    }
+
+    /// <summary>
     /// Tests that CleanSpeech requires authentication.
     /// </summary>
     [Fact]
@@ -282,5 +326,40 @@ public class ExtractionApiTests : IAsyncLifetime
         var response = await client.PostAsJsonAsync("/chatbot/v1/extraction/clean-speech", request, _factory.JsonSerializerOptions);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    private async Task AssertExtractionEndpointRejectsExceededBudgetAsync<TRequest>(string endpoint, TRequest request)
+    {
+        var userProfileId = Guid.NewGuid();
+        using var configuredFactory = _factory.WithWebHostBuilder(builder =>
+            builder.UseSetting("UsageBudget:DailyTokenBudget", "100"));
+        var client = CreateConfiguredAuthenticatedClient(configuredFactory, userProfileId);
+
+        using var scope = configuredFactory.Services.CreateScope();
+        var budgetService = scope.ServiceProvider.GetRequiredService<IUsageBudgetService>();
+        await budgetService.RecordTokenUsageAsync(userProfileId, 100);
+
+        var response = await client.PostAsJsonAsync(endpoint, request, _factory.JsonSerializerOptions);
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("usage limit", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(100, await budgetService.GetDailyTokenUsageAsync(userProfileId));
+    }
+
+    private HttpClient CreateConfiguredAuthenticatedClient(
+        Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program> factory,
+        Guid userProfileId)
+    {
+        var token = _factory.CreateTestJwtToken(
+            userId: userProfileId.ToString(),
+            additionalClaims: new Dictionary<string, string>
+            {
+                ["permission"] = "chatbot.extractions.run"
+            });
+
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {token}");
+        return client;
     }
 }

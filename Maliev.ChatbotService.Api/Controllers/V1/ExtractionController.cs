@@ -6,6 +6,7 @@ using Maliev.ChatbotService.Application.Authorization;
 using Maliev.ChatbotService.Application.Commands;
 using Maliev.ChatbotService.Application.Handlers;
 using Maliev.ChatbotService.Application.Interfaces;
+using Maliev.ChatbotService.Domain.Enums;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 
@@ -69,6 +70,7 @@ public class ExtractionController : ControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<ExtractCustomerResponse>> ExtractCustomer(
         [FromBody] ExtractCustomerRequest request,
@@ -87,6 +89,12 @@ public class ExtractionController : ControllerBase
         if (validationError != null)
         {
             return BadRequest(validationError);
+        }
+
+        var budgetExceededResult = await TryBuildDailyBudgetExceededResultAsync(ct);
+        if (budgetExceededResult is not null)
+        {
+            return budgetExceededResult;
         }
 
         var command = new ExtractCustomerCommand
@@ -126,11 +134,18 @@ public class ExtractionController : ControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<ExtractCustomerIntentResponse>> ExtractCustomerIntent(
         [FromBody] ExtractCustomerIntentRequest request,
         CancellationToken ct)
     {
+        var budgetExceededResult = await TryBuildDailyBudgetExceededResultAsync(ct);
+        if (budgetExceededResult is not null)
+        {
+            return budgetExceededResult;
+        }
+
         var command = new Application.Commands.ExtractCustomerIntentCommand
         {
             UserMessage = request.UserMessage
@@ -165,10 +180,17 @@ public class ExtractionController : ControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     public async Task<ActionResult<CleanDictationSpeechResponse>> CleanSpeech(
         [FromBody] CleanDictationSpeechRequest request,
         CancellationToken ct)
     {
+        var budgetExceededResult = await TryBuildDailyBudgetExceededResultAsync(ct);
+        if (budgetExceededResult is not null)
+        {
+            return budgetExceededResult;
+        }
+
         var command = new Application.Commands.CleanDictationSpeechCommand
         {
             Speech = request.Speech,
@@ -196,6 +218,22 @@ public class ExtractionController : ControllerBase
         }
 
         await _usageBudgetService.RecordTokenUsageAsync(userProfileId, tokenUsage.TotalTokens, cancellationToken);
+    }
+
+    private async Task<ActionResult?> TryBuildDailyBudgetExceededResultAsync(CancellationToken cancellationToken)
+    {
+        if (!TryGetAuthenticatedUserProfileId(out var userProfileId))
+        {
+            return null;
+        }
+
+        var usageSnapshot = await _usageBudgetService.GetDailyTokenUsageSnapshotAsync(userProfileId, cancellationToken);
+        return usageSnapshot.IsExceeded
+            ? StatusCode(StatusCodes.Status429TooManyRequests, new
+            {
+                error = MessagePipelinePolicy.BuildDailyBudgetExceededMessage(Language.English)
+            })
+            : null;
     }
 
     private bool TryGetAuthenticatedUserProfileId(out Guid userProfileId)
