@@ -73,6 +73,8 @@ public class ConversationSummaryService : IConversationSummaryService
         // Build conversation text for summarization
         var conversationText = ConversationSummaryGeminiRequestFactory.BuildConversationText(messageList);
         var geminiRequest = ConversationSummaryGeminiRequestFactory.CreateRequest(conversationText, _modelName);
+        geminiRequest.ServiceTier = "flex";
+        geminiRequest.TimeoutSeconds = GeminiRequest.FlexInferenceTimeoutSeconds;
 
         var response = await _geminiClient.SendMessageAsync(geminiRequest, cancellationToken);
 
