@@ -30,6 +30,7 @@ public sealed class GeminiModelContextCacheService : IModelContextCacheService
     private readonly string _modelName;
     private readonly bool _enabled;
     private readonly int _minSystemInstructionCharacters;
+    private readonly int? _configuredMinInputTokens;
     private readonly TimeSpan _ttl;
 
     /// <summary>
@@ -55,6 +56,7 @@ public sealed class GeminiModelContextCacheService : IModelContextCacheService
         _minSystemInstructionCharacters = Math.Max(
             0,
             configuration.GetValue<int?>("Gemini:ContextCache:MinSystemInstructionCharacters") ?? 8192);
+        _configuredMinInputTokens = configuration.GetValue<int?>("Gemini:ContextCache:MinInputTokens");
 
         var ttlSeconds = Math.Max(60, configuration.GetValue<int?>("Gemini:ContextCache:TtlSeconds") ?? 3600);
         _ttl = TimeSpan.FromSeconds(ttlSeconds);
@@ -99,6 +101,11 @@ public sealed class GeminiModelContextCacheService : IModelContextCacheService
                     return new ModelContextCacheReference { CachedContentName = cachedName.ToString() };
                 }
 
+                if (!await IsCacheTokenEligibleAsync(modelName, request.SystemInstruction, cancellationToken))
+                {
+                    return null;
+                }
+
                 var createdName = await CreateGeminiCacheAsync(modelName, request.SystemInstruction, cancellationToken);
                 if (string.IsNullOrWhiteSpace(createdName))
                 {
@@ -128,6 +135,83 @@ public sealed class GeminiModelContextCacheService : IModelContextCacheService
             _logger.LogWarning(ex, "Gemini context cache lookup/create failed; continuing without explicit cache.");
             return null;
         }
+    }
+
+    private async Task<bool> IsCacheTokenEligibleAsync(
+        string modelName,
+        string systemInstruction,
+        CancellationToken cancellationToken)
+    {
+        var minimumTokens = ResolveMinimumCacheTokens(modelName);
+        try
+        {
+            var tokenCount = await CountSystemInstructionTokensAsync(modelName, systemInstruction, cancellationToken);
+            if (tokenCount >= minimumTokens)
+            {
+                return true;
+            }
+
+            _logger.LogDebug(
+                "Skipping Gemini context cache for model {ModelName}: {TokenCount} tokens below cache threshold {MinimumTokens}.",
+                modelName,
+                tokenCount,
+                minimumTokens);
+            return false;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Gemini context cache token count failed for model {ModelName}; continuing without explicit cache.",
+                modelName);
+            return false;
+        }
+    }
+
+    private async Task<int> CountSystemInstructionTokensAsync(
+        string modelName,
+        string systemInstruction,
+        CancellationToken cancellationToken)
+    {
+        var payload = new Dictionary<string, object?>
+        {
+            ["generateContentRequest"] = new Dictionary<string, object?>
+            {
+                ["contents"] = new[]
+                {
+                    new
+                    {
+                        role = "user",
+                        parts = new[] { new { text = "." } }
+                    }
+                },
+                ["systemInstruction"] = new { parts = new[] { new { text = systemInstruction } } }
+            }
+        };
+
+        using var message = new HttpRequestMessage(HttpMethod.Post, $"v1beta/models/{modelName}:countTokens");
+        message.Headers.Add("x-goog-api-key", _apiKey);
+        message.Content = new StringContent(JsonSerializer.Serialize(payload, JsonOptions), Encoding.UTF8, "application/json");
+
+        using var response = await _httpClient.SendAsync(message, cancellationToken);
+        var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "Gemini context cache countTokens returned {StatusCode}: {Content}",
+                response.StatusCode,
+                responseContent);
+            throw new InvalidOperationException("Gemini context cache countTokens failed.");
+        }
+
+        using var document = JsonDocument.Parse(responseContent);
+        return document.RootElement.TryGetProperty("totalTokens", out var totalTokens)
+            ? totalTokens.GetInt32()
+            : 0;
     }
 
     private async Task<string?> CreateGeminiCacheAsync(
@@ -178,6 +262,18 @@ public sealed class GeminiModelContextCacheService : IModelContextCacheService
         return modelName.StartsWith("models/", StringComparison.OrdinalIgnoreCase)
             ? modelName["models/".Length..]
             : modelName;
+    }
+
+    private int ResolveMinimumCacheTokens(string modelName)
+    {
+        if (_configuredMinInputTokens is > 0)
+        {
+            return _configuredMinInputTokens.Value;
+        }
+
+        return modelName.StartsWith("gemini-3.", StringComparison.OrdinalIgnoreCase)
+            ? 4096
+            : 2048;
     }
 
     private static RedisKey BuildCacheKey(string modelName, string systemInstruction)

@@ -37,7 +37,9 @@ public sealed class GeminiModelContextCacheServiceTests
     [Fact]
     public async Task GetOrCreateSystemInstructionCacheAsync_LargeInstruction_CreatesCacheAndStoresName()
     {
-        var handler = new CapturingHandler("""{"name":"cachedContents/created"}""");
+        var handler = new CapturingHandler(
+            """{"totalTokens":2048}""",
+            """{"name":"cachedContents/created"}""");
         var database = CreateRedisDatabase();
         database
             .Setup(item => item.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
@@ -91,17 +93,107 @@ public sealed class GeminiModelContextCacheServiceTests
         Assert.NotNull(storedExpiry);
         Assert.True(storedExpiry < TimeSpan.FromSeconds(3600));
 
-        Assert.Equal(1, handler.RequestCount);
-        Assert.Equal(HttpMethod.Post, handler.Request!.Method);
-        Assert.Equal("/v1beta/cachedContents", handler.Request.RequestUri!.AbsolutePath);
-        Assert.True(handler.Request.Headers.Contains("x-goog-api-key"));
+        Assert.Equal(2, handler.RequestCount);
+        Assert.Equal(
+            ["/v1beta/models/gemini-2.5-flash:countTokens", "/v1beta/cachedContents"],
+            handler.RequestUris);
+        Assert.All(handler.Requests, request => Assert.True(request.Headers.Contains("x-goog-api-key")));
 
-        using var payload = JsonDocument.Parse(handler.RequestBody!);
+        using var countPayload = JsonDocument.Parse(handler.RequestBodies[0]);
+        Assert.Equal(
+            systemInstruction,
+            countPayload.RootElement
+                .GetProperty("generateContentRequest")
+                .GetProperty("systemInstruction")
+                .GetProperty("parts")[0]
+                .GetProperty("text")
+                .GetString());
+
+        using var payload = JsonDocument.Parse(handler.RequestBodies[1]);
         Assert.Equal("models/gemini-2.5-flash", payload.RootElement.GetProperty("model").GetString());
         Assert.Equal("3600s", payload.RootElement.GetProperty("ttl").GetString());
         Assert.Equal(
             systemInstruction,
             payload.RootElement.GetProperty("systemInstruction").GetProperty("parts")[0].GetProperty("text").GetString());
+    }
+
+    [Fact]
+    public async Task GetOrCreateSystemInstructionCacheAsync_BelowTokenThreshold_SkipsCacheCreate()
+    {
+        var handler = new CapturingHandler("""{"totalTokens":2047}""");
+        var database = CreateRedisDatabase();
+        database
+            .Setup(item => item.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync(RedisValue.Null);
+        database
+            .Setup(item => item.LockTakeAsync(
+                It.IsAny<RedisKey>(),
+                It.IsAny<RedisValue>(),
+                It.IsAny<TimeSpan>(),
+                It.IsAny<CommandFlags>()))
+            .ReturnsAsync(true);
+        database
+            .Setup(item => item.LockReleaseAsync(
+                It.IsAny<RedisKey>(),
+                It.IsAny<RedisValue>(),
+                It.IsAny<CommandFlags>()))
+            .ReturnsAsync(true);
+
+        var service = CreateService(handler, database.Object);
+
+        var result = await service.GetOrCreateSystemInstructionCacheAsync(new ModelContextCacheRequest
+        {
+            ModelName = "gemini-2.5-flash",
+            SystemInstruction = new string('x', 9000)
+        });
+
+        Assert.Null(result);
+        Assert.Equal(1, handler.RequestCount);
+        Assert.Equal("/v1beta/models/gemini-2.5-flash:countTokens", Assert.Single(handler.RequestUris));
+        database.Verify(
+            item => item.StringSetAsync(
+                It.IsAny<RedisKey>(),
+                It.IsAny<RedisValue>(),
+                It.IsAny<TimeSpan?>(),
+                It.IsAny<bool>(),
+                It.IsAny<When>(),
+                It.IsAny<CommandFlags>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task GetOrCreateSystemInstructionCacheAsync_Gemini35BelowModelThreshold_SkipsCacheCreate()
+    {
+        var handler = new CapturingHandler("""{"totalTokens":4095}""");
+        var database = CreateRedisDatabase();
+        database
+            .Setup(item => item.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync(RedisValue.Null);
+        database
+            .Setup(item => item.LockTakeAsync(
+                It.IsAny<RedisKey>(),
+                It.IsAny<RedisValue>(),
+                It.IsAny<TimeSpan>(),
+                It.IsAny<CommandFlags>()))
+            .ReturnsAsync(true);
+        database
+            .Setup(item => item.LockReleaseAsync(
+                It.IsAny<RedisKey>(),
+                It.IsAny<RedisValue>(),
+                It.IsAny<CommandFlags>()))
+            .ReturnsAsync(true);
+
+        var service = CreateService(handler, database.Object);
+
+        var result = await service.GetOrCreateSystemInstructionCacheAsync(new ModelContextCacheRequest
+        {
+            ModelName = "gemini-3.5-flash",
+            SystemInstruction = new string('x', 9000)
+        });
+
+        Assert.Null(result);
+        Assert.Equal(1, handler.RequestCount);
+        Assert.Equal("/v1beta/models/gemini-3.5-flash:countTokens", Assert.Single(handler.RequestUris));
     }
 
     [Fact]
@@ -154,16 +246,22 @@ public sealed class GeminiModelContextCacheServiceTests
 
     private sealed class CapturingHandler : HttpMessageHandler
     {
-        private readonly string _responseJson;
+        private readonly Queue<string> _responseJson;
 
-        public CapturingHandler(string responseJson)
+        public CapturingHandler(params string[] responseJson)
         {
-            _responseJson = responseJson;
+            _responseJson = new Queue<string>(responseJson);
         }
 
         public HttpRequestMessage? Request { get; private set; }
 
         public string? RequestBody { get; private set; }
+
+        public List<HttpRequestMessage> Requests { get; } = [];
+
+        public List<string> RequestUris { get; } = [];
+
+        public List<string> RequestBodies { get; } = [];
 
         public int RequestCount { get; private set; }
 
@@ -171,12 +269,19 @@ public sealed class GeminiModelContextCacheServiceTests
         {
             RequestCount++;
             Request = request;
+            Requests.Add(request);
+            RequestUris.Add(request.RequestUri!.AbsolutePath);
             RequestBody = request.Content is null
                 ? null
                 : await request.Content.ReadAsStringAsync(cancellationToken);
+            if (RequestBody is not null)
+            {
+                RequestBodies.Add(RequestBody);
+            }
+
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = new StringContent(_responseJson, Encoding.UTF8, "application/json")
+                Content = new StringContent(_responseJson.Dequeue(), Encoding.UTF8, "application/json")
             };
         }
     }
