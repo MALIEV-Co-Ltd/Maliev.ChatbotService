@@ -24,6 +24,7 @@ public class SendMessageCommandHandler
     private readonly IRateLimitService _rateLimitService;
     private readonly IUsageBudgetService _usageBudgetService;
     private readonly IGeminiClient _geminiClient;
+    private readonly IModelContextCacheService _modelContextCacheService;
     private readonly ISystemInstructionService _systemInstructionService;
     private readonly IIntentClassificationService _intentClassificationService;
     private readonly ILanguageDetectionService _languageDetectionService;
@@ -67,6 +68,7 @@ public class SendMessageCommandHandler
     /// <param name="rateLimitService">The rate limit service.</param>
     /// <param name="usageBudgetService">The daily token budget service.</param>
     /// <param name="geminiClient">The Gemini API client.</param>
+    /// <param name="modelContextCacheService">The model context cache service.</param>
     /// <param name="systemInstructionService">The system instruction service.</param>
     /// <param name="intentClassificationService">The intent classification service.</param>
     /// <param name="languageDetectionService">The language detection service.</param>
@@ -92,6 +94,7 @@ public class SendMessageCommandHandler
         IRateLimitService rateLimitService,
         IUsageBudgetService usageBudgetService,
         IGeminiClient geminiClient,
+        IModelContextCacheService modelContextCacheService,
         ISystemInstructionService systemInstructionService,
         IIntentClassificationService intentClassificationService,
         ILanguageDetectionService languageDetectionService,
@@ -117,6 +120,7 @@ public class SendMessageCommandHandler
         _rateLimitService = rateLimitService;
         _usageBudgetService = usageBudgetService;
         _geminiClient = geminiClient;
+        _modelContextCacheService = modelContextCacheService;
         _systemInstructionService = systemInstructionService;
         _intentClassificationService = intentClassificationService;
         _languageDetectionService = languageDetectionService;
@@ -515,6 +519,19 @@ public class SendMessageCommandHandler
                 ThinkingBudget = allowModelThoughts ? AgentThinkingBudgetTokens : 0,
                 MediaResolution = ResolveMediaResolution(geminiMessages)
             };
+
+            var cacheReference = await _modelContextCacheService.GetOrCreateSystemInstructionCacheAsync(
+                new ModelContextCacheRequest
+                {
+                    ModelName = geminiRequest.ModelName,
+                    SystemInstruction = systemInstructionText
+                },
+                cancellationToken);
+            if (cacheReference is not null)
+            {
+                geminiRequest.CachedContentName = cacheReference.CachedContentName;
+                geminiRequest.SystemInstruction = string.Empty;
+            }
 
             // Use the agent loop only for channels with scoped, allowlisted tool profiles.
             GeminiResponse geminiResponse;

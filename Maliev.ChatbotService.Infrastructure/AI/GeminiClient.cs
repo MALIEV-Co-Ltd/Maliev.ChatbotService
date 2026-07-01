@@ -503,9 +503,13 @@ public class GeminiClient : IGeminiClient
 
         var payload = new Dictionary<string, object?>
         {
-            ["systemInstruction"] = new { parts = new[] { new { text = request.SystemInstruction } } },
             ["contents"] = contentsParts.ToArray()
         };
+
+        if (!string.IsNullOrWhiteSpace(request.SystemInstruction))
+        {
+            payload["systemInstruction"] = new { parts = new[] { new { text = request.SystemInstruction } } };
+        }
 
         if (!string.IsNullOrWhiteSpace(request.ServiceTier))
         {

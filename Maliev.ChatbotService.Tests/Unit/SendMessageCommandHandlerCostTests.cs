@@ -386,6 +386,21 @@ public sealed class SendMessageCommandHandlerCostTests
         Assert.Equal("What materials can you print?", result.CapturedRequest.Messages[^1].Content);
     }
 
+    [Fact]
+    public async Task HandleAsync_GeminiSystemInstructionCacheHit_UsesCachedContentWithoutDuplicatingPrompt()
+    {
+        var result = await SendWebsiteMessageAsync(cachedContentName: "cachedContents/website-system-prompt");
+
+        Assert.NotNull(result.CapturedRequest);
+        Assert.Equal("cachedContents/website-system-prompt", result.CapturedRequest!.CachedContentName);
+        Assert.Equal(string.Empty, result.CapturedRequest.SystemInstruction);
+        result.ModelContextCacheService.Verify(item => item.GetOrCreateSystemInstructionCacheAsync(
+            It.Is<ModelContextCacheRequest>(request =>
+                request.SystemInstruction == "You are MALIEV's customer assistant." &&
+                request.ModelName == null),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     private static async Task<HandlerResult> SendWebsiteMessageAsync(
         List<AttachmentDto>? attachments = null,
         GeminiTokenUsage? tokenUsage = null,
@@ -400,11 +415,13 @@ public sealed class SendMessageCommandHandlerCostTests
         List<GeminiToolDeclaration>? toolDeclarations = null,
         string messageContent = "What materials can you print?",
         bool instructionEnableWebSearch = false,
-        bool globalWebSearchEnabled = false)
+        bool globalWebSearchEnabled = false,
+        string? cachedContentName = null)
     {
         var sessionId = Guid.NewGuid();
         var userProfileId = Guid.NewGuid();
         GeminiRequest? capturedRequest = null;
+        ModelContextCacheRequest? capturedContextCacheRequest = null;
         var createdMessages = new List<Message>();
         var sessionRepository = new Mock<IConversationSessionRepository>();
         sessionRepository
@@ -489,6 +506,16 @@ public sealed class SendMessageCommandHandlerCostTests
                 TokenUsage = tokenUsage ?? new GeminiTokenUsage { TotalTokens = 25 }
             });
 
+        var modelContextCacheService = new Mock<IModelContextCacheService>();
+        modelContextCacheService
+            .Setup(item => item.GetOrCreateSystemInstructionCacheAsync(
+                It.IsAny<ModelContextCacheRequest>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<ModelContextCacheRequest, CancellationToken>((request, _) => capturedContextCacheRequest = request)
+            .ReturnsAsync(cachedContentName is null
+                ? null
+                : new ModelContextCacheReference { CachedContentName = cachedContentName });
+
         var systemInstructionService = new Mock<ISystemInstructionService>();
         systemInstructionService
             .Setup(item => item.GetMergedInstructionsAsync(
@@ -557,6 +584,7 @@ public sealed class SendMessageCommandHandlerCostTests
             rateLimitService.Object,
             usageBudgetService.Object,
             geminiClient.Object,
+            modelContextCacheService.Object,
             systemInstructionService.Object,
             intentClassificationService.Object,
             languageDetectionService.Object,
@@ -587,12 +615,14 @@ public sealed class SendMessageCommandHandlerCostTests
             ResponseSchema = responseSchema
         });
 
-        return new HandlerResult(capturedRequest, createdMessages, toolExecutor, intentClassificationService);
+        return new HandlerResult(capturedRequest, capturedContextCacheRequest, createdMessages, toolExecutor, intentClassificationService, modelContextCacheService);
     }
 
     private sealed record HandlerResult(
         GeminiRequest? CapturedRequest,
+        ModelContextCacheRequest? CapturedContextCacheRequest,
         IReadOnlyList<Message> CreatedMessages,
         Mock<IToolExecutorService> ToolExecutor,
-        Mock<IIntentClassificationService> IntentClassificationService);
+        Mock<IIntentClassificationService> IntentClassificationService,
+        Mock<IModelContextCacheService> ModelContextCacheService);
 }

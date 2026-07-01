@@ -59,6 +59,24 @@ public sealed class GeminiClientFunctionCallSerializationTests
     }
 
     [Fact]
+    public async Task SendMessageAsync_BlankSystemInstruction_OmitsSystemInstruction()
+    {
+        var handler = new CapturingHandler("""{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}""");
+        var client = CreateClient(handler);
+
+        await client.SendMessageAsync(new GeminiRequest
+        {
+            SystemInstruction = string.Empty,
+            Prompt = "Continue from the cached system prompt.",
+            CachedContentName = "cachedContents/customer-context-123"
+        });
+
+        using var doc = JsonDocument.Parse(handler.RequestBody!);
+        Assert.Equal("cachedContents/customer-context-123", doc.RootElement.GetProperty("cachedContent").GetString());
+        Assert.False(doc.RootElement.TryGetProperty("systemInstruction", out _));
+    }
+
+    [Fact]
     public async Task SendMessageAsync_ToolTurns_SerializeAsNativeFunctionCallAndFunctionResponseParts()
     {
         var handler = new CapturingHandler(

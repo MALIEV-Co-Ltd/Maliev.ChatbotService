@@ -212,11 +212,31 @@ try
     if (isIntegrationTest)
     {
         builder.Services.AddScoped<IGeminiClient, TestingGeminiClient>();
+        builder.Services.AddScoped<IModelContextCacheService, NoOpModelContextCacheService>();
     }
     else
     {
         builder.Services.AddScoped<IModelProviderClientFactory, ModelProviderClientFactory>();
         builder.Services.AddScoped<IGeminiClient, ProviderRoutingGeminiClient>();
+
+        if (Program.UsesNativeGeminiProvider(builder.Configuration["Llm:Provider"]))
+        {
+            builder.Services.AddHttpClient<IModelContextCacheService, GeminiModelContextCacheService>(client =>
+            {
+                client.BaseAddress = new Uri(externalClientsConfig.Gemini.BaseAddress);
+                client.Timeout = TimeSpan.FromSeconds(30);
+            })
+            .AddStandardResilienceHandler(options =>
+            {
+                options.Retry.ShouldHandle = args => Program.ShouldRetryModelProviderFailure(
+                    args.Outcome.Result,
+                    args.Outcome.Exception);
+            });
+        }
+        else
+        {
+            builder.Services.AddScoped<IModelContextCacheService, NoOpModelContextCacheService>();
+        }
 
         builder.Services.AddHttpClient<GeminiModelProviderClient>(client =>
         {
@@ -332,6 +352,22 @@ finally
 /// </summary>
 public partial class Program
 {
+    private static bool UsesNativeGeminiProvider(string? providerName)
+    {
+        if (string.IsNullOrWhiteSpace(providerName))
+        {
+            return true;
+        }
+
+        return providerName.Trim().ToLowerInvariant() switch
+        {
+            "gemini" => true,
+            "google" => true,
+            "google-gemini" => true,
+            _ => false
+        };
+    }
+
     private static ValueTask<bool> ShouldRetryModelProviderFailure(HttpResponseMessage? response, Exception? exception)
     {
         if (response?.StatusCode == HttpStatusCode.TooManyRequests)
