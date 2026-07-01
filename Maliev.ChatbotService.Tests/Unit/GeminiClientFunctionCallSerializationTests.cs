@@ -541,6 +541,52 @@ public sealed class GeminiClientFunctionCallSerializationTests
         Assert.Equal("flex", response.ServiceTier);
     }
 
+    [Fact]
+    public async Task SendMessageAsync_UsageMetadataServiceTier_MapsToResponse()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "candidates":[{"content":{"parts":[{"text":"ok"}]}}],
+              "usageMetadata":{
+                "serviceTier":"flex"
+              }
+            }
+            """);
+        var client = CreateClient(handler);
+
+        var response = await client.SendMessageAsync(new GeminiRequest
+        {
+            Messages = [new GeminiMessage { Role = "user", Content = "hi" }]
+        });
+
+        Assert.Equal("flex", response.ServiceTier);
+    }
+
+    [Fact]
+    public async Task StreamMessageAsync_UsageMetadataServiceTier_MapsToFinalResponse()
+    {
+        var handler = new CapturingHandler("""
+            data: {"candidates":[{"content":{"parts":[{"text":"ok"}]}}],"usageMetadata":{"serviceTier":"flex"}}
+
+            """);
+        var client = CreateClient(handler);
+
+        GeminiResponse? finalResponse = null;
+        await foreach (var streamEvent in client.StreamMessageAsync(new GeminiRequest
+        {
+            Messages = [new GeminiMessage { Role = "user", Content = "hi" }]
+        }))
+        {
+            if (streamEvent.Type.Equals("final", StringComparison.OrdinalIgnoreCase))
+            {
+                finalResponse = streamEvent.Response;
+            }
+        }
+
+        Assert.NotNull(finalResponse);
+        Assert.Equal("flex", finalResponse!.ServiceTier);
+    }
+
     private static GeminiClient CreateClient(
         HttpMessageHandler handler,
         IReadOnlyDictionary<string, string?>? extraConfiguration = null)

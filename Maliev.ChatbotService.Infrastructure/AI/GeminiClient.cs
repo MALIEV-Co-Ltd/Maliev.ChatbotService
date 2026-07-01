@@ -122,7 +122,7 @@ public class GeminiClient : IGeminiClient
 
                 using var document = JsonDocument.Parse(responseContent);
                 var parsed = ParseGeminiResponse(document.RootElement);
-                parsed.ServiceTier = responseServiceTier;
+                parsed.ServiceTier = responseServiceTier ?? parsed.ServiceTier;
                 if (!parsed.Success)
                 {
                     return parsed;
@@ -163,6 +163,7 @@ public class GeminiClient : IGeminiClient
         var accumulatedThought = new StringBuilder();
         var functionCalls = new List<GeminiFunctionCall>();
         GeminiTokenUsage? tokenUsage = null;
+        string? streamServiceTier = null;
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(TimeSpan.FromSeconds(request.TimeoutSeconds));
 
@@ -190,6 +191,7 @@ public class GeminiClient : IGeminiClient
             HttpCompletionOption.ResponseHeadersRead,
             cts.Token);
         var responseServiceTier = GetResponseServiceTier(response);
+        streamServiceTier = responseServiceTier;
 
         if (!response.IsSuccessStatusCode)
         {
@@ -225,7 +227,8 @@ public class GeminiClient : IGeminiClient
 
             using var document = JsonDocument.Parse(data);
             var parsed = ParseGeminiResponse(document.RootElement);
-            parsed.ServiceTier = responseServiceTier;
+            parsed.ServiceTier = responseServiceTier ?? parsed.ServiceTier;
+            streamServiceTier = parsed.ServiceTier ?? streamServiceTier;
             if (!parsed.Success)
             {
                 yield return new GeminiStreamEvent
@@ -276,7 +279,7 @@ public class GeminiClient : IGeminiClient
                 ThoughtContent = accumulatedThought.ToString(),
                 FunctionCalls = functionCalls,
                 TokenUsage = tokenUsage,
-                ServiceTier = responseServiceTier
+                ServiceTier = streamServiceTier
             }
         };
     }
@@ -744,6 +747,10 @@ public class GeminiClient : IGeminiClient
         var tokenUsage = geminiResponse.TryGetProperty("usageMetadata", out var usageMetadata)
             ? ParseTokenUsage(usageMetadata)
             : null;
+        var serviceTier = usageMetadata.ValueKind == JsonValueKind.Object &&
+            usageMetadata.TryGetProperty("serviceTier", out var serviceTierElement)
+                ? serviceTierElement.GetString()
+                : null;
 
         return new GeminiResponse
         {
@@ -751,7 +758,8 @@ public class GeminiClient : IGeminiClient
             Content = string.Join("", textParts),
             ThoughtContent = string.Join("", thoughtParts),
             FunctionCalls = functionCalls,
-            TokenUsage = tokenUsage
+            TokenUsage = tokenUsage,
+            ServiceTier = serviceTier
         };
     }
 
