@@ -45,6 +45,7 @@ public class SendMessageCommandHandler
     private const int SessionLockSeconds = 330;
     private const int ChatMaxOutputTokens = 2048;
     private const int ChatMaxPromptTokens = 30000;
+    private const int AgentThinkingBudgetTokens = 1024;
     private const int MaxStructuredOutputSchemaJsonCharacters = 16_384;
     private const string JsonResponseMimeType = "application/json";
     private static readonly HashSet<string> AllowedChatModelOverrides = new(StringComparer.OrdinalIgnoreCase)
@@ -505,7 +506,7 @@ public class SendMessageCommandHandler
                 MaxPromptTokens = ChatMaxPromptTokens,
                 EnableWebSearch = enableGeminiSearch,
                 IncludeThoughts = allowModelThoughts,
-                ThinkingBudget = allowModelThoughts ? null : 0,
+                ThinkingBudget = allowModelThoughts ? AgentThinkingBudgetTokens : 0,
                 MediaResolution = ResolveMediaResolution(command.Attachments)
             };
 

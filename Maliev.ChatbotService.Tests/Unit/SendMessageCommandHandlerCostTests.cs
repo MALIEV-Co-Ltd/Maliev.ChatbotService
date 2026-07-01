@@ -132,6 +132,37 @@ public sealed class SendMessageCommandHandlerCostTests
     }
 
     [Fact]
+    public async Task HandleAsync_IntranetToolMessage_BoundsThinkingBudgetWhileIncludingThoughts()
+    {
+        var result = await SendWebsiteMessageAsync(
+            channel: Channel.Intranet,
+            toolDeclarations:
+            [
+                new GeminiToolDeclaration
+                {
+                    FunctionDeclarations =
+                    [
+                        new GeminiFunctionDeclaration
+                        {
+                            Name = "lookup_customer",
+                            Description = "Looks up a customer record.",
+                            Parameters = new
+                            {
+                                type = "object",
+                                properties = new { customer_id = new { type = "string" } },
+                                required = new[] { "customer_id" }
+                            }
+                        }
+                    ]
+                }
+            ]);
+
+        Assert.NotNull(result.CapturedRequest);
+        Assert.True(result.CapturedRequest!.IncludeThoughts);
+        Assert.Equal(1024, result.CapturedRequest.ThinkingBudget);
+    }
+
+    [Fact]
     public async Task HandleAsync_WebsiteMediaAttachment_UsesMediumMediaResolution()
     {
         var result = await SendWebsiteMessageAsync([
@@ -251,7 +282,8 @@ public sealed class SendMessageCommandHandlerCostTests
         IReadOnlyList<KnowledgeBase>? knowledgeFacts = null,
         string? modelName = null,
         string? responseMimeType = null,
-        object? responseSchema = null)
+        object? responseSchema = null,
+        List<GeminiToolDeclaration>? toolDeclarations = null)
     {
         var sessionId = Guid.NewGuid();
         var userProfileId = Guid.NewGuid();
@@ -373,7 +405,7 @@ public sealed class SendMessageCommandHandlerCostTests
         var toolExecutor = new Mock<IToolExecutorService>();
         toolExecutor
             .Setup(item => item.GetToolDeclarations(It.IsAny<string>()))
-            .Returns(new List<GeminiToolDeclaration>());
+            .Returns(toolDeclarations ?? new List<GeminiToolDeclaration>());
         var database = new Mock<IDatabase>();
         database
             .Setup(item => item.LockTakeAsync(
