@@ -345,6 +345,42 @@ public sealed class GeminiClientFunctionCallSerializationTests
     }
 
     [Fact]
+    public async Task SendMessageAsync_ExternalHttpsAudioAttachment_SerializesAsFileData()
+    {
+        var handler = new CapturingHandler("""{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}""");
+        var client = CreateClient(handler);
+
+        var request = new GeminiRequest
+        {
+            Messages =
+            [
+                new GeminiMessage
+                {
+                    Role = "user",
+                    Content = "Transcribe this voice note.",
+                    Attachments =
+                    [
+                        new GeminiAttachment
+                        {
+                            MimeType = "audio/mpeg",
+                            Data = "https://signed.example.test/customer-voice-note.mp3?token=abc"
+                        }
+                    ]
+                }
+            ]
+        };
+
+        await client.SendMessageAsync(request);
+
+        using var doc = JsonDocument.Parse(handler.RequestBody!);
+        var parts = doc.RootElement.GetProperty("contents")[0].GetProperty("parts").EnumerateArray().ToArray();
+        Assert.Equal("Transcribe this voice note.", parts[0].GetProperty("text").GetString());
+        var fileData = parts[1].GetProperty("fileData");
+        Assert.Equal("https://signed.example.test/customer-voice-note.mp3?token=abc", fileData.GetProperty("fileUri").GetString());
+        Assert.Equal("audio/mpeg", fileData.GetProperty("mimeType").GetString());
+    }
+
+    [Fact]
     public async Task SendMessageAsync_UnsupportedExternalHttpsAttachmentMime_SerializesAsTextReference()
     {
         var handler = new CapturingHandler("""{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}""");

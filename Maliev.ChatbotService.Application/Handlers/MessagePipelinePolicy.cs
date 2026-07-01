@@ -31,6 +31,13 @@ public static class MessagePipelinePolicy
         "image/jpeg",
         "image/png",
         "image/webp",
+        "audio/aac",
+        "audio/aiff",
+        "audio/flac",
+        "audio/mp3",
+        "audio/mpeg",
+        "audio/ogg",
+        "audio/wav",
         "video/mp4",
         "video/mpeg",
         "video/quicktime",
@@ -169,7 +176,7 @@ public static class MessagePipelinePolicy
         if (IsExternalHttpsUrl(data) && !IsSupportedGeminiExternalUrlMimeType(mimeType))
         {
             error = $"Unsupported external attachment MIME type '{mimeType}'. " +
-                "Use a supported text, JSON, PDF, image, or video MIME type.";
+                "Use a supported text, JSON, PDF, image, audio, or video MIME type.";
             return false;
         }
 

@@ -153,6 +153,24 @@ public class MessagePipelinePolicyTests
         Assert.DoesNotContain(parsed, a => a.Data.StartsWith("data:", StringComparison.Ordinal));
     }
 
+    [Theory]
+    [InlineData("audio/mpeg")]
+    [InlineData("audio/mp3")]
+    [InlineData("audio/wav")]
+    [InlineData("audio/ogg")]
+    public void TryValidateGeminiAttachmentReference_HttpsAudioReference_IsSupported(string mimeType)
+    {
+        var ok = MessagePipelinePolicy.TryValidateGeminiAttachmentReference(
+            "https://signed.example.test/customer-voice-note.mp3?token=abc",
+            mimeType,
+            sizeBytes: 1024,
+            out var error);
+
+        Assert.True(ok);
+        Assert.Null(error);
+        Assert.True(MessagePipelinePolicy.IsSupportedGeminiExternalUrlMimeType(mimeType));
+    }
+
     [Fact]
     public void BuildAttachmentMetadataJson_NoPersistableReferences_ReturnsNull()
     {
