@@ -228,6 +228,32 @@ public sealed class OpenAICompatibleModelProviderClientTests
     }
 
     [Fact]
+    public async Task SendMessageAsync_StoreFalse_SerializesStoreFlag()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "choices": [
+                {
+                  "message": {
+                    "content": "ok"
+                  }
+                }
+              ]
+            }
+            """, "application/json");
+        var client = CreateClient(handler);
+
+        await client.SendMessageAsync(new GeminiRequest
+        {
+            Messages = [new GeminiMessage { Role = "user", Content = "Summarize private customer context." }],
+            Store = false
+        });
+
+        using var payload = JsonDocument.Parse(handler.RequestBody);
+        Assert.False(payload.RootElement.GetProperty("store").GetBoolean());
+    }
+
+    [Fact]
     public async Task SendMessageAsync_ServiceTierHeader_MapsActualTierToResponse()
     {
         var handler = new CapturingHandler("""

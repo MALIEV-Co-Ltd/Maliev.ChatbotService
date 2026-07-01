@@ -326,6 +326,11 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
             payload["temperature"] = request.Temperature.Value;
         }
 
+        if (request.Store is not null)
+        {
+            payload["store"] = request.Store.Value;
+        }
+
         if (!string.IsNullOrWhiteSpace(request.ServiceTier))
         {
             payload["service_tier"] = request.ServiceTier;
