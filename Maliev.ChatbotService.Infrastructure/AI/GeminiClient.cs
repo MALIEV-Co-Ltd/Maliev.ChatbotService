@@ -181,107 +181,130 @@ public class GeminiClient : IGeminiClient
 
         var url = $"v1beta/models/{modelName}:streamGenerateContent?alt=sse";
         var json = BuildGeminiPayloadJson(request);
+        var maxAttempts = ResolveMaxAttempts(request);
 
-        using var messageRequest = new HttpRequestMessage(HttpMethod.Post, url);
-        AddGeminiHeaders(messageRequest, request);
-        messageRequest.Content = new StringContent(json, Encoding.UTF8, "application/json");
-
-        using var response = await _httpClient.SendAsync(
-            messageRequest,
-            HttpCompletionOption.ResponseHeadersRead,
-            cts.Token);
-        var responseServiceTier = GetResponseServiceTier(response);
-        streamServiceTier = responseServiceTier;
-
-        if (!response.IsSuccessStatusCode)
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {
-            var responseContent = await response.Content.ReadAsStringAsync(cts.Token);
-            _logger.LogError("Gemini streaming API returned error: {StatusCode} - {Content}", response.StatusCode, responseContent);
-            UpdateSuccessRate();
-            yield return new GeminiStreamEvent
-            {
-                Type = "final",
-                Response = WithServiceTier(
-                    GetFallbackResponse(response.StatusCode == System.Net.HttpStatusCode.TooManyRequests
-                        ? "GeminiAPIRateLimit"
-                        : "GeminiAPIError"),
-                    responseServiceTier)
-            };
-            yield break;
-        }
+            using var messageRequest = new HttpRequestMessage(HttpMethod.Post, url);
+            AddGeminiHeaders(messageRequest, request);
+            messageRequest.Content = new StringContent(json, Encoding.UTF8, "application/json");
 
-        await using var stream = await response.Content.ReadAsStreamAsync(cts.Token);
-        using var reader = new StreamReader(stream);
-        while (await reader.ReadLineAsync(cts.Token) is { } line)
-        {
-            if (!line.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
+            using var response = await _httpClient.SendAsync(
+                messageRequest,
+                HttpCompletionOption.ResponseHeadersRead,
+                cts.Token);
+            var responseServiceTier = GetResponseServiceTier(response);
+            streamServiceTier = responseServiceTier;
 
-            var data = line["data:".Length..].Trim();
-            if (data.Length == 0 || data.Equals("[DONE]", StringComparison.OrdinalIgnoreCase))
+            if (!response.IsSuccessStatusCode)
             {
-                continue;
-            }
+                var responseContent = await response.Content.ReadAsStringAsync(cts.Token);
+                if (ShouldRetryFlexFailure(request, response.StatusCode, attempt, maxAttempts))
+                {
+                    var retryDelay = ResolveFlexRetryDelay(attempt);
+                    _logger.LogWarning(
+                        "Gemini Flex streaming request returned {StatusCode} on attempt {Attempt}/{MaxAttempts}. Retrying as Flex after {DelayMs}ms.",
+                        response.StatusCode,
+                        attempt,
+                        maxAttempts,
+                        retryDelay.TotalMilliseconds);
 
-            using var document = JsonDocument.Parse(data);
-            var parsed = ParseGeminiResponse(document.RootElement, allowCandidateLessResponse: true);
-            parsed.ServiceTier = responseServiceTier ?? parsed.ServiceTier;
-            streamServiceTier = parsed.ServiceTier ?? streamServiceTier;
-            if (!parsed.Success)
-            {
+                    if (retryDelay > TimeSpan.Zero)
+                    {
+                        await Task.Delay(retryDelay, cts.Token);
+                    }
+
+                    continue;
+                }
+
+                _logger.LogError("Gemini streaming API returned error: {StatusCode} - {Content}", response.StatusCode, responseContent);
+                UpdateSuccessRate();
                 yield return new GeminiStreamEvent
                 {
                     Type = "final",
-                    Response = parsed
+                    Response = WithServiceTier(
+                        GetFallbackResponse(response.StatusCode == System.Net.HttpStatusCode.TooManyRequests
+                            ? "GeminiAPIRateLimit"
+                            : "GeminiAPIError"),
+                        responseServiceTier)
                 };
                 yield break;
             }
 
-            if (!string.IsNullOrEmpty(parsed.Content))
+            await using var stream = await response.Content.ReadAsStreamAsync(cts.Token);
+            using var reader = new StreamReader(stream);
+            while (await reader.ReadLineAsync(cts.Token) is { } line)
             {
-                accumulatedText.Append(parsed.Content);
-                yield return new GeminiStreamEvent
+                if (!line.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
                 {
-                    Type = "delta",
-                    Delta = parsed.Content
-                };
-            }
+                    continue;
+                }
 
-            if (!string.IsNullOrEmpty(parsed.ThoughtContent))
-            {
-                accumulatedThought.Append(parsed.ThoughtContent);
-                yield return new GeminiStreamEvent
+                var data = line["data:".Length..].Trim();
+                if (data.Length == 0 || data.Equals("[DONE]", StringComparison.OrdinalIgnoreCase))
                 {
-                    Type = "thought",
-                    Thought = parsed.ThoughtContent
-                };
+                    continue;
+                }
+
+                using var document = JsonDocument.Parse(data);
+                var parsed = ParseGeminiResponse(document.RootElement, allowCandidateLessResponse: true);
+                parsed.ServiceTier = responseServiceTier ?? parsed.ServiceTier;
+                streamServiceTier = parsed.ServiceTier ?? streamServiceTier;
+                if (!parsed.Success)
+                {
+                    yield return new GeminiStreamEvent
+                    {
+                        Type = "final",
+                        Response = parsed
+                    };
+                    yield break;
+                }
+
+                if (!string.IsNullOrEmpty(parsed.Content))
+                {
+                    accumulatedText.Append(parsed.Content);
+                    yield return new GeminiStreamEvent
+                    {
+                        Type = "delta",
+                        Delta = parsed.Content
+                    };
+                }
+
+                if (!string.IsNullOrEmpty(parsed.ThoughtContent))
+                {
+                    accumulatedThought.Append(parsed.ThoughtContent);
+                    yield return new GeminiStreamEvent
+                    {
+                        Type = "thought",
+                        Thought = parsed.ThoughtContent
+                    };
+                }
+
+                if (parsed.FunctionCalls.Count > 0)
+                {
+                    functionCalls.AddRange(parsed.FunctionCalls);
+                }
+
+                tokenUsage = parsed.TokenUsage ?? tokenUsage;
             }
 
-            if (parsed.FunctionCalls.Count > 0)
+            Interlocked.Increment(ref _successfulApiCalls);
+            UpdateSuccessRate();
+            yield return new GeminiStreamEvent
             {
-                functionCalls.AddRange(parsed.FunctionCalls);
-            }
-
-            tokenUsage = parsed.TokenUsage ?? tokenUsage;
+                Type = "final",
+                Response = new GeminiResponse
+                {
+                    Success = true,
+                    Content = accumulatedText.ToString(),
+                    ThoughtContent = accumulatedThought.ToString(),
+                    FunctionCalls = functionCalls,
+                    TokenUsage = tokenUsage,
+                    ServiceTier = streamServiceTier
+                }
+            };
+            yield break;
         }
-
-        Interlocked.Increment(ref _successfulApiCalls);
-        UpdateSuccessRate();
-        yield return new GeminiStreamEvent
-        {
-            Type = "final",
-            Response = new GeminiResponse
-            {
-                Success = true,
-                Content = accumulatedText.ToString(),
-                ThoughtContent = accumulatedThought.ToString(),
-                FunctionCalls = functionCalls,
-                TokenUsage = tokenUsage,
-                ServiceTier = streamServiceTier
-            }
-        };
     }
 
     private static string? GetResponseServiceTier(HttpResponseMessage response) =>

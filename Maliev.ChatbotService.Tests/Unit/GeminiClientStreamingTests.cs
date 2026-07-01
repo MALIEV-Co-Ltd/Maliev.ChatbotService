@@ -107,6 +107,72 @@ public sealed class GeminiClientStreamingTests
         Assert.Equal(11, final.Response.TokenUsage.TotalTokens);
     }
 
+    [Theory]
+    [InlineData(HttpStatusCode.ServiceUnavailable)]
+    [InlineData(HttpStatusCode.TooManyRequests)]
+    public async Task StreamMessageAsync_FlexTransientFailure_RetriesWithFlexTier(HttpStatusCode statusCode)
+    {
+        var handler = new SequencedStreamingHandler(
+        [
+            new HttpResponseMessage(statusCode)
+            {
+                Content = new StringContent("""{"error":{"message":"Flex transient failure"}}""", Encoding.UTF8, "application/json")
+            },
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""
+                    data: {"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}],"usageMetadata":{"serviceTier":"flex"}}
+
+                    """, Encoding.UTF8, "text/event-stream")
+            }
+        ]);
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Gemini:ApiKey"] = "test-key",
+                ["Gemini:MainModelName"] = "gemini-test",
+                ["Gemini:FlexRetryBaseDelayMs"] = "0"
+            })
+            .Build();
+        var client = new GeminiClient(
+            new HttpClient(handler) { BaseAddress = new Uri("https://generativelanguage.googleapis.com/") },
+            configuration,
+            new ConversationMetrics(CreateMeterFactory(), configuration),
+            NullLogger<GeminiClient>.Instance);
+
+        var events = new List<GeminiStreamEvent>();
+        await foreach (var streamEvent in client.StreamMessageAsync(new GeminiRequest
+        {
+            ServiceTier = "flex",
+            TimeoutSeconds = GeminiRequest.FlexInferenceTimeoutSeconds,
+            Messages = [new GeminiMessage { Role = "user", Content = "Summarize this background record." }]
+        }))
+        {
+            events.Add(streamEvent);
+        }
+
+        var final = Assert.Single(events, item => item.Type == "final");
+        Assert.NotNull(final.Response);
+        Assert.True(final.Response.Success);
+        Assert.Equal("ok", final.Response.Content);
+        Assert.Equal("flex", final.Response.ServiceTier);
+        Assert.Equal(2, handler.RequestBodies.Count);
+
+        foreach (var body in handler.RequestBodies)
+        {
+            using var doc = JsonDocument.Parse(body);
+            Assert.Equal("flex", doc.RootElement.GetProperty("serviceTier").GetString());
+        }
+
+        Assert.All(
+            handler.RequestHeaders,
+            headers =>
+            {
+                Assert.True(headers.TryGetValue("X-Server-Timeout", out var serverTimeout));
+                Assert.Equal("600", Assert.Single(serverTimeout));
+            });
+    }
+
     [Fact]
     public async Task StreamMessageAsync_FunctionCallWithArrayArg_PreservesArrayStructureForToolForwarding()
     {
@@ -226,6 +292,30 @@ public sealed class GeminiClientStreamingTests
             {
                 Content = new StringContent(body, Encoding.UTF8, "text/event-stream")
             };
+        }
+    }
+
+    private sealed class SequencedStreamingHandler(IReadOnlyList<HttpResponseMessage> responses) : HttpMessageHandler
+    {
+        private int _index;
+
+        public List<string> RequestBodies { get; } = new();
+
+        public List<Dictionary<string, string[]>> RequestHeaders { get; } = new();
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            RequestHeaders.Add(request.Headers.ToDictionary(
+                header => header.Key,
+                header => header.Value.ToArray(),
+                StringComparer.OrdinalIgnoreCase));
+            RequestBodies.Add(request.Content is null
+                ? string.Empty
+                : await request.Content.ReadAsStringAsync(cancellationToken));
+
+            var response = responses[Math.Min(_index, responses.Count - 1)];
+            _index++;
+            return response;
         }
     }
 }
