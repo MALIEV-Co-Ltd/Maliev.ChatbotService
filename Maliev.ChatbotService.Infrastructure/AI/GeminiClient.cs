@@ -715,6 +715,12 @@ public class GeminiClient : IGeminiClient
                 ? serviceTierElement.GetString()
                 : null;
 
+        var promptFeedbackFallback = TryBuildPromptFeedbackFallback(geminiResponse, tokenUsage, serviceTier);
+        if (promptFeedbackFallback is not null)
+        {
+            return promptFeedbackFallback;
+        }
+
         if (!geminiResponse.TryGetProperty("candidates", out var candidates) ||
             candidates.ValueKind != JsonValueKind.Array)
         {
@@ -819,6 +825,32 @@ public class GeminiClient : IGeminiClient
             TokenUsage = tokenUsage,
             ServiceTier = serviceTier
         };
+    }
+
+    private GeminiResponse? TryBuildPromptFeedbackFallback(
+        JsonElement geminiResponse,
+        GeminiTokenUsage? tokenUsage,
+        string? serviceTier)
+    {
+        if (!geminiResponse.TryGetProperty("promptFeedback", out var promptFeedback) ||
+            promptFeedback.ValueKind != JsonValueKind.Object ||
+            !promptFeedback.TryGetProperty("blockReason", out var blockReasonElement))
+        {
+            return null;
+        }
+
+        var blockReason = blockReasonElement.GetString();
+        if (string.IsNullOrWhiteSpace(blockReason) ||
+            blockReason.Equals("BLOCK_REASON_UNSPECIFIED", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        _logger.LogWarning("Gemini API blocked prompt due to {BlockReason}", blockReason);
+        var fallback = GetFallbackResponse("ValidationFailure");
+        fallback.TokenUsage = tokenUsage;
+        fallback.ServiceTier = serviceTier;
+        return fallback;
     }
 
     private static GeminiTokenUsage ParseTokenUsage(JsonElement usageMetadata) =>

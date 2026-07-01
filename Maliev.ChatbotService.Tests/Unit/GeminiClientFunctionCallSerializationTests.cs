@@ -37,6 +37,24 @@ public sealed class GeminiClientFunctionCallSerializationTests
     }
 
     [Fact]
+    public async Task SendMessageAsync_PromptFeedbackBlock_ReturnsValidationFallback()
+    {
+        var handler = new CapturingHandler("""{"promptFeedback":{"blockReason":"SAFETY","safetyRatings":[]}}""");
+        var client = CreateClient(handler);
+
+        var response = await client.SendMessageAsync(new GeminiRequest
+        {
+            SystemInstruction = "sys",
+            Prompt = "unsafe prompt"
+        });
+
+        Assert.False(response.Success);
+        Assert.True(response.IsFallback);
+        Assert.Equal("ValidationFailure", response.ErrorType);
+        Assert.NotEmpty(response.Content);
+    }
+
+    [Fact]
     public async Task SendMessageAsync_CachedContentName_SerializesAsTopLevelCachedContent()
     {
         var handler = new CapturingHandler("""{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}""");

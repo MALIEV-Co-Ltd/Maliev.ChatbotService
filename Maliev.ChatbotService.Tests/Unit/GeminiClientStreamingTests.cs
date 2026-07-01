@@ -107,6 +107,44 @@ public sealed class GeminiClientStreamingTests
         Assert.Equal(11, final.Response.TokenUsage.TotalTokens);
     }
 
+    [Fact]
+    public async Task StreamMessageAsync_PromptFeedbackBlock_ReturnsValidationFallback()
+    {
+        var handler = new GeminiStreamingHandler([
+            """
+            data: {"promptFeedback":{"blockReason":"SAFETY","safetyRatings":[]}}
+            """
+        ]);
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Gemini:ApiKey"] = "test-key",
+                ["Gemini:MainModelName"] = "gemini-test"
+            })
+            .Build();
+        var client = new GeminiClient(
+            new HttpClient(handler) { BaseAddress = new Uri("https://generativelanguage.googleapis.com/") },
+            configuration,
+            new ConversationMetrics(CreateMeterFactory(), configuration),
+            NullLogger<GeminiClient>.Instance);
+
+        var events = new List<GeminiStreamEvent>();
+        await foreach (var streamEvent in client.StreamMessageAsync(new GeminiRequest
+        {
+            SystemInstruction = "You are a test assistant.",
+            Messages = [new GeminiMessage { Role = "user", Content = "unsafe prompt" }]
+        }))
+        {
+            events.Add(streamEvent);
+        }
+
+        var final = Assert.Single(events, item => item.Type == "final");
+        Assert.NotNull(final.Response);
+        Assert.False(final.Response.Success);
+        Assert.True(final.Response.IsFallback);
+        Assert.Equal("ValidationFailure", final.Response.ErrorType);
+    }
+
     [Theory]
     [InlineData(HttpStatusCode.ServiceUnavailable)]
     [InlineData(HttpStatusCode.TooManyRequests)]
