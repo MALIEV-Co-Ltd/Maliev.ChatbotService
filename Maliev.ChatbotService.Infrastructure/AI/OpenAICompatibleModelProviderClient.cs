@@ -79,7 +79,9 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
             }
 
             using var document = JsonDocument.Parse(responseContent);
-            return ParseResponse(document.RootElement);
+            var parsed = ParseResponse(document.RootElement);
+            parsed.ServiceTier = GetResponseServiceTier(response) ?? parsed.ServiceTier;
+            return parsed;
         }
         catch (OperationCanceledException)
         {
@@ -156,6 +158,7 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
             yield break;
         }
 
+        var responseServiceTier = GetResponseServiceTier(response);
         await using var stream = await response.Content.ReadAsStreamAsync(cts.Token);
         using var reader = new StreamReader(stream);
         while (await reader.ReadLineAsync(cts.Token) is { } line)
@@ -193,7 +196,8 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
             Response = new GeminiResponse
             {
                 Success = true,
-                Content = accumulatedText.ToString()
+                Content = accumulatedText.ToString(),
+                ServiceTier = responseServiceTier
             }
         };
     }
@@ -202,6 +206,11 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
     {
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
     };
+
+    private static string? GetResponseServiceTier(HttpResponseMessage response) =>
+        response.Headers.TryGetValues("x-gemini-service-tier", out var values)
+            ? values.FirstOrDefault()
+            : null;
 
     private static object BuildPayload(GeminiRequest request, string modelName, bool stream)
     {

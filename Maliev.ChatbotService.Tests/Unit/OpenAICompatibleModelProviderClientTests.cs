@@ -180,6 +180,32 @@ public sealed class OpenAICompatibleModelProviderClientTests
     }
 
     [Fact]
+    public async Task SendMessageAsync_ServiceTierHeader_MapsActualTierToResponse()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "choices": [
+                {
+                  "message": {
+                    "content": "ok"
+                  }
+                }
+              ]
+            }
+            """, "application/json", ("x-gemini-service-tier", "standard"));
+        var client = CreateClient(handler);
+
+        var response = await client.SendMessageAsync(new GeminiRequest
+        {
+            Messages = [new GeminiMessage { Role = "user", Content = "Triage this urgent issue." }],
+            ServiceTier = "priority"
+        });
+
+        Assert.True(response.Success);
+        Assert.Equal("standard", response.ServiceTier);
+    }
+
+    [Fact]
     public async Task StreamMessageAsync_WithoutTools_EmitsOpenAiCompatibleDeltasAndFinalResponse()
     {
         var handler = new CapturingHandler(string.Join("\n\n",
@@ -214,6 +240,33 @@ public sealed class OpenAICompatibleModelProviderClientTests
         Assert.True(payload.RootElement.GetProperty("stream").GetBoolean());
     }
 
+    [Fact]
+    public async Task StreamMessageAsync_ServiceTierHeader_MapsActualTierToFinalResponse()
+    {
+        var handler = new CapturingHandler(string.Join("\n\n",
+            """
+            data: {"choices":[{"delta":{"content":"ok"}}]}
+            """,
+            "data: [DONE]"), "text/event-stream", ("x-gemini-service-tier", "flex"));
+        var client = CreateClient(handler);
+
+        GeminiResponse? finalResponse = null;
+        await foreach (var streamEvent in client.StreamMessageAsync(new GeminiRequest
+        {
+            Messages = [new GeminiMessage { Role = "user", Content = "Summarize this background record." }],
+            ServiceTier = "flex"
+        }))
+        {
+            if (streamEvent.Type.Equals("final", StringComparison.OrdinalIgnoreCase))
+            {
+                finalResponse = streamEvent.Response;
+            }
+        }
+
+        Assert.NotNull(finalResponse);
+        Assert.Equal("flex", finalResponse!.ServiceTier);
+    }
+
     private static OpenAICompatibleModelProviderClient CreateClient(CapturingHandler handler)
     {
         var configuration = new ConfigurationBuilder()
@@ -230,7 +283,10 @@ public sealed class OpenAICompatibleModelProviderClientTests
             NullLogger<OpenAICompatibleModelProviderClient>.Instance);
     }
 
-    private sealed class CapturingHandler(string responseBody, string mediaType) : HttpMessageHandler
+    private sealed class CapturingHandler(
+        string responseBody,
+        string mediaType,
+        params (string Name, string Value)[] responseHeaders) : HttpMessageHandler
     {
         public string RequestBody { get; private set; } = string.Empty;
 
@@ -245,10 +301,17 @@ public sealed class OpenAICompatibleModelProviderClientTests
                 ? string.Empty
                 : await request.Content.ReadAsStringAsync(cancellationToken);
 
-            return new HttpResponseMessage(HttpStatusCode.OK)
+            var response = new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent(responseBody, Encoding.UTF8, mediaType)
             };
+
+            foreach (var (name, value) in responseHeaders)
+            {
+                response.Headers.Add(name, value);
+            }
+
+            return response;
         }
     }
 }
