@@ -28,7 +28,8 @@ public sealed class GeminiModelFileStagingServiceTests
                   "file": {
                     "name": "files/customer-form",
                     "uri": "https://generativelanguage.googleapis.com/v1beta/files/customer-form",
-                    "mimeType": "application/pdf"
+                    "mimeType": "application/pdf",
+                    "state": "ACTIVE"
                   }
                 }
                 """));
@@ -70,6 +71,119 @@ public sealed class GeminiModelFileStagingServiceTests
     }
 
     [Fact]
+    public async Task StageFileAsync_WhenUploadIsProcessing_PollsUntilFileIsActive()
+    {
+        var handler = new CapturingHandler(
+            new CapturedResponse(
+                HttpStatusCode.OK,
+                string.Empty,
+                new Dictionary<string, string>
+                {
+                    ["X-Goog-Upload-URL"] = "https://generativelanguage.googleapis.com/upload-session"
+                }),
+            new CapturedResponse(
+                HttpStatusCode.OK,
+                """
+                {
+                  "file": {
+                    "name": "files/customer-video",
+                    "uri": "https://generativelanguage.googleapis.com/v1beta/files/customer-video",
+                    "mimeType": "video/mp4",
+                    "state": "PROCESSING"
+                  }
+                }
+                """),
+            new CapturedResponse(
+                HttpStatusCode.OK,
+                """
+                {
+                  "name": "files/customer-video",
+                  "uri": "https://generativelanguage.googleapis.com/v1beta/files/customer-video",
+                  "mimeType": "video/mp4",
+                  "state": "ACTIVE"
+                }
+                """));
+        var service = CreateService(handler, new Dictionary<string, string?>
+        {
+            ["Gemini:FileApi:ProcessingPollAttempts"] = "2",
+            ["Gemini:FileApi:ProcessingPollDelayMs"] = "0"
+        });
+
+        var result = await service.StageFileAsync(new ModelFileStagingRequest
+        {
+            FileName = "customer-video.mp4",
+            MimeType = "video/mp4",
+            Content = "video bytes"u8.ToArray()
+        });
+
+        Assert.NotNull(result);
+        Assert.Equal("files/customer-video", result!.Name);
+        Assert.Equal("https://generativelanguage.googleapis.com/v1beta/files/customer-video", result.FileUri);
+        Assert.Equal("video/mp4", result.MimeType);
+        Assert.Equal(3, handler.Requests.Count);
+
+        var pollRequest = handler.Requests[2];
+        Assert.Equal(HttpMethod.Get, pollRequest.Method);
+        Assert.Equal("/v1beta/files/customer-video", pollRequest.Uri.AbsolutePath);
+        Assert.Equal("test-api-key", pollRequest.Headers["x-goog-api-key"]);
+    }
+
+    [Fact]
+    public async Task StageFileAsync_WhenProcessingFails_ThrowsBeforeReturningFileUri()
+    {
+        var handler = new CapturingHandler(
+            new CapturedResponse(
+                HttpStatusCode.OK,
+                string.Empty,
+                new Dictionary<string, string>
+                {
+                    ["X-Goog-Upload-URL"] = "https://generativelanguage.googleapis.com/upload-session"
+                }),
+            new CapturedResponse(
+                HttpStatusCode.OK,
+                """
+                {
+                  "file": {
+                    "name": "files/customer-video",
+                    "uri": "https://generativelanguage.googleapis.com/v1beta/files/customer-video",
+                    "mimeType": "video/mp4",
+                    "state": "PROCESSING"
+                  }
+                }
+                """),
+            new CapturedResponse(
+                HttpStatusCode.OK,
+                """
+                {
+                  "name": "files/customer-video",
+                  "uri": "https://generativelanguage.googleapis.com/v1beta/files/customer-video",
+                  "mimeType": "video/mp4",
+                  "state": "FAILED",
+                  "error": {
+                    "message": "unsupported video"
+                  }
+                }
+                """));
+        var service = CreateService(handler, new Dictionary<string, string?>
+        {
+            ["Gemini:FileApi:ProcessingPollAttempts"] = "2",
+            ["Gemini:FileApi:ProcessingPollDelayMs"] = "0"
+        });
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.StageFileAsync(new ModelFileStagingRequest
+            {
+                FileName = "customer-video.mp4",
+                MimeType = "video/mp4",
+                Content = "video bytes"u8.ToArray()
+            }));
+
+        Assert.Contains("FAILED", exception.Message);
+        Assert.Contains("unsupported video", exception.Message);
+        Assert.Equal(3, handler.Requests.Count);
+    }
+
+    [Fact]
     public async Task DeleteFileAsync_SendsGeminiFilesDeleteRequest()
     {
         var handler = new CapturingHandler(new CapturedResponse(HttpStatusCode.OK, "{}"));
@@ -83,13 +197,25 @@ public sealed class GeminiModelFileStagingServiceTests
         Assert.Equal("test-api-key", request.Headers["x-goog-api-key"]);
     }
 
-    private static GeminiModelFileStagingService CreateService(CapturingHandler handler)
+    private static GeminiModelFileStagingService CreateService(
+        CapturingHandler handler,
+        Dictionary<string, string?>? configurationValues = null)
     {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
+        var values = new Dictionary<string, string?>
+        {
+            ["Gemini:ApiKey"] = "test-api-key"
+        };
+
+        if (configurationValues is not null)
+        {
+            foreach (var item in configurationValues)
             {
-                ["Gemini:ApiKey"] = "test-api-key"
-            })
+                values[item.Key] = item.Value;
+            }
+        }
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(values)
             .Build();
 
         return new GeminiModelFileStagingService(
