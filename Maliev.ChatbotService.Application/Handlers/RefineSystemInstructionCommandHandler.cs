@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Maliev.ChatbotService.Application.Commands;
 using Maliev.ChatbotService.Application.Interfaces;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Maliev.ChatbotService.Application.Handlers;
@@ -15,6 +16,7 @@ public class RefineSystemInstructionCommandHandler
     private const int MaxRefinementPromptTokens = 16000;
     private readonly IGeminiClient _geminiClient;
     private readonly ILogger<RefineSystemInstructionCommandHandler> _logger;
+    private readonly string _modelName;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -39,12 +41,15 @@ public class RefineSystemInstructionCommandHandler
     /// </summary>
     /// <param name="geminiClient">The Gemini API client.</param>
     /// <param name="logger">The logger.</param>
+    /// <param name="configuration">Application configuration.</param>
     public RefineSystemInstructionCommandHandler(
         IGeminiClient geminiClient,
-        ILogger<RefineSystemInstructionCommandHandler> logger)
+        ILogger<RefineSystemInstructionCommandHandler> logger,
+        IConfiguration? configuration = null)
     {
         _geminiClient = geminiClient;
         _logger = logger;
+        _modelName = configuration?["Gemini:IntentModelName"] ?? "gemini-2.5-flash-lite";
     }
 
     /// <summary>
@@ -59,6 +64,7 @@ public class RefineSystemInstructionCommandHandler
     {
         var request = new GeminiRequest
         {
+            ModelName = _modelName,
             SystemInstruction = BuildSystemInstruction(),
             Messages =
             [

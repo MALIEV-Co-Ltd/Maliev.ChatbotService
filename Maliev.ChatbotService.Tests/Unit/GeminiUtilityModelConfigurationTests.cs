@@ -169,6 +169,40 @@ public sealed class GeminiUtilityModelConfigurationTests
         Assert.Equal("gemini-2.5-flash-lite-configured", capturedRequest!.ModelName);
     }
 
+    [Fact]
+    public async Task RefineSystemInstructionCommandHandler_UsesConfiguredGeminiUtilityModel()
+    {
+        GeminiRequest? capturedRequest = null;
+        var geminiClient = CreateGeminiClientMock(
+            request => capturedRequest = request,
+            """
+            {
+              "persona_definition": "Improved persona.",
+              "business_constraints": "Improved constraints.",
+              "summary": "Improved clarity."
+            }
+            """);
+        var handler = CreateWithConfiguration<RefineSystemInstructionCommandHandler>(
+            "gemini-2.5-flash-lite-configured",
+            services =>
+            {
+                services.AddSingleton(geminiClient.Object);
+                services.AddSingleton<ILogger<RefineSystemInstructionCommandHandler>>(
+                    NullLogger<RefineSystemInstructionCommandHandler>.Instance);
+            });
+
+        await handler.HandleAsync(new RefineSystemInstructionCommand
+        {
+            Name = "Customer extraction",
+            Category = SystemInstructionCategory.Topic,
+            PersonaDefinition = "Extract customer data.",
+            BusinessConstraints = "Return JSON."
+        });
+
+        Assert.NotNull(capturedRequest);
+        Assert.Equal("gemini-2.5-flash-lite-configured", capturedRequest!.ModelName);
+    }
+
     private static T CreateWithConfiguration<T>(
         string modelName,
         Action<IServiceCollection> configureServices)
