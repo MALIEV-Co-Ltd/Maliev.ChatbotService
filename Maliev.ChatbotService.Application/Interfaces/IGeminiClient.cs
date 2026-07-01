@@ -102,6 +102,11 @@ public class GeminiRequest
     public bool? Store { get; set; }
 
     /// <summary>
+    /// Gets or sets Gemini safety settings. When set, these override configured provider defaults.
+    /// </summary>
+    public List<GeminiSafetySetting>? SafetySettings { get; set; }
+
+    /// <summary>
     /// Gets or sets the timeout for the request.
     /// </summary>
     public TimeSpan? Timeout { get; set; }
@@ -186,6 +191,22 @@ public class GeminiMessage
     /// role messages) rather than as plain text.
     /// </summary>
     public List<GeminiFunctionResponse>? FunctionResponses { get; set; }
+}
+
+/// <summary>
+/// Gemini safety setting for a single harm category.
+/// </summary>
+public sealed class GeminiSafetySetting
+{
+    /// <summary>
+    /// Gets or sets the Gemini harm category, such as <c>HARM_CATEGORY_HARASSMENT</c>.
+    /// </summary>
+    public string Category { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the Gemini harm block threshold, such as <c>BLOCK_ONLY_HIGH</c>.
+    /// </summary>
+    public string Threshold { get; set; } = string.Empty;
 }
 
 /// <summary>

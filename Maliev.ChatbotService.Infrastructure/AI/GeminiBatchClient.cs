@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using Maliev.ChatbotService.Application.Configuration;
 using Maliev.ChatbotService.Application.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -21,6 +22,7 @@ public sealed class GeminiBatchClient : IModelBatchClient
     private readonly ILogger<GeminiBatchClient> _logger;
     private readonly string _apiKey;
     private readonly string _modelName;
+    private readonly IReadOnlyList<GeminiSafetySetting> _defaultSafetySettings;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="GeminiBatchClient"/> class.
@@ -38,6 +40,7 @@ public sealed class GeminiBatchClient : IModelBatchClient
         _apiKey = configuration["Gemini:ApiKey"]
             ?? throw new InvalidOperationException("Gemini API key is not configured. Set 'Gemini:ApiKey'.");
         _modelName = configuration["Gemini:MainModelName"] ?? "gemini-2.5-flash";
+        _defaultSafetySettings = GeminiSafetySettingsOptions.FromConfiguration(configuration).SafetySettings;
     }
 
     /// <inheritdoc/>
@@ -51,7 +54,7 @@ public sealed class GeminiBatchClient : IModelBatchClient
         }
 
         var modelName = NormalizeModelName(request.ModelName ?? _modelName);
-        var payload = BuildCreateBatchPayload(request);
+        var payload = BuildCreateBatchPayload(request, _defaultSafetySettings);
 
         using var httpRequest = new HttpRequestMessage(
             HttpMethod.Post,
@@ -105,7 +108,9 @@ public sealed class GeminiBatchClient : IModelBatchClient
         return ParseBatchJob(document.RootElement);
     }
 
-    private static Dictionary<string, object?> BuildCreateBatchPayload(ModelBatchRequest request)
+    private static Dictionary<string, object?> BuildCreateBatchPayload(
+        ModelBatchRequest request,
+        IReadOnlyList<GeminiSafetySetting> defaultSafetySettings)
     {
         var batch = new Dictionary<string, object?>
         {
@@ -116,7 +121,7 @@ public sealed class GeminiBatchClient : IModelBatchClient
                 {
                     ["requests"] = request.Requests.Select(item => new Dictionary<string, object?>
                     {
-                        ["request"] = GeminiClient.BuildGeminiPayload(item.Request),
+                        ["request"] = GeminiClient.BuildGeminiPayload(item.Request, defaultSafetySettings),
                         ["metadata"] = item.Metadata
                     }).ToArray()
                 }

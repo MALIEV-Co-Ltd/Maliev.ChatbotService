@@ -78,6 +78,27 @@ public sealed class ModelProviderConfigurationTests
     }
 
     [Fact]
+    public void AppSettings_DefinesExplicitGeminiSafetySettings()
+    {
+        var appsettings = File.ReadAllText(Path.Combine(
+            GetRepositoryRoot(),
+            "Maliev.ChatbotService.Api",
+            "appsettings.json"));
+
+        var safetySettingsBlock = ExtractSourceBlock(
+            appsettings,
+            "\"SafetySettings\"",
+            "\"ContextCache\"");
+
+        Assert.Contains("\"Enabled\": true", safetySettingsBlock, StringComparison.Ordinal);
+        Assert.Contains("\"Threshold\": \"BLOCK_ONLY_HIGH\"", safetySettingsBlock, StringComparison.Ordinal);
+        Assert.Contains("\"HARM_CATEGORY_HARASSMENT\"", safetySettingsBlock, StringComparison.Ordinal);
+        Assert.Contains("\"HARM_CATEGORY_HATE_SPEECH\"", safetySettingsBlock, StringComparison.Ordinal);
+        Assert.Contains("\"HARM_CATEGORY_SEXUALLY_EXPLICIT\"", safetySettingsBlock, StringComparison.Ordinal);
+        Assert.Contains("\"HARM_CATEGORY_DANGEROUS_CONTENT\"", safetySettingsBlock, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void MessagesController_PostsOnlyAbsoluteThinkingCallbackUris()
     {
         var controller = File.ReadAllText(Path.Combine(

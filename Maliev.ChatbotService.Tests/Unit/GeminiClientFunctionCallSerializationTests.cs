@@ -136,6 +136,66 @@ public sealed class GeminiClientFunctionCallSerializationTests
     }
 
     [Fact]
+    public async Task SendMessageAsync_ConfiguredDefaultSafetySettings_SerializesAsTopLevelSafetySettings()
+    {
+        var handler = new CapturingHandler("""{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}""");
+        var client = CreateClient(handler, new Dictionary<string, string?>
+        {
+            ["Gemini:SafetySettings:Enabled"] = "true",
+            ["Gemini:SafetySettings:Threshold"] = "BLOCK_ONLY_HIGH",
+            ["Gemini:SafetySettings:Categories:0"] = "HARM_CATEGORY_HARASSMENT",
+            ["Gemini:SafetySettings:Categories:1"] = "HARM_CATEGORY_DANGEROUS_CONTENT"
+        });
+
+        await client.SendMessageAsync(new GeminiRequest
+        {
+            Prompt = "Help with a customer request.",
+            MaxTokens = 128
+        });
+
+        using var doc = JsonDocument.Parse(handler.RequestBody!);
+        var settings = doc.RootElement.GetProperty("safetySettings").EnumerateArray().ToArray();
+        Assert.Equal(2, settings.Length);
+        Assert.Contains(settings, setting =>
+            setting.GetProperty("category").GetString() == "HARM_CATEGORY_HARASSMENT" &&
+            setting.GetProperty("threshold").GetString() == "BLOCK_ONLY_HIGH");
+        Assert.Contains(settings, setting =>
+            setting.GetProperty("category").GetString() == "HARM_CATEGORY_DANGEROUS_CONTENT" &&
+            setting.GetProperty("threshold").GetString() == "BLOCK_ONLY_HIGH");
+        Assert.False(doc.RootElement.GetProperty("generationConfig").TryGetProperty("safetySettings", out _));
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_RequestSafetySettings_OverrideConfiguredDefaults()
+    {
+        var handler = new CapturingHandler("""{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}""");
+        var client = CreateClient(handler, new Dictionary<string, string?>
+        {
+            ["Gemini:SafetySettings:Enabled"] = "true",
+            ["Gemini:SafetySettings:Threshold"] = "BLOCK_ONLY_HIGH",
+            ["Gemini:SafetySettings:Categories:0"] = "HARM_CATEGORY_HARASSMENT"
+        });
+
+        await client.SendMessageAsync(new GeminiRequest
+        {
+            Prompt = "Help with a customer request.",
+            SafetySettings =
+            [
+                new GeminiSafetySetting
+                {
+                    Category = "HARM_CATEGORY_DANGEROUS_CONTENT",
+                    Threshold = "BLOCK_MEDIUM_AND_ABOVE"
+                }
+            ]
+        });
+
+        using var doc = JsonDocument.Parse(handler.RequestBody!);
+        var setting = Assert.Single(doc.RootElement.GetProperty("safetySettings").EnumerateArray());
+        Assert.Equal("HARM_CATEGORY_DANGEROUS_CONTENT", setting.GetProperty("category").GetString());
+        Assert.Equal("BLOCK_MEDIUM_AND_ABOVE", setting.GetProperty("threshold").GetString());
+    }
+
+    [Fact]
     public async Task SendMessageAsync_ToolTurns_SerializeAsNativeFunctionCallAndFunctionResponseParts()
     {
         var handler = new CapturingHandler(

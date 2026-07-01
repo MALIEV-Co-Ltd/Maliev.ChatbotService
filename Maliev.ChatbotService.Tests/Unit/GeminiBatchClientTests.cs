@@ -85,6 +85,58 @@ public sealed class GeminiBatchClientTests
     }
 
     [Fact]
+    public async Task CreateInlineGenerateContentBatchAsync_ConfiguredDefaultSafetySettings_SerializesInlineRequestSettings()
+    {
+        var handler = new CapturingHandler("""{"name":"batches/batch-123","metadata":{"state":"JOB_STATE_PENDING"}}""");
+        var client = CreateClient(handler, new Dictionary<string, string?>
+        {
+            ["Gemini:SafetySettings:Enabled"] = "true",
+            ["Gemini:SafetySettings:Threshold"] = "BLOCK_ONLY_HIGH",
+            ["Gemini:SafetySettings:Categories:0"] = "HARM_CATEGORY_HARASSMENT",
+            ["Gemini:SafetySettings:Categories:1"] = "HARM_CATEGORY_DANGEROUS_CONTENT"
+        });
+
+        await client.CreateInlineGenerateContentBatchAsync(new ModelBatchRequest
+        {
+            DisplayName = "expired-session-summaries",
+            ModelName = "gemini-2.5-flash-lite",
+            Priority = -10,
+            Requests =
+            [
+                new ModelBatchGenerateContentRequest
+                {
+                    Request = new GeminiRequest
+                    {
+                        SystemInstruction = "Summarize the conversation.",
+                        Messages =
+                        [
+                            new GeminiMessage { Role = "user", Content = "User: hello\nAssistant: hi" }
+                        ],
+                        ThinkingBudget = 0,
+                        MaxTokens = 1024
+                    }
+                }
+            ]
+        });
+
+        using var payload = JsonDocument.Parse(handler.RequestBody!);
+        var generateRequest = payload.RootElement
+            .GetProperty("batch")
+            .GetProperty("input_config")
+            .GetProperty("requests")
+            .GetProperty("requests")[0]
+            .GetProperty("request");
+        var settings = generateRequest.GetProperty("safetySettings").EnumerateArray().ToArray();
+        Assert.Equal(2, settings.Length);
+        Assert.Contains(settings, setting =>
+            setting.GetProperty("category").GetString() == "HARM_CATEGORY_HARASSMENT" &&
+            setting.GetProperty("threshold").GetString() == "BLOCK_ONLY_HIGH");
+        Assert.Contains(settings, setting =>
+            setting.GetProperty("category").GetString() == "HARM_CATEGORY_DANGEROUS_CONTENT" &&
+            setting.GetProperty("threshold").GetString() == "BLOCK_ONLY_HIGH");
+    }
+
+    [Fact]
     public async Task GetBatchAsync_ParsesOperationStateAndInlineResponses()
     {
         var handler = new CapturingHandler("""
@@ -241,14 +293,25 @@ public sealed class GeminiBatchClientTests
         Assert.Equal("Request failed", failedResponse.ErrorMessage);
     }
 
-    private static GeminiBatchClient CreateClient(CapturingHandler handler)
+    private static GeminiBatchClient CreateClient(
+        CapturingHandler handler,
+        Dictionary<string, string?>? extraConfiguration = null)
     {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
+        var configurationValues = new Dictionary<string, string?>
+        {
+            ["Gemini:ApiKey"] = "test-api-key",
+            ["Gemini:MainModelName"] = "gemini-2.5-flash"
+        };
+        if (extraConfiguration is not null)
+        {
+            foreach (var item in extraConfiguration)
             {
-                ["Gemini:ApiKey"] = "test-api-key",
-                ["Gemini:MainModelName"] = "gemini-2.5-flash"
-            })
+                configurationValues[item.Key] = item.Value;
+            }
+        }
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(configurationValues)
             .Build();
 
         return new GeminiBatchClient(

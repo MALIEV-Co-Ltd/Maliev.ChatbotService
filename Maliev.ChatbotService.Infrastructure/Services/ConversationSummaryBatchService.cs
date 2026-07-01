@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Maliev.ChatbotService.Application.Configuration;
 using Maliev.ChatbotService.Application.Costing;
 using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Domain.Entities;
@@ -31,6 +32,7 @@ public class ConversationSummaryBatchService : IConversationSummaryBatchService
     private readonly IConversationSummaryBatchJobRepository _batchJobRepository;
     private readonly ILogger<ConversationSummaryBatchService> _logger;
     private readonly string _modelName;
+    private readonly IReadOnlyList<GeminiSafetySetting> _defaultSafetySettings;
     private readonly int _maxBatchSessions;
     private readonly int _maxBatchInlineBytes;
 
@@ -60,6 +62,7 @@ public class ConversationSummaryBatchService : IConversationSummaryBatchService
         _batchJobRepository = batchJobRepository;
         _logger = logger;
         _modelName = configuration["Gemini:IntentModelName"] ?? "gemini-2.5-flash-lite";
+        _defaultSafetySettings = GeminiSafetySettingsOptions.FromConfiguration(configuration).SafetySettings;
         _maxBatchSessions = int.TryParse(configuration["Gemini:BatchSummaryMaxSessions"], out var configuredLimit) &&
             configuredLimit > 0
             ? configuredLimit
@@ -213,7 +216,7 @@ public class ConversationSummaryBatchService : IConversationSummaryBatchService
         }
     }
 
-    private static int EstimateInlineBatchBytes(
+    private int EstimateInlineBatchBytes(
         IReadOnlyCollection<SummaryBatchCandidate> currentBatch,
         SummaryBatchCandidate candidate)
     {
@@ -221,10 +224,12 @@ public class ConversationSummaryBatchService : IConversationSummaryBatchService
             .Select(item => item.Request)
             .Append(candidate.Request)
             .ToList();
-        return EstimateInlineBatchBytes(requests);
+        return EstimateInlineBatchBytes(requests, _defaultSafetySettings);
     }
 
-    private static int EstimateInlineBatchBytes(IReadOnlyCollection<ModelBatchGenerateContentRequest> requests)
+    private static int EstimateInlineBatchBytes(
+        IReadOnlyCollection<ModelBatchGenerateContentRequest> requests,
+        IReadOnlyList<GeminiSafetySetting> defaultSafetySettings)
     {
         var payload = new Dictionary<string, object?>
         {
@@ -237,7 +242,7 @@ public class ConversationSummaryBatchService : IConversationSummaryBatchService
                     {
                         ["requests"] = requests.Select(item => new Dictionary<string, object?>
                         {
-                            ["request"] = GeminiClient.BuildGeminiPayload(item.Request),
+                            ["request"] = GeminiClient.BuildGeminiPayload(item.Request, defaultSafetySettings),
                             ["metadata"] = item.Metadata
                         }).ToArray()
                     }

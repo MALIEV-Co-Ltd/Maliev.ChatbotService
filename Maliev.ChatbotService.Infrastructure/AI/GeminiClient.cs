@@ -1,3 +1,4 @@
+using Maliev.ChatbotService.Application.Configuration;
 using Maliev.ChatbotService.Application.Handlers;
 using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Infrastructure.Metrics;
@@ -26,6 +27,7 @@ public class GeminiClient : IGeminiClient
     private readonly ConversationMetrics _metrics;
     private readonly string _apiKey;
     private readonly string _modelName;
+    private readonly IReadOnlyList<GeminiSafetySetting> _defaultSafetySettings;
     private readonly int _flexRetryMaxAttempts;
     private readonly TimeSpan _flexRetryBaseDelay;
 
@@ -51,6 +53,7 @@ public class GeminiClient : IGeminiClient
                 "dotnet user-secrets set \"Gemini:ApiKey\" \"<your-key>\" --project Maliev.ChatbotService.Api");
         _apiKey = apiKey;
         _modelName = configuration["Gemini:MainModelName"] ?? "gemini-2.5-flash";
+        _defaultSafetySettings = GeminiSafetySettingsOptions.FromConfiguration(configuration).SafetySettings;
         _flexRetryMaxAttempts = Math.Clamp(configuration.GetValue<int?>("Gemini:FlexRetryMaxAttempts") ?? 3, 1, 5);
         _flexRetryBaseDelay = TimeSpan.FromMilliseconds(
             Math.Max(0, configuration.GetValue<double?>("Gemini:FlexRetryBaseDelayMs") ?? 5000));
@@ -565,7 +568,9 @@ public class GeminiClient : IGeminiClient
         }
     }
 
-    internal static Dictionary<string, object?> BuildGeminiPayload(GeminiRequest request)
+    internal static Dictionary<string, object?> BuildGeminiPayload(
+        GeminiRequest request,
+        IReadOnlyList<GeminiSafetySetting>? defaultSafetySettings = null)
     {
         var contentsParts = BuildContents(request);
 
@@ -596,6 +601,16 @@ public class GeminiClient : IGeminiClient
         if (request.Store is not null)
         {
             payload["store"] = request.Store.Value;
+        }
+
+        var safetySettings = ResolveSafetySettings(request, defaultSafetySettings);
+        if (safetySettings.Count > 0)
+        {
+            payload["safetySettings"] = safetySettings.Select(setting => new
+            {
+                category = setting.Category,
+                threshold = setting.Threshold
+            }).ToArray();
         }
 
         var generationConfig = BuildGenerationConfig(request);
@@ -643,8 +658,20 @@ public class GeminiClient : IGeminiClient
         return payload;
     }
 
-    private static string BuildGeminiPayloadJson(GeminiRequest request) =>
-        JsonSerializer.Serialize(BuildGeminiPayload(request), JsonOptions);
+    private string BuildGeminiPayloadJson(GeminiRequest request) =>
+        JsonSerializer.Serialize(BuildGeminiPayload(request, _defaultSafetySettings), JsonOptions);
+
+    private static IReadOnlyList<GeminiSafetySetting> ResolveSafetySettings(
+        GeminiRequest request,
+        IReadOnlyList<GeminiSafetySetting>? defaultSafetySettings)
+    {
+        if (request.SafetySettings is { Count: > 0 })
+        {
+            return request.SafetySettings;
+        }
+
+        return defaultSafetySettings ?? [];
+    }
 
     private async Task<GeminiResponse?> TryEnforcePromptTokenLimitAsync(
         GeminiRequest request,
@@ -677,7 +704,7 @@ public class GeminiClient : IGeminiClient
     {
         var payload = new Dictionary<string, object?>
         {
-            ["generateContentRequest"] = BuildGeminiPayload(request)
+            ["generateContentRequest"] = BuildGeminiPayload(request, _defaultSafetySettings)
         };
 
         var json = JsonSerializer.Serialize(payload, JsonOptions);
