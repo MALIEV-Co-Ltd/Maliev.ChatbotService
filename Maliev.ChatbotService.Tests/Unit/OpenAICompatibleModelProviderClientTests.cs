@@ -143,6 +143,43 @@ public sealed class OpenAICompatibleModelProviderClientTests
     }
 
     [Fact]
+    public async Task SendMessageAsync_GeminiCostControls_SerializesServiceTierAndExtraBody()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "choices": [
+                {
+                  "message": {
+                    "content": "ok"
+                  }
+                }
+              ]
+            }
+            """, "application/json");
+        var client = CreateClient(handler);
+
+        await client.SendMessageAsync(new GeminiRequest
+        {
+            Messages = [new GeminiMessage { Role = "user", Content = "Summarize cached customer context." }],
+            ServiceTier = "flex",
+            CachedContentName = "cachedContents/customer-context-123",
+            ThinkingBudget = 0,
+            IncludeThoughts = true
+        });
+
+        using var payload = JsonDocument.Parse(handler.RequestBody);
+        Assert.Equal("flex", payload.RootElement.GetProperty("service_tier").GetString());
+        Assert.False(payload.RootElement.TryGetProperty("serviceTier", out _));
+
+        var google = payload.RootElement.GetProperty("extra_body").GetProperty("google");
+        Assert.Equal("cachedContents/customer-context-123", google.GetProperty("cached_content").GetString());
+
+        var thinkingConfig = google.GetProperty("thinking_config");
+        Assert.Equal(0, thinkingConfig.GetProperty("thinking_budget").GetInt32());
+        Assert.True(thinkingConfig.GetProperty("include_thoughts").GetBoolean());
+    }
+
+    [Fact]
     public async Task StreamMessageAsync_WithoutTools_EmitsOpenAiCompatibleDeltasAndFinalResponse()
     {
         var handler = new CapturingHandler(string.Join("\n\n",

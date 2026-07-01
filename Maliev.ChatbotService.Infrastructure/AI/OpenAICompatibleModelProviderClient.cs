@@ -303,6 +303,20 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
             payload["temperature"] = request.Temperature.Value;
         }
 
+        if (!string.IsNullOrWhiteSpace(request.ServiceTier))
+        {
+            payload["service_tier"] = request.ServiceTier;
+        }
+
+        var googleExtraBody = BuildGoogleExtraBody(request);
+        if (googleExtraBody.Count > 0)
+        {
+            payload["extra_body"] = new Dictionary<string, object?>
+            {
+                ["google"] = googleExtraBody
+            };
+        }
+
         if (!string.IsNullOrWhiteSpace(request.ResponseMimeType))
         {
             payload["response_format"] = request.ResponseSchema is null
@@ -343,6 +357,41 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
         }
 
         return payload;
+    }
+
+    private static Dictionary<string, object?> BuildGoogleExtraBody(GeminiRequest request)
+    {
+        var google = new Dictionary<string, object?>();
+
+        if (!string.IsNullOrWhiteSpace(request.CachedContentName))
+        {
+            google["cached_content"] = request.CachedContentName;
+        }
+
+        var thinkingConfig = BuildGoogleThinkingConfig(request);
+        if (thinkingConfig.Count > 0)
+        {
+            google["thinking_config"] = thinkingConfig;
+        }
+
+        return google;
+    }
+
+    private static Dictionary<string, object?> BuildGoogleThinkingConfig(GeminiRequest request)
+    {
+        var thinkingConfig = new Dictionary<string, object?>();
+
+        if (request.ThinkingBudget is not null)
+        {
+            thinkingConfig["thinking_budget"] = request.ThinkingBudget.Value;
+        }
+
+        if (request.IncludeThoughts)
+        {
+            thinkingConfig["include_thoughts"] = true;
+        }
+
+        return thinkingConfig;
     }
 
     private static List<GeminiMessage> BuildPromptMessages(string? prompt) =>
