@@ -40,6 +40,16 @@ public class ChatbotDbContext : DbContext
     public DbSet<ConversationSummary> ConversationSummaries => Set<ConversationSummary>();
 
     /// <summary>
+    /// Gets or sets the ConversationSummaryBatchJobs DbSet.
+    /// </summary>
+    public DbSet<ConversationSummaryBatchJob> ConversationSummaryBatchJobs => Set<ConversationSummaryBatchJob>();
+
+    /// <summary>
+    /// Gets or sets the ConversationSummaryBatchItems DbSet.
+    /// </summary>
+    public DbSet<ConversationSummaryBatchItem> ConversationSummaryBatchItems => Set<ConversationSummaryBatchItem>();
+
+    /// <summary>
     /// Gets or sets the UserMemories DbSet.
     /// </summary>
     public DbSet<UserMemory> UserMemories => Set<UserMemory>();
@@ -86,6 +96,8 @@ public class ChatbotDbContext : DbContext
         modelBuilder.ApplyConfiguration(new ConversationSessionConfiguration());
         modelBuilder.ApplyConfiguration(new MessageConfiguration());
         modelBuilder.ApplyConfiguration(new ConversationSummaryConfiguration());
+        modelBuilder.ApplyConfiguration(new ConversationSummaryBatchJobConfiguration());
+        modelBuilder.ApplyConfiguration(new ConversationSummaryBatchItemConfiguration());
         modelBuilder.ApplyConfiguration(new UserMemoryConfiguration());
         modelBuilder.ApplyConfiguration(new SystemInstructionConfiguration());
         modelBuilder.ApplyConfiguration(new IdentityLinkConfiguration());

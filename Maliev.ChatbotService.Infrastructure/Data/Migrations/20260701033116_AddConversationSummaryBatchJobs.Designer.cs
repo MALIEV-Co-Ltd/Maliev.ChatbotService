@@ -3,6 +3,7 @@ using System;
 using Maliev.ChatbotService.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Maliev.ChatbotService.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(ChatbotDbContext))]
-    partial class ChatbotDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260701033116_AddConversationSummaryBatchJobs")]
+    partial class AddConversationSummaryBatchJobs
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

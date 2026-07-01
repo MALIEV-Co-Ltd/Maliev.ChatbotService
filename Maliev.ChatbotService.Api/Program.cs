@@ -140,6 +140,7 @@ try
     builder.Services.AddScoped<IConversationSessionRepository, ConversationSessionRepository>();
     builder.Services.AddScoped<IMessageRepository, MessageRepository>();
     builder.Services.AddScoped<IConversationSummaryRepository, ConversationSummaryRepository>();
+    builder.Services.AddScoped<IConversationSummaryBatchJobRepository, ConversationSummaryBatchJobRepository>();
     builder.Services.AddScoped<IUserMemoryRepository, UserMemoryRepository>();
     builder.Services.AddScoped<ISystemInstructionRepository, SystemInstructionRepository>();
     builder.Services.AddScoped<IKnowledgeBaseRepository, KnowledgeBaseRepository>();
