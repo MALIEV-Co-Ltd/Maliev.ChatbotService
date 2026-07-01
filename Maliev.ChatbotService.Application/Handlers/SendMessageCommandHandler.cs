@@ -586,7 +586,8 @@ public class SendMessageCommandHandler
                         Content = agentResult.Content,
                         ErrorMessage = agentResult.ErrorMessage,
                         IsFallback = agentResult.IsFallback,
-                        TokenUsage = agentResult.TokenUsage
+                        TokenUsage = agentResult.TokenUsage,
+                        ServiceTier = agentResult.ServiceTier
                     };
                 }
                 else
@@ -661,7 +662,9 @@ public class SendMessageCommandHandler
 
                         injectedKnowledgeIds = injectedKnowledgeIds,
 
-                        tokenUsage = BuildTokenUsageMetadata(geminiResponse.TokenUsage)
+                        tokenUsage = BuildTokenUsageMetadata(geminiResponse.TokenUsage),
+
+                        serviceTier = geminiResponse.ServiceTier
 
                     })
 

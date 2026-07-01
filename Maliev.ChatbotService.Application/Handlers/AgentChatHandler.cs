@@ -63,6 +63,7 @@ public class AgentChatHandler
         // grossly undercount the turn and defeat the daily token budget (S2) on the agent path.
         var accumulatedUsage = new GeminiTokenUsage();
         var sawUsage = false;
+        string? serviceTier = null;
 
         for (var iteration = 0; iteration < MaxIterations; iteration++)
         {
@@ -83,6 +84,7 @@ public class AgentChatHandler
             };
 
             var response = await SendGeminiMaybeStreamingAsync(iterationRequest, onTextDelta, onThoughtDelta, cancellationToken);
+            serviceTier = response.ServiceTier ?? serviceTier;
 
             if (response.TokenUsage is { } usage)
             {
@@ -104,7 +106,8 @@ public class AgentChatHandler
                     ErrorMessage = response.ErrorMessage,
                     IsFallback = response.IsFallback,
                     ThinkingSteps = thinkingSteps,
-                    TokenUsage = sawUsage ? accumulatedUsage : null
+                    TokenUsage = sawUsage ? accumulatedUsage : null,
+                    ServiceTier = serviceTier
                 };
             }
 
@@ -116,7 +119,8 @@ public class AgentChatHandler
                     Success = true,
                     Content = response.Content,
                     ThinkingSteps = thinkingSteps,
-                    TokenUsage = sawUsage ? accumulatedUsage : null
+                    TokenUsage = sawUsage ? accumulatedUsage : null,
+                    ServiceTier = serviceTier
                 };
             }
 
@@ -249,7 +253,8 @@ public class AgentChatHandler
             Success = true,
             Content = "I wasn't able to fully work through that request in the steps available. Could you share a bit more detail, or break it into a smaller step? You can also reach the MALIEV team at info@maliev.com.",
             ThinkingSteps = thinkingSteps,
-            TokenUsage = sawUsage ? accumulatedUsage : null
+            TokenUsage = sawUsage ? accumulatedUsage : null,
+            ServiceTier = serviceTier
         };
     }
 
@@ -328,4 +333,6 @@ public class AgentChatResult
     public List<ThinkingStep> ThinkingSteps { get; set; } = new();
     /// <summary>Token usage summed across every Gemini call made during the agent loop, or null if the provider reported none.</summary>
     public GeminiTokenUsage? TokenUsage { get; set; }
+    /// <summary>Gemini response service tier reported by the provider, when available.</summary>
+    public string? ServiceTier { get; set; }
 }

@@ -86,6 +86,7 @@ public class GeminiClient : IGeminiClient
 
                 var response = await _httpClient.SendAsync(messageRequest, cts.Token);
                 var responseContent = await response.Content.ReadAsStringAsync(cts.Token);
+                var responseServiceTier = GetResponseServiceTier(response);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -111,16 +112,17 @@ public class GeminiClient : IGeminiClient
                     {
                         _logger.LogWarning("Gemini API rate limit exceeded (429)");
                         UpdateSuccessRate();
-                        return GetFallbackResponse("GeminiAPIRateLimit");
+                        return WithServiceTier(GetFallbackResponse("GeminiAPIRateLimit"), responseServiceTier);
                     }
 
                     _logger.LogError("Gemini API returned error: {StatusCode} - {Content}", response.StatusCode, responseContent);
                     UpdateSuccessRate();
-                    return GetFallbackResponse("GeminiAPIError");
+                    return WithServiceTier(GetFallbackResponse("GeminiAPIError"), responseServiceTier);
                 }
 
                 using var document = JsonDocument.Parse(responseContent);
                 var parsed = ParseGeminiResponse(document.RootElement);
+                parsed.ServiceTier = responseServiceTier;
                 if (!parsed.Success)
                 {
                     return parsed;
@@ -187,6 +189,7 @@ public class GeminiClient : IGeminiClient
             messageRequest,
             HttpCompletionOption.ResponseHeadersRead,
             cts.Token);
+        var responseServiceTier = GetResponseServiceTier(response);
 
         if (!response.IsSuccessStatusCode)
         {
@@ -196,9 +199,11 @@ public class GeminiClient : IGeminiClient
             yield return new GeminiStreamEvent
             {
                 Type = "final",
-                Response = GetFallbackResponse(response.StatusCode == System.Net.HttpStatusCode.TooManyRequests
-                    ? "GeminiAPIRateLimit"
-                    : "GeminiAPIError")
+                Response = WithServiceTier(
+                    GetFallbackResponse(response.StatusCode == System.Net.HttpStatusCode.TooManyRequests
+                        ? "GeminiAPIRateLimit"
+                        : "GeminiAPIError"),
+                    responseServiceTier)
             };
             yield break;
         }
@@ -220,6 +225,7 @@ public class GeminiClient : IGeminiClient
 
             using var document = JsonDocument.Parse(data);
             var parsed = ParseGeminiResponse(document.RootElement);
+            parsed.ServiceTier = responseServiceTier;
             if (!parsed.Success)
             {
                 yield return new GeminiStreamEvent
@@ -269,9 +275,21 @@ public class GeminiClient : IGeminiClient
                 Content = accumulatedText.ToString(),
                 ThoughtContent = accumulatedThought.ToString(),
                 FunctionCalls = functionCalls,
-                TokenUsage = tokenUsage
+                TokenUsage = tokenUsage,
+                ServiceTier = responseServiceTier
             }
         };
+    }
+
+    private static string? GetResponseServiceTier(HttpResponseMessage response) =>
+        response.Headers.TryGetValues("x-gemini-service-tier", out var values)
+            ? values.FirstOrDefault()
+            : null;
+
+    private static GeminiResponse WithServiceTier(GeminiResponse response, string? serviceTier)
+    {
+        response.ServiceTier = serviceTier;
+        return response;
     }
 
     private static object GetAttachmentPart(GeminiAttachment attachment)

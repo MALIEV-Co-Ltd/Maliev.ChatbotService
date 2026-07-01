@@ -388,15 +388,17 @@ public sealed class SendMessageCommandHandlerCostTests
     [Fact]
     public async Task HandleAsync_GeminiTokenUsage_PersistsCostBreakdownInAssistantMetadata()
     {
-        var result = await SendWebsiteMessageAsync(tokenUsage: new GeminiTokenUsage
-        {
-            PromptTokens = 100,
-            CachedPromptTokens = 35,
-            ToolUsePromptTokens = 12,
-            ThoughtTokens = 0,
-            CompletionTokens = 25,
-            TotalTokens = 137
-        });
+        var result = await SendWebsiteMessageAsync(
+            tokenUsage: new GeminiTokenUsage
+            {
+                PromptTokens = 100,
+                CachedPromptTokens = 35,
+                ToolUsePromptTokens = 12,
+                ThoughtTokens = 0,
+                CompletionTokens = 25,
+                TotalTokens = 137
+            },
+            responseServiceTier: "flex");
 
         var assistantMessage = Assert.Single(result.CreatedMessages, message => message.Role == MessageRole.Assistant);
         Assert.NotNull(assistantMessage.MetadataJson);
@@ -408,6 +410,7 @@ public sealed class SendMessageCommandHandlerCostTests
         Assert.Equal(0, tokenUsage.GetProperty("thoughtTokens").GetInt32());
         Assert.Equal(25, tokenUsage.GetProperty("completionTokens").GetInt32());
         Assert.Equal(137, tokenUsage.GetProperty("totalTokens").GetInt32());
+        Assert.Equal("flex", metadata.RootElement.GetProperty("serviceTier").GetString());
     }
 
     [Fact]
@@ -549,7 +552,8 @@ public sealed class SendMessageCommandHandlerCostTests
         Mock<IModelFileStagingService>? modelFileStagingService = null,
         long? fileApiInlineThresholdBytes = null,
         bool geminiSuccess = true,
-        string? geminiErrorMessage = null)
+        string? geminiErrorMessage = null,
+        string? responseServiceTier = null)
     {
         var sessionId = Guid.NewGuid();
         var userProfileId = Guid.NewGuid();
@@ -637,6 +641,7 @@ public sealed class SendMessageCommandHandlerCostTests
                 Success = geminiSuccess,
                 Content = "We can print PLA, PETG, ABS, ASA, nylon, and engineering materials.",
                 ErrorMessage = geminiErrorMessage,
+                ServiceTier = responseServiceTier,
                 TokenUsage = tokenUsage ?? new GeminiTokenUsage { TotalTokens = 25 }
             });
 

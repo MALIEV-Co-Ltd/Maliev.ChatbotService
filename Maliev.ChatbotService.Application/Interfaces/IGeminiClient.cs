@@ -203,6 +203,11 @@ public class GeminiResponse
     public GeminiTokenUsage? TokenUsage { get; set; }
 
     /// <summary>
+    /// Gets or sets the Gemini response service tier reported by the provider, when available.
+    /// </summary>
+    public string? ServiceTier { get; set; }
+
+    /// <summary>
     /// Gets or sets the error type if unsuccessful.
     /// </summary>
     public string? ErrorType { get; set; }

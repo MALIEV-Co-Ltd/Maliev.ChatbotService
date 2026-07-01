@@ -454,6 +454,7 @@ public class AgentChatHandlerTests
                     return new GeminiResponse
                     {
                         Success = true,
+                        ServiceTier = "flex",
                         TokenUsage = new GeminiTokenUsage
                         {
                             PromptTokens = 80,
@@ -474,6 +475,7 @@ public class AgentChatHandlerTests
                 {
                     Success = true,
                     Content = "Here is your quote.",
+                    ServiceTier = "flex",
                     TokenUsage = new GeminiTokenUsage
                     {
                         PromptTokens = 120,
@@ -503,6 +505,7 @@ public class AgentChatHandlerTests
         Assert.Equal(11, result.TokenUsage.ToolUsePromptTokens);
         Assert.Equal(15, result.TokenUsage.ThoughtTokens);
         Assert.Equal(50, result.TokenUsage.CompletionTokens);
+        Assert.Equal("flex", result.ServiceTier);
     }
 
     /// <summary>

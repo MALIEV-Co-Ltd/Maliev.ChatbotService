@@ -524,6 +524,23 @@ public sealed class GeminiClientFunctionCallSerializationTests
         Assert.Equal(145, response.TokenUsage.TotalTokens);
     }
 
+    [Fact]
+    public async Task SendMessageAsync_ResponseServiceTierHeader_MapsToResponse()
+    {
+        var handler = new CapturingHandler(
+            """{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}""",
+            ("x-gemini-service-tier", "flex"));
+        var client = CreateClient(handler);
+
+        var response = await client.SendMessageAsync(new GeminiRequest
+        {
+            ServiceTier = "flex",
+            Messages = [new GeminiMessage { Role = "user", Content = "hi" }]
+        });
+
+        Assert.Equal("flex", response.ServiceTier);
+    }
+
     private static GeminiClient CreateClient(
         HttpMessageHandler handler,
         IReadOnlyDictionary<string, string?>? extraConfiguration = null)
@@ -560,7 +577,9 @@ public sealed class GeminiClientFunctionCallSerializationTests
         return factory.Object;
     }
 
-    private sealed class CapturingHandler(string responseJson) : HttpMessageHandler
+    private sealed class CapturingHandler(
+        string responseJson,
+        params (string Name, string Value)[] responseHeaders) : HttpMessageHandler
     {
         public string? RequestBody { get; private set; }
 
@@ -576,10 +595,17 @@ public sealed class GeminiClientFunctionCallSerializationTests
                 ? null
                 : await request.Content.ReadAsStringAsync(cancellationToken);
 
-            return new HttpResponseMessage(HttpStatusCode.OK)
+            var response = new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
             };
+
+            foreach (var (name, value) in responseHeaders)
+            {
+                response.Headers.Add(name, value);
+            }
+
+            return response;
         }
     }
 
