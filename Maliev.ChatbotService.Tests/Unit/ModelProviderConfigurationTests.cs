@@ -62,6 +62,22 @@ public sealed class ModelProviderConfigurationTests
     }
 
     [Fact]
+    public void AppSettings_DefaultsUtilityGeminiRequestsToFlexInference()
+    {
+        var appsettings = File.ReadAllText(Path.Combine(
+            GetRepositoryRoot(),
+            "Maliev.ChatbotService.Api",
+            "appsettings.json"));
+
+        var utilityRequestsBlock = ExtractSourceBlock(
+            appsettings,
+            "\"UtilityRequests\"",
+            "\"ContextCache\"");
+
+        Assert.Contains("\"ServiceTier\": \"flex\"", utilityRequestsBlock, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void MessagesController_PostsOnlyAbsoluteThinkingCallbackUris()
     {
         var controller = File.ReadAllText(Path.Combine(
