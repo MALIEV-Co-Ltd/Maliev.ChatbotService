@@ -44,6 +44,10 @@ public class SendMessageCommandHandler
     private readonly ILogger<SendMessageCommandHandler> _logger;
     private readonly bool _webSearchGloballyEnabled;
     private readonly long _fileApiInlineThresholdBytes;
+    private readonly long _maxImageSizeBytes;
+    private readonly long _maxPdfSizeBytes;
+    private readonly long _maxVideoSizeBytes;
+    private readonly long _maxAudioSizeBytes;
     private readonly string _defaultChatModelName;
 
     // Must exceed the worst-case agent loop so the per-session lock cannot expire mid-turn and let a
@@ -55,6 +59,10 @@ public class SendMessageCommandHandler
     private const int AgentThinkingBudgetTokens = 1024;
     private const int MaxStructuredOutputSchemaJsonCharacters = 16_384;
     private const long DefaultFileApiInlineThresholdBytes = 5L * 1024 * 1024;
+    private const int DefaultMaxImageSizeMb = 10;
+    private const int DefaultMaxPdfSizeMb = 20;
+    private const int DefaultMaxVideoSizeMb = 50;
+    private const int DefaultMaxAudioSizeMb = 10;
     private const string JsonResponseMimeType = "application/json";
     private static readonly HashSet<string> AllowedChatModelOverrides = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -149,6 +157,10 @@ public class SendMessageCommandHandler
             0,
             configuration?.GetValue<long?>("Gemini:FileApiInlineThresholdBytes") ??
                 DefaultFileApiInlineThresholdBytes);
+        _maxImageSizeBytes = ResolveMaxFileSizeBytes(configuration, "FileUploadLimits:MaxImageSizeMB", DefaultMaxImageSizeMb);
+        _maxPdfSizeBytes = ResolveMaxFileSizeBytes(configuration, "FileUploadLimits:MaxPdfSizeMB", DefaultMaxPdfSizeMb);
+        _maxVideoSizeBytes = ResolveMaxFileSizeBytes(configuration, "FileUploadLimits:MaxVideoSizeMB", DefaultMaxVideoSizeMb);
+        _maxAudioSizeBytes = ResolveMaxFileSizeBytes(configuration, "FileUploadLimits:MaxAudioSizeMB", DefaultMaxAudioSizeMb);
         _defaultChatModelName = configuration?["Gemini:MainModelName"] ?? "gemini-2.5-flash";
     }
 
@@ -238,17 +250,13 @@ public class SendMessageCommandHandler
                         throw new InvalidOperationException(referenceError);
                     }
 
-                    const long maxImageSize = 10 * 1024 * 1024; // 10 MB
-                    const long maxPdfSize = 20 * 1024 * 1024; // 20 MB
-                    const long maxVideoSize = 50 * 1024 * 1024; // 50 MB
-
                     var maxSize = attachment.ContentType switch
                     {
-                        ContentType.Image => maxImageSize,
-                        ContentType.PDF => maxPdfSize,
-                        ContentType.Video => maxVideoSize,
-                        ContentType.Audio => maxVideoSize,
-                        _ => maxImageSize
+                        ContentType.Image => _maxImageSizeBytes,
+                        ContentType.PDF => _maxPdfSizeBytes,
+                        ContentType.Video => _maxVideoSizeBytes,
+                        ContentType.Audio => _maxAudioSizeBytes,
+                        _ => _maxImageSizeBytes
                     };
 
                     if (attachment.SizeBytes > maxSize)
@@ -1311,6 +1319,12 @@ public class SendMessageCommandHandler
             "en" => Language.English,
             _ => _languageDetectionService.DetectLanguage(content)
         };
+    }
+
+    private static long ResolveMaxFileSizeBytes(IConfiguration? configuration, string key, int defaultSizeMb)
+    {
+        var sizeMb = configuration?.GetValue<int?>(key) ?? defaultSizeMb;
+        return Math.Max(1, sizeMb) * 1024L * 1024L;
     }
 
     /// <summary>

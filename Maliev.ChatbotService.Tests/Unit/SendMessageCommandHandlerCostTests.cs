@@ -221,6 +221,29 @@ public sealed class SendMessageCommandHandlerCostTests
     }
 
     [Fact]
+    public async Task HandleAsync_AudioAttachmentOver10Mb_IsRejectedBeforeGeminiCall()
+    {
+        var geminiClient = new Mock<IGeminiClient>();
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => SendWebsiteMessageAsync(
+            [
+                new AttachmentDto
+                {
+                    ContentType = ContentType.Audio,
+                    Data = "AAAA",
+                    MimeType = "audio/mpeg",
+                    SizeBytes = 11 * 1024 * 1024
+                }
+            ],
+            geminiClientOverride: geminiClient));
+
+        Assert.Contains("10MB for Audio", exception.Message, StringComparison.Ordinal);
+        geminiClient.Verify(
+            item => item.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
     public async Task HandleAsync_PersistedMediaAttachment_UsesMediumMediaResolution()
     {
         var now = DateTimeOffset.UtcNow;
@@ -583,6 +606,7 @@ public sealed class SendMessageCommandHandlerCostTests
         bool globalWebSearchEnabled = false,
         string? cachedContentName = null,
         Mock<IModelFileStagingService>? modelFileStagingService = null,
+        Mock<IGeminiClient>? geminiClientOverride = null,
         long? fileApiInlineThresholdBytes = null,
         bool geminiSuccess = true,
         string? geminiErrorMessage = null,
@@ -668,7 +692,7 @@ public sealed class SendMessageCommandHandlerCostTests
             .Setup(item => item.RecordModelUsageAsync(userProfileId, It.IsAny<UsageBudgetCharge>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new UsageBudgetRecordResult { UsedTokens = 25 });
 
-        var geminiClient = new Mock<IGeminiClient>();
+        var geminiClient = geminiClientOverride ?? new Mock<IGeminiClient>();
         geminiClient
             .Setup(item => item.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()))
             .Callback<GeminiRequest, CancellationToken>((request, _) => capturedRequest = request)

@@ -12,7 +12,7 @@ public class FileValidationService : IFileValidationService
     private const long MaxImageSizeBytes = 10 * 1024 * 1024; // 10MB
     private const long MaxPdfSizeBytes = 20 * 1024 * 1024; // 20MB
     private const long MaxVideoSizeBytes = 50 * 1024 * 1024; // 50MB
-    private const long MaxAudioSizeBytes = 20 * 1024 * 1024; // 20MB
+    private const long MaxAudioSizeBytes = 10 * 1024 * 1024; // 10MB
 
     private readonly ILogger<FileValidationService> _logger;
 

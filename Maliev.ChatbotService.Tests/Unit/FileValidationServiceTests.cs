@@ -132,6 +132,15 @@ public class FileValidationServiceTests
     }
 
     [Fact]
+    public void ValidateAttachment_WithAudioOver10Mb_ReturnsInvalid()
+    {
+        var (isValid, error) = _service.ValidateAttachment("audio/mp3", 11 * 1024 * 1024, ContentType.Audio);
+        Assert.False(isValid);
+        Assert.NotNull(error);
+        Assert.Contains("10MB", error, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ValidateAttachment_WithMimeMismatch_ReturnsInvalid()
     {
         // Declare as Image but send text/plain
