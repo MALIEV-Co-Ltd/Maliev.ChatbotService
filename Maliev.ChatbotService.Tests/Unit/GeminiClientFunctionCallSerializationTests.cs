@@ -240,6 +240,7 @@ public sealed class GeminiClientFunctionCallSerializationTests
         {
             SystemInstruction = "sys",
             ServiceTier = "flex",
+            TimeoutSeconds = GeminiRequest.FlexInferenceTimeoutSeconds,
             Messages = [new GeminiMessage { Role = "user", Content = "hi" }]
         });
 
@@ -249,6 +250,10 @@ public sealed class GeminiClientFunctionCallSerializationTests
         Assert.False(
             doc.RootElement.TryGetProperty("generationConfig", out var generationConfig) &&
             generationConfig.TryGetProperty("service_tier", out _));
+
+        Assert.NotNull(handler.RequestHeaders);
+        Assert.True(handler.RequestHeaders!.TryGetValue("X-Server-Timeout", out var serverTimeout));
+        Assert.Equal("600", Assert.Single(serverTimeout));
     }
 
     [Fact]
@@ -337,8 +342,14 @@ public sealed class GeminiClientFunctionCallSerializationTests
     {
         public string? RequestBody { get; private set; }
 
+        public Dictionary<string, string[]>? RequestHeaders { get; private set; }
+
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            RequestHeaders = request.Headers.ToDictionary(
+                header => header.Key,
+                header => header.Value.ToArray(),
+                StringComparer.OrdinalIgnoreCase);
             RequestBody = request.Content is null
                 ? null
                 : await request.Content.ReadAsStringAsync(cancellationToken);

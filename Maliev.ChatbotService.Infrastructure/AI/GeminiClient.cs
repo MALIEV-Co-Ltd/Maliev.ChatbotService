@@ -2,6 +2,7 @@ using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Infrastructure.Metrics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -71,7 +72,7 @@ public class GeminiClient : IGeminiClient
             var json = BuildGeminiPayloadJson(request);
 
             using var messageRequest = new HttpRequestMessage(HttpMethod.Post, url);
-            messageRequest.Headers.Add("x-goog-api-key", _apiKey);
+            AddGeminiHeaders(messageRequest, request);
             messageRequest.Content = new StringContent(json, Encoding.UTF8, "application/json");
 
             var response = await _httpClient.SendAsync(messageRequest, cts.Token);
@@ -148,7 +149,7 @@ public class GeminiClient : IGeminiClient
         var json = BuildGeminiPayloadJson(request);
 
         using var messageRequest = new HttpRequestMessage(HttpMethod.Post, url);
-        messageRequest.Headers.Add("x-goog-api-key", _apiKey);
+        AddGeminiHeaders(messageRequest, request);
         messageRequest.Content = new StringContent(json, Encoding.UTF8, "application/json");
 
         using var response = await _httpClient.SendAsync(
@@ -286,6 +287,15 @@ public class GeminiClient : IGeminiClient
     {
         return data.StartsWith("gs://", StringComparison.OrdinalIgnoreCase) ||
             data.StartsWith("https://generativelanguage.googleapis.com/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void AddGeminiHeaders(HttpRequestMessage messageRequest, GeminiRequest request)
+    {
+        messageRequest.Headers.Add("x-goog-api-key", _apiKey);
+        if (string.Equals(request.ServiceTier, "flex", StringComparison.OrdinalIgnoreCase))
+        {
+            messageRequest.Headers.Add("X-Server-Timeout", request.TimeoutSeconds.ToString(CultureInfo.InvariantCulture));
+        }
     }
 
     /// <summary>
