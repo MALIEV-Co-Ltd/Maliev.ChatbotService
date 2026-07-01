@@ -226,7 +226,7 @@ public class GeminiClient : IGeminiClient
             }
 
             using var document = JsonDocument.Parse(data);
-            var parsed = ParseGeminiResponse(document.RootElement);
+            var parsed = ParseGeminiResponse(document.RootElement, allowCandidateLessResponse: true);
             parsed.ServiceTier = responseServiceTier ?? parsed.ServiceTier;
             streamServiceTier = parsed.ServiceTier ?? streamServiceTier;
             if (!parsed.Success)
@@ -681,10 +681,48 @@ public class GeminiClient : IGeminiClient
         return generationConfig;
     }
 
-    private GeminiResponse ParseGeminiResponse(JsonElement geminiResponse)
+    private GeminiResponse ParseGeminiResponse(JsonElement geminiResponse, bool allowCandidateLessResponse = false)
     {
-        var candidates = geminiResponse.GetProperty("candidates");
+        var tokenUsage = geminiResponse.TryGetProperty("usageMetadata", out var usageMetadata) &&
+            usageMetadata.ValueKind == JsonValueKind.Object
+                ? ParseTokenUsage(usageMetadata)
+                : null;
+        var serviceTier = usageMetadata.ValueKind == JsonValueKind.Object &&
+            usageMetadata.TryGetProperty("serviceTier", out var serviceTierElement)
+                ? serviceTierElement.GetString()
+                : null;
+
+        if (!geminiResponse.TryGetProperty("candidates", out var candidates) ||
+            candidates.ValueKind != JsonValueKind.Array)
+        {
+            if (allowCandidateLessResponse)
+            {
+                return new GeminiResponse
+                {
+                    Success = true,
+                    TokenUsage = tokenUsage,
+                    ServiceTier = serviceTier
+                };
+            }
+
+            throw new JsonException("Gemini response did not include candidates.");
+        }
+
         var firstCandidate = candidates.EnumerateArray().FirstOrDefault();
+        if (firstCandidate.ValueKind != JsonValueKind.Object)
+        {
+            if (allowCandidateLessResponse)
+            {
+                return new GeminiResponse
+                {
+                    Success = true,
+                    TokenUsage = tokenUsage,
+                    ServiceTier = serviceTier
+                };
+            }
+
+            throw new JsonException("Gemini response did not include a candidate object.");
+        }
 
         if (firstCandidate.TryGetProperty("finishReason", out var finishReason) &&
             finishReason.GetString() == "SAFETY")
@@ -748,14 +786,6 @@ public class GeminiClient : IGeminiClient
                 }
             }
         }
-
-        var tokenUsage = geminiResponse.TryGetProperty("usageMetadata", out var usageMetadata)
-            ? ParseTokenUsage(usageMetadata)
-            : null;
-        var serviceTier = usageMetadata.ValueKind == JsonValueKind.Object &&
-            usageMetadata.TryGetProperty("serviceTier", out var serviceTierElement)
-                ? serviceTierElement.GetString()
-                : null;
 
         return new GeminiResponse
         {

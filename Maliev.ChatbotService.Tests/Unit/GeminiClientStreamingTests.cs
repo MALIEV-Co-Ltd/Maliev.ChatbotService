@@ -62,6 +62,52 @@ public sealed class GeminiClientStreamingTests
     }
 
     [Fact]
+    public async Task StreamMessageAsync_UsageMetadataWithoutCandidates_UpdatesFinalTokenUsage()
+    {
+        var handler = new GeminiStreamingHandler([
+            """
+            data: {"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}]}
+            """,
+            """
+            data: {"usageMetadata":{"promptTokenCount":9,"cachedContentTokenCount":4,"candidatesTokenCount":2,"totalTokenCount":11,"serviceTier":"flex"}}
+            """
+        ]);
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Gemini:ApiKey"] = "test-key",
+                ["Gemini:MainModelName"] = "gemini-test"
+            })
+            .Build();
+        var client = new GeminiClient(
+            new HttpClient(handler) { BaseAddress = new Uri("https://generativelanguage.googleapis.com/") },
+            configuration,
+            new ConversationMetrics(CreateMeterFactory(), configuration),
+            NullLogger<GeminiClient>.Instance);
+
+        var events = new List<GeminiStreamEvent>();
+        await foreach (var streamEvent in client.StreamMessageAsync(new GeminiRequest
+        {
+            SystemInstruction = "You are a test assistant.",
+            Messages = [new GeminiMessage { Role = "user", Content = "Say ok" }]
+        }))
+        {
+            events.Add(streamEvent);
+        }
+
+        var final = Assert.Single(events, item => item.Type == "final");
+        Assert.NotNull(final.Response);
+        Assert.True(final.Response.Success);
+        Assert.Equal("ok", final.Response.Content);
+        Assert.Equal("flex", final.Response.ServiceTier);
+        Assert.NotNull(final.Response.TokenUsage);
+        Assert.Equal(9, final.Response.TokenUsage.PromptTokens);
+        Assert.Equal(4, final.Response.TokenUsage.CachedPromptTokens);
+        Assert.Equal(2, final.Response.TokenUsage.CompletionTokens);
+        Assert.Equal(11, final.Response.TokenUsage.TotalTokens);
+    }
+
+    [Fact]
     public async Task StreamMessageAsync_FunctionCallWithArrayArg_PreservesArrayStructureForToolForwarding()
     {
         // Gemini returns an array-of-object argument (cad_commands) on a tool call.
