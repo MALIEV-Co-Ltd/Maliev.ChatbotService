@@ -639,6 +639,32 @@ public sealed class GeminiClientFunctionCallSerializationTests
     }
 
     [Fact]
+    public async Task SendMessageAsync_GroundingMetadata_MapsWebSearchQueries()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "candidates":[{
+                "content":{"parts":[{"text":"ok"}]},
+                "groundingMetadata":{
+                  "webSearchQueries":["latest ISO 9001 requirements","official ASTM D638 source"]
+                }
+              }]
+            }
+            """);
+        var client = CreateClient(handler);
+
+        var response = await client.SendMessageAsync(new GeminiRequest
+        {
+            EnableWebSearch = true,
+            Messages = [new GeminiMessage { Role = "user", Content = "Find the latest ISO 9001 source" }]
+        });
+
+        Assert.Equal(
+            ["latest ISO 9001 requirements", "official ASTM D638 source"],
+            response.GroundingWebSearchQueries);
+    }
+
+    [Fact]
     public async Task SendMessageAsync_ResponseServiceTierHeader_MapsToResponse()
     {
         var handler = new CapturingHandler(

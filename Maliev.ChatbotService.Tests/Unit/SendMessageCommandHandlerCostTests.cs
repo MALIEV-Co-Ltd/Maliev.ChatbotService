@@ -558,6 +558,11 @@ public sealed class SendMessageCommandHandlerCostTests
     public async Task HandleAsync_GeminiTokenUsage_PersistsCostBreakdownInAssistantMetadata()
     {
         var result = await SendWebsiteMessageAsync(
+            groundingWebSearchQueries:
+            [
+                "latest ISO 9001 requirements",
+                "official ASTM D638 source"
+            ],
             tokenUsage: new GeminiTokenUsage
             {
                 PromptTokens = 1000,
@@ -594,6 +599,10 @@ public sealed class SendMessageCommandHandlerCostTests
         var promptDetail = Assert.Single(tokenUsage.GetProperty("promptTokenDetails").EnumerateArray());
         Assert.Equal("TEXT", promptDetail.GetProperty("modality").GetString());
         Assert.Equal(1000, promptDetail.GetProperty("tokenCount").GetInt32());
+        var groundingMetadata = metadata.RootElement.GetProperty("groundingMetadata");
+        Assert.Equal(
+            ["latest ISO 9001 requirements", "official ASTM D638 source"],
+            groundingMetadata.GetProperty("webSearchQueries").EnumerateArray().Select(item => item.GetString() ?? string.Empty).ToArray());
         Assert.Equal("flex", metadata.RootElement.GetProperty("serviceTier").GetString());
         var costEstimate = metadata.RootElement.GetProperty("costEstimate");
         Assert.Equal("gemini-2.5-flash", costEstimate.GetProperty("modelName").GetString());
@@ -762,7 +771,8 @@ public sealed class SendMessageCommandHandlerCostTests
         string? chatImageMediaResolution = null,
         string? chatPdfMediaResolution = null,
         string? chatVideoMediaResolution = null,
-        bool urlContextEnabled = false)
+        bool urlContextEnabled = false,
+        IReadOnlyList<string>? groundingWebSearchQueries = null)
     {
         var sessionId = Guid.NewGuid();
         var userProfileId = Guid.NewGuid();
@@ -854,6 +864,7 @@ public sealed class SendMessageCommandHandlerCostTests
                 Content = "We can print PLA, PETG, ABS, ASA, nylon, and engineering materials.",
                 ErrorMessage = geminiErrorMessage,
                 ServiceTier = responseServiceTier,
+                GroundingWebSearchQueries = groundingWebSearchQueries?.ToList() ?? [],
                 TokenUsage = tokenUsage ?? new GeminiTokenUsage { TotalTokens = 25 }
             });
 

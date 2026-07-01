@@ -574,7 +574,8 @@ public class AgentChatHandlerTests
                         FunctionCalls = new List<GeminiFunctionCall>
                         {
                             new GeminiFunctionCall { Name = "quote_get_state", Args = new Dictionary<string, object>() }
-                        }
+                        },
+                        GroundingWebSearchQueries = ["latest ASA material datasheet"]
                     };
                 }
 
@@ -591,7 +592,8 @@ public class AgentChatHandlerTests
                         ThoughtTokens = 8,
                         CompletionTokens = 30,
                         TotalTokens = 150
-                    }
+                    },
+                    GroundingWebSearchQueries = ["official ASTM D638 source"]
                 };
             });
 
@@ -613,6 +615,9 @@ public class AgentChatHandlerTests
         Assert.Equal(15, result.TokenUsage.ThoughtTokens);
         Assert.Equal(50, result.TokenUsage.CompletionTokens);
         Assert.Equal("flex", result.ServiceTier);
+        Assert.Equal(
+            ["latest ASA material datasheet", "official ASTM D638 source"],
+            result.GroundingWebSearchQueries);
     }
 
     /// <summary>

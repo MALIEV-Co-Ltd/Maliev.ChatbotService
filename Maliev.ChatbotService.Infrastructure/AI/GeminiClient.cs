@@ -829,8 +829,32 @@ public class GeminiClient : IGeminiClient
             ThoughtContent = string.Join("", thoughtParts),
             FunctionCalls = functionCalls,
             TokenUsage = tokenUsage,
-            ServiceTier = serviceTier
+            ServiceTier = serviceTier,
+            GroundingWebSearchQueries = ParseGroundingWebSearchQueries(firstCandidate)
         };
+    }
+
+    private static List<string> ParseGroundingWebSearchQueries(JsonElement candidate)
+    {
+        if (!candidate.TryGetProperty("groundingMetadata", out var groundingMetadata) ||
+            groundingMetadata.ValueKind != JsonValueKind.Object ||
+            !groundingMetadata.TryGetProperty("webSearchQueries", out var webSearchQueries) ||
+            webSearchQueries.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var queries = new List<string>();
+        foreach (var query in webSearchQueries.EnumerateArray())
+        {
+            var value = query.GetString();
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                queries.Add(value);
+            }
+        }
+
+        return queries;
     }
 
     private GeminiResponse? TryBuildPromptFeedbackFallback(

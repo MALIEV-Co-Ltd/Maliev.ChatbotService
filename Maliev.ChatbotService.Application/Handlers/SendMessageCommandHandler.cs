@@ -638,7 +638,8 @@ public class SendMessageCommandHandler
                         ErrorMessage = agentResult.ErrorMessage,
                         IsFallback = agentResult.IsFallback,
                         TokenUsage = agentResult.TokenUsage,
-                        ServiceTier = agentResult.ServiceTier
+                        ServiceTier = agentResult.ServiceTier,
+                        GroundingWebSearchQueries = agentResult.GroundingWebSearchQueries
                     };
                 }
                 else
@@ -722,6 +723,8 @@ public class SendMessageCommandHandler
                         tokenUsage = BuildTokenUsageMetadata(geminiResponse.TokenUsage),
 
                         serviceTier = geminiResponse.ServiceTier,
+
+                        groundingMetadata = BuildGroundingMetadata(geminiResponse),
 
                         costEstimate = BuildCostEstimateMetadata(costEstimate)
 
@@ -1359,6 +1362,16 @@ public class SendMessageCommandHandler
                 cachedTokenDetails = BuildModalityTokenDetails(tokenUsage.CachedTokenDetails),
                 candidateTokenDetails = BuildModalityTokenDetails(tokenUsage.CandidateTokenDetails),
                 toolUsePromptTokenDetails = BuildModalityTokenDetails(tokenUsage.ToolUsePromptTokenDetails)
+            };
+    }
+
+    private static object? BuildGroundingMetadata(GeminiResponse response)
+    {
+        return response.GroundingWebSearchQueries.Count == 0
+            ? null
+            : new
+            {
+                webSearchQueries = response.GroundingWebSearchQueries.ToArray()
             };
     }
 

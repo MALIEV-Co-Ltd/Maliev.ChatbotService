@@ -219,6 +219,11 @@ public class GeminiResponse
     public string? ServiceTier { get; set; }
 
     /// <summary>
+    /// Gets or sets Gemini Google Search grounding queries reported by the provider.
+    /// </summary>
+    public List<string> GroundingWebSearchQueries { get; set; } = [];
+
+    /// <summary>
     /// Gets or sets the error type if unsuccessful.
     /// </summary>
     public string? ErrorType { get; set; }

@@ -64,6 +64,7 @@ public class AgentChatHandler
         var accumulatedUsage = new GeminiTokenUsage();
         var sawUsage = false;
         string? serviceTier = null;
+        var groundingWebSearchQueries = new List<string>();
 
         for (var iteration = 0; iteration < MaxIterations; iteration++)
         {
@@ -88,6 +89,7 @@ public class AgentChatHandler
 
             var response = await SendGeminiMaybeStreamingAsync(iterationRequest, onTextDelta, onThoughtDelta, cancellationToken);
             serviceTier = response.ServiceTier ?? serviceTier;
+            AddGroundingWebSearchQueries(groundingWebSearchQueries, response.GroundingWebSearchQueries);
 
             if (response.TokenUsage is { } usage)
             {
@@ -114,7 +116,8 @@ public class AgentChatHandler
                     IsFallback = response.IsFallback,
                     ThinkingSteps = thinkingSteps,
                     TokenUsage = sawUsage ? accumulatedUsage : null,
-                    ServiceTier = serviceTier
+                    ServiceTier = serviceTier,
+                    GroundingWebSearchQueries = groundingWebSearchQueries
                 };
             }
 
@@ -127,7 +130,8 @@ public class AgentChatHandler
                     Content = response.Content,
                     ThinkingSteps = thinkingSteps,
                     TokenUsage = sawUsage ? accumulatedUsage : null,
-                    ServiceTier = serviceTier
+                    ServiceTier = serviceTier,
+                    GroundingWebSearchQueries = groundingWebSearchQueries
                 };
             }
 
@@ -261,7 +265,8 @@ public class AgentChatHandler
             Content = "I wasn't able to fully work through that request in the steps available. Could you share a bit more detail, or break it into a smaller step? You can also reach the MALIEV team at info@maliev.com.",
             ThinkingSteps = thinkingSteps,
             TokenUsage = sawUsage ? accumulatedUsage : null,
-            ServiceTier = serviceTier
+            ServiceTier = serviceTier,
+            GroundingWebSearchQueries = groundingWebSearchQueries
         };
     }
 
@@ -335,6 +340,17 @@ public class AgentChatHandler
             });
         }
     }
+
+    private static void AddGroundingWebSearchQueries(List<string> target, IReadOnlyCollection<string> source)
+    {
+        foreach (var query in source)
+        {
+            if (!string.IsNullOrWhiteSpace(query))
+            {
+                target.Add(query);
+            }
+        }
+    }
 }
 
 /// <summary>
@@ -356,4 +372,6 @@ public class AgentChatResult
     public GeminiTokenUsage? TokenUsage { get; set; }
     /// <summary>Gemini response service tier reported by the provider, when available.</summary>
     public string? ServiceTier { get; set; }
+    /// <summary>Gemini Google Search grounding queries reported across provider calls.</summary>
+    public List<string> GroundingWebSearchQueries { get; set; } = new();
 }
