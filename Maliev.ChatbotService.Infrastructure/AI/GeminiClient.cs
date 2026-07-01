@@ -245,7 +245,7 @@ public class GeminiClient : IGeminiClient
 
     private static object GetAttachmentPart(GeminiAttachment attachment)
     {
-        if (IsGeminiFileUri(attachment.Data))
+        if (IsGeminiFileUri(attachment.Data) || IsSupportedHttpsFileUrl(attachment.Data, attachment.MimeType))
         {
             return new
             {
@@ -287,6 +287,32 @@ public class GeminiClient : IGeminiClient
     {
         return data.StartsWith("gs://", StringComparison.OrdinalIgnoreCase) ||
             data.StartsWith("https://generativelanguage.googleapis.com/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsSupportedHttpsFileUrl(string data, string mimeType)
+    {
+        if (!data.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return IsSupportedExternalFileMimeType(mimeType);
+    }
+
+    private static bool IsSupportedExternalFileMimeType(string mimeType)
+    {
+        if (string.IsNullOrWhiteSpace(mimeType))
+        {
+            return false;
+        }
+
+        var normalizedMimeType = mimeType.Trim();
+        return normalizedMimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) ||
+            normalizedMimeType.StartsWith("video/", StringComparison.OrdinalIgnoreCase) ||
+            normalizedMimeType.StartsWith("audio/", StringComparison.OrdinalIgnoreCase) ||
+            normalizedMimeType.Equals("application/pdf", StringComparison.OrdinalIgnoreCase) ||
+            normalizedMimeType.StartsWith("text/", StringComparison.OrdinalIgnoreCase) ||
+            normalizedMimeType.Equals("application/json", StringComparison.OrdinalIgnoreCase);
     }
 
     private void AddGeminiHeaders(HttpRequestMessage messageRequest, GeminiRequest request)

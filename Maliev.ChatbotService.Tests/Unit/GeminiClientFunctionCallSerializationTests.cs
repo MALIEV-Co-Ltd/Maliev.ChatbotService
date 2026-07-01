@@ -134,7 +134,7 @@ public sealed class GeminiClientFunctionCallSerializationTests
     }
 
     [Fact]
-    public async Task SendMessageAsync_ExternalHttpsAttachment_SerializesAsTextReferenceNotFileData()
+    public async Task SendMessageAsync_ExternalHttpsAttachment_SerializesAsFileData()
     {
         var handler = new CapturingHandler("""{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}""");
         var client = CreateClient(handler);
@@ -164,10 +164,9 @@ public sealed class GeminiClientFunctionCallSerializationTests
         using var doc = JsonDocument.Parse(handler.RequestBody!);
         var parts = doc.RootElement.GetProperty("contents")[0].GetProperty("parts").EnumerateArray().ToArray();
         Assert.Equal("Review this sketch.", parts[0].GetProperty("text").GetString());
-        Assert.True(parts[1].TryGetProperty("text", out var referenceText));
-        Assert.Contains("https://signed.example.test/sketch.png?token=abc", referenceText.GetString(), StringComparison.Ordinal);
-        Assert.False(parts[1].TryGetProperty("fileData", out _));
-        Assert.DoesNotContain("fileData", handler.RequestBody);
+        var fileData = parts[1].GetProperty("fileData");
+        Assert.Equal("https://signed.example.test/sketch.png?token=abc", fileData.GetProperty("fileUri").GetString());
+        Assert.Equal("image/png", fileData.GetProperty("mimeType").GetString());
     }
 
     [Fact]
