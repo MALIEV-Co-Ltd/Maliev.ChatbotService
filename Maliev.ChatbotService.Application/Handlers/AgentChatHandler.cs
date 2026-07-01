@@ -81,6 +81,7 @@ public class AgentChatHandler
                 ThinkingBudget = request.ThinkingBudget,
                 MediaResolution = request.MediaResolution,
                 CachedContentName = request.CachedContentName,
+                EnableWebSearch = request.EnableWebSearch,
                 ServiceTier = request.ServiceTier,
                 Store = request.Store
             };

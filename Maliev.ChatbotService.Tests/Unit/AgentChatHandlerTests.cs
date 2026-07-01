@@ -327,6 +327,56 @@ public class AgentChatHandlerTests
     }
 
     /// <summary>
+    /// Verifies that built-in Gemini web search stays enabled across every provider request in the agent loop.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_EnableWebSearch_PreservesBuiltInSearchAcrossIterations()
+    {
+        var initialRequest = new GeminiRequest
+        {
+            EnableWebSearch = true,
+            Messages = new List<GeminiMessage> { new GeminiMessage { Role = "user", Content = "Find the latest ISO material guidance" } }
+        };
+        var capturedRequests = new List<GeminiRequest>();
+
+        _geminiClientMock.Setup(x => x.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<GeminiRequest, CancellationToken>((request, _) => capturedRequests.Add(request))
+            .ReturnsAsync(() =>
+            {
+                if (capturedRequests.Count == 1)
+                {
+                    return new GeminiResponse
+                    {
+                        Success = true,
+                        FunctionCalls = new List<GeminiFunctionCall>
+                        {
+                            new GeminiFunctionCall { Name = "quote_get_state", Args = new Dictionary<string, object>() }
+                        }
+                    };
+                }
+
+                return new GeminiResponse
+                {
+                    Success = true,
+                    Content = "Here is the current guidance."
+                };
+            });
+
+        _toolExecutorMock.Setup(x => x.ExecuteAsync(
+                "quote_get_state",
+                It.IsAny<Dictionary<string, object>>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync("{}");
+
+        var result = await _handler.ExecuteAsync(initialRequest);
+
+        Assert.True(result.Success);
+        Assert.Equal(2, capturedRequests.Count);
+        Assert.All(capturedRequests, request => Assert.True(request.EnableWebSearch));
+    }
+
+    /// <summary>
     /// Verifies that streamed final assistant text is emitted as deltas from the agent loop.
     /// </summary>
     [Fact]
