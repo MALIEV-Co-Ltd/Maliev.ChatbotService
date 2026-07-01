@@ -201,12 +201,66 @@ public sealed class GeminiModelContextCacheServiceTests
         database.Verify(
             item => item.StringSetAsync(
                 It.IsAny<RedisKey>(),
-                It.IsAny<RedisValue>(),
+                It.Is<RedisValue>(value => value.ToString().StartsWith("cachedContents/", StringComparison.Ordinal)),
                 It.IsAny<TimeSpan?>(),
                 It.IsAny<bool>(),
                 It.IsAny<When>(),
                 It.IsAny<CommandFlags>()),
             Times.Never);
+    }
+
+    [Fact]
+    public async Task GetOrCreateSystemInstructionCacheAsync_BelowTokenThreshold_ReusesIneligibleMarker()
+    {
+        var handler = new CapturingHandler("""{"totalTokens":2047}""", """{"totalTokens":2047}""");
+        var database = CreateRedisDatabase();
+        var redisValues = new Dictionary<string, RedisValue>();
+        database
+            .Setup(item => item.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync((RedisKey key, CommandFlags _) =>
+                redisValues.TryGetValue(key.ToString(), out var value) ? value : RedisValue.Null);
+        database
+            .Setup(item => item.LockTakeAsync(
+                It.IsAny<RedisKey>(),
+                It.IsAny<RedisValue>(),
+                It.IsAny<TimeSpan>(),
+                It.IsAny<CommandFlags>()))
+            .ReturnsAsync(true);
+        database
+            .Setup(item => item.LockReleaseAsync(
+                It.IsAny<RedisKey>(),
+                It.IsAny<RedisValue>(),
+                It.IsAny<CommandFlags>()))
+            .ReturnsAsync(true);
+        database
+            .Setup(item => item.StringSetAsync(
+                It.IsAny<RedisKey>(),
+                It.IsAny<RedisValue>(),
+                It.IsAny<TimeSpan?>(),
+                It.IsAny<bool>(),
+                It.IsAny<When>(),
+                It.IsAny<CommandFlags>()))
+            .Callback<RedisKey, RedisValue, TimeSpan?, bool, When, CommandFlags>((key, value, _, _, _, _) =>
+            {
+                redisValues[key.ToString()] = value;
+            })
+            .ReturnsAsync(true);
+
+        var service = CreateService(handler, database.Object);
+        var request = new ModelContextCacheRequest
+        {
+            ModelName = "gemini-2.5-flash",
+            SystemInstruction = new string('x', 9000)
+        };
+
+        var first = await service.GetOrCreateSystemInstructionCacheAsync(request);
+        var second = await service.GetOrCreateSystemInstructionCacheAsync(request);
+
+        Assert.Null(first);
+        Assert.Null(second);
+        Assert.Equal(1, handler.RequestCount);
+        Assert.Equal("/v1beta/models/gemini-2.5-flash:countTokens", Assert.Single(handler.RequestUris));
+        Assert.Contains(redisValues.Keys, key => key.EndsWith(":ineligible:2048", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -279,7 +333,7 @@ public sealed class GeminiModelContextCacheServiceTests
         database.Verify(
             item => item.StringSetAsync(
                 It.IsAny<RedisKey>(),
-                It.IsAny<RedisValue>(),
+                It.Is<RedisValue>(value => value.ToString().StartsWith("cachedContents/", StringComparison.Ordinal)),
                 It.IsAny<TimeSpan?>(),
                 It.IsAny<bool>(),
                 It.IsAny<When>(),

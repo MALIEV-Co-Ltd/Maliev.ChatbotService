@@ -71,6 +71,8 @@ public sealed class GeminiModelContextCacheService : IModelContextCacheService
 
         var modelName = NormalizeModelName(request.ModelName ?? _modelName);
         var cacheKey = BuildCacheKey(modelName, request.SystemInstruction);
+        var minimumTokens = ResolveMinimumCacheTokens(modelName);
+        var ineligibleKey = BuildIneligibleCacheKey(cacheKey, minimumTokens);
         var lockKey = $"{cacheKey}:lock";
         var lockValue = Guid.NewGuid().ToString("N");
 
@@ -81,6 +83,12 @@ public sealed class GeminiModelContextCacheService : IModelContextCacheService
             if (cachedName.HasValue)
             {
                 return new ModelContextCacheReference { CachedContentName = cachedName.ToString() };
+            }
+
+            var ineligibleMarker = await db.StringGetAsync(ineligibleKey);
+            if (ineligibleMarker.HasValue)
+            {
+                return null;
             }
 
             if (!await db.LockTakeAsync(lockKey, lockValue, LockExpiry))
@@ -96,8 +104,25 @@ public sealed class GeminiModelContextCacheService : IModelContextCacheService
                     return new ModelContextCacheReference { CachedContentName = cachedName.ToString() };
                 }
 
-                if (!await IsCacheTokenEligibleAsync(modelName, request.SystemInstruction, cancellationToken))
+                ineligibleMarker = await db.StringGetAsync(ineligibleKey);
+                if (ineligibleMarker.HasValue)
                 {
+                    return null;
+                }
+
+                if (!await IsCacheTokenEligibleAsync(
+                        modelName,
+                        request.SystemInstruction,
+                        minimumTokens,
+                        cancellationToken))
+                {
+                    await db.StringSetAsync(
+                        ineligibleKey,
+                        "1",
+                        ResolveRedisExpiry(),
+                        keepTtl: false,
+                        when: When.Always,
+                        flags: CommandFlags.None);
                     return null;
                 }
 
@@ -135,9 +160,9 @@ public sealed class GeminiModelContextCacheService : IModelContextCacheService
     private async Task<bool> IsCacheTokenEligibleAsync(
         string modelName,
         string systemInstruction,
+        int minimumTokens,
         CancellationToken cancellationToken)
     {
-        var minimumTokens = ResolveMinimumCacheTokens(modelName);
         try
         {
             var tokenCount = await CountSystemInstructionTokensAsync(modelName, systemInstruction, cancellationToken);
@@ -275,6 +300,11 @@ public sealed class GeminiModelContextCacheService : IModelContextCacheService
     {
         var hash = BuildHash($"{modelName}\n{systemInstruction}");
         return $"{CacheKeyPrefix}{modelName}:{hash}";
+    }
+
+    private static RedisKey BuildIneligibleCacheKey(RedisKey cacheKey, int minimumTokens)
+    {
+        return $"{cacheKey}:ineligible:{minimumTokens}";
     }
 
     private static string BuildShortHash(string modelName, string systemInstruction)
