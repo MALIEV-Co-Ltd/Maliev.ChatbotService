@@ -80,8 +80,8 @@ public class UsageBudgetServiceTests : IAsyncLifetime
         var userId = Guid.NewGuid();
 
         await service.RecordTokenUsageAsync(userId, 100);
-        await service.RecordTokenUsageAsync(userId, 0);
-        await service.RecordTokenUsageAsync(userId, -50);
+        Assert.Equal(100, await service.RecordTokenUsageAsync(userId, 0));
+        Assert.Equal(100, await service.RecordTokenUsageAsync(userId, -50));
 
         Assert.Equal(100, await service.GetDailyTokenUsageAsync(userId));
     }

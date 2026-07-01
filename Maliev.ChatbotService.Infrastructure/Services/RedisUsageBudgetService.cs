@@ -73,9 +73,14 @@ public class RedisUsageBudgetService : IUsageBudgetService
     /// <inheritdoc/>
     public async Task<long> RecordTokenUsageAsync(Guid userProfileId, long tokens, CancellationToken cancellationToken = default)
     {
-        if (_dailyTokenBudget <= 0 || tokens <= 0)
+        if (_dailyTokenBudget <= 0)
         {
-            return 0; // Disabled, or nothing to record.
+            return 0; // Budget disabled.
+        }
+
+        if (tokens <= 0)
+        {
+            return await GetDailyTokenUsageAsync(userProfileId, cancellationToken);
         }
 
         var db = _redis.GetDatabase();
