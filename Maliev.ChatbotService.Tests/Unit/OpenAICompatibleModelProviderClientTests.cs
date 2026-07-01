@@ -241,6 +241,41 @@ public sealed class OpenAICompatibleModelProviderClientTests
     }
 
     [Fact]
+    public async Task StreamMessageAsync_UsageChunk_RequestsAndMapsTokenUsage()
+    {
+        var handler = new CapturingHandler(string.Join("\n\n",
+            """
+            data: {"choices":[{"delta":{"content":"ok"}}]}
+            """,
+            """
+            data: {"choices":[{"delta":{}}],"usage":{"prompt_tokens":12,"completion_tokens":3,"total_tokens":15}}
+            """,
+            "data: [DONE]"), "text/event-stream");
+        var client = CreateClient(handler);
+
+        GeminiResponse? finalResponse = null;
+        await foreach (var streamEvent in client.StreamMessageAsync(new GeminiRequest
+        {
+            Messages = [new GeminiMessage { Role = "user", Content = "Summarize this." }]
+        }))
+        {
+            if (streamEvent.Type.Equals("final", StringComparison.OrdinalIgnoreCase))
+            {
+                finalResponse = streamEvent.Response;
+            }
+        }
+
+        using var payload = JsonDocument.Parse(handler.RequestBody);
+        Assert.True(payload.RootElement.GetProperty("stream_options").GetProperty("include_usage").GetBoolean());
+
+        Assert.NotNull(finalResponse);
+        Assert.NotNull(finalResponse!.TokenUsage);
+        Assert.Equal(12, finalResponse.TokenUsage.PromptTokens);
+        Assert.Equal(3, finalResponse.TokenUsage.CompletionTokens);
+        Assert.Equal(15, finalResponse.TokenUsage.TotalTokens);
+    }
+
+    [Fact]
     public async Task StreamMessageAsync_ServiceTierHeader_MapsActualTierToFinalResponse()
     {
         var handler = new CapturingHandler(string.Join("\n\n",

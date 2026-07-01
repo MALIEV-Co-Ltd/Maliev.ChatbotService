@@ -125,6 +125,7 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
         }
 
         var accumulatedText = new StringBuilder();
+        GeminiTokenUsage? tokenUsage = null;
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(TimeSpan.FromSeconds(request.TimeoutSeconds));
 
@@ -180,6 +181,12 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
             }
 
             using var document = JsonDocument.Parse(data);
+            if (document.RootElement.TryGetProperty("usage", out var usage) &&
+                usage.ValueKind == JsonValueKind.Object)
+            {
+                tokenUsage = ParseTokenUsage(usage);
+            }
+
             var delta = ParseStreamDelta(document.RootElement);
             if (string.IsNullOrEmpty(delta))
             {
@@ -197,6 +204,7 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
             {
                 Success = true,
                 Content = accumulatedText.ToString(),
+                TokenUsage = tokenUsage,
                 ServiceTier = responseServiceTier
             }
         };
@@ -301,6 +309,11 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
             ["messages"] = messages,
             ["stream"] = stream
         };
+
+        if (stream)
+        {
+            payload["stream_options"] = new { include_usage = true };
+        }
 
         if (request.MaxTokens is not null)
         {
@@ -505,16 +518,10 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
             }
         }
 
-        GeminiTokenUsage? tokenUsage = null;
-        if (root.TryGetProperty("usage", out var usage))
-        {
-            tokenUsage = new GeminiTokenUsage
-            {
-                PromptTokens = usage.TryGetProperty("prompt_tokens", out var promptTokens) ? promptTokens.GetInt32() : 0,
-                CompletionTokens = usage.TryGetProperty("completion_tokens", out var completionTokens) ? completionTokens.GetInt32() : 0,
-                TotalTokens = usage.TryGetProperty("total_tokens", out var totalTokens) ? totalTokens.GetInt32() : 0
-            };
-        }
+        var tokenUsage = root.TryGetProperty("usage", out var usage) &&
+            usage.ValueKind == JsonValueKind.Object
+                ? ParseTokenUsage(usage)
+                : null;
 
         return new GeminiResponse
         {
@@ -548,7 +555,18 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
 
     private static string ParseStreamDelta(JsonElement root)
     {
-        var choice = root.GetProperty("choices").EnumerateArray().FirstOrDefault();
+        if (!root.TryGetProperty("choices", out var choices) ||
+            choices.ValueKind != JsonValueKind.Array)
+        {
+            return string.Empty;
+        }
+
+        var choice = choices.EnumerateArray().FirstOrDefault();
+        if (choice.ValueKind != JsonValueKind.Object)
+        {
+            return string.Empty;
+        }
+
         if (!choice.TryGetProperty("delta", out var delta) ||
             !delta.TryGetProperty("content", out var content))
         {
@@ -557,6 +575,14 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
 
         return content.GetString() ?? string.Empty;
     }
+
+    private static GeminiTokenUsage ParseTokenUsage(JsonElement usage) =>
+        new()
+        {
+            PromptTokens = usage.TryGetProperty("prompt_tokens", out var promptTokens) ? promptTokens.GetInt32() : 0,
+            CompletionTokens = usage.TryGetProperty("completion_tokens", out var completionTokens) ? completionTokens.GetInt32() : 0,
+            TotalTokens = usage.TryGetProperty("total_tokens", out var totalTokens) ? totalTokens.GetInt32() : 0
+        };
 
     private static GeminiResponse GetFallbackResponse(string errorType)
     {
