@@ -118,6 +118,54 @@ public sealed class GeminiModelContextCacheServiceTests
     }
 
     [Fact]
+    public async Task GetOrCreateSystemInstructionCacheAsync_ShortCharactersButTokenEligible_CreatesCache()
+    {
+        var handler = new CapturingHandler(
+            """{"totalTokens":2048}""",
+            """{"name":"cachedContents/token-eligible"}""");
+        var database = CreateRedisDatabase();
+        database
+            .Setup(item => item.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync(RedisValue.Null);
+        database
+            .Setup(item => item.LockTakeAsync(
+                It.IsAny<RedisKey>(),
+                It.IsAny<RedisValue>(),
+                It.IsAny<TimeSpan>(),
+                It.IsAny<CommandFlags>()))
+            .ReturnsAsync(true);
+        database
+            .Setup(item => item.LockReleaseAsync(
+                It.IsAny<RedisKey>(),
+                It.IsAny<RedisValue>(),
+                It.IsAny<CommandFlags>()))
+            .ReturnsAsync(true);
+        database
+            .Setup(item => item.StringSetAsync(
+                It.IsAny<RedisKey>(),
+                It.IsAny<RedisValue>(),
+                It.IsAny<TimeSpan?>(),
+                It.IsAny<bool>(),
+                It.IsAny<When>(),
+                It.IsAny<CommandFlags>()))
+            .ReturnsAsync(true);
+
+        var service = CreateService(handler, database.Object);
+
+        var result = await service.GetOrCreateSystemInstructionCacheAsync(new ModelContextCacheRequest
+        {
+            ModelName = "gemini-2.5-flash",
+            SystemInstruction = new string('ก', 4096)
+        });
+
+        Assert.NotNull(result);
+        Assert.Equal("cachedContents/token-eligible", result!.CachedContentName);
+        Assert.Equal(
+            ["/v1beta/models/gemini-2.5-flash:countTokens", "/v1beta/cachedContents"],
+            handler.RequestUris);
+    }
+
+    [Fact]
     public async Task GetOrCreateSystemInstructionCacheAsync_BelowTokenThreshold_SkipsCacheCreate()
     {
         var handler = new CapturingHandler("""{"totalTokens":2047}""");
@@ -197,10 +245,26 @@ public sealed class GeminiModelContextCacheServiceTests
     }
 
     [Fact]
-    public async Task GetOrCreateSystemInstructionCacheAsync_ShortInstruction_SkipsCache()
+    public async Task GetOrCreateSystemInstructionCacheAsync_ShortInstructionBelowTokenThreshold_SkipsCacheCreate()
     {
-        var handler = new CapturingHandler("""{"name":"cachedContents/new"}""");
+        var handler = new CapturingHandler("""{"totalTokens":12}""");
         var database = CreateRedisDatabase();
+        database
+            .Setup(item => item.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync(RedisValue.Null);
+        database
+            .Setup(item => item.LockTakeAsync(
+                It.IsAny<RedisKey>(),
+                It.IsAny<RedisValue>(),
+                It.IsAny<TimeSpan>(),
+                It.IsAny<CommandFlags>()))
+            .ReturnsAsync(true);
+        database
+            .Setup(item => item.LockReleaseAsync(
+                It.IsAny<RedisKey>(),
+                It.IsAny<RedisValue>(),
+                It.IsAny<CommandFlags>()))
+            .ReturnsAsync(true);
         var service = CreateService(handler, database.Object);
 
         var result = await service.GetOrCreateSystemInstructionCacheAsync(new ModelContextCacheRequest
@@ -210,9 +274,16 @@ public sealed class GeminiModelContextCacheServiceTests
         });
 
         Assert.Null(result);
-        Assert.Equal(0, handler.RequestCount);
+        Assert.Equal(1, handler.RequestCount);
+        Assert.Equal("/v1beta/models/gemini-2.5-flash:countTokens", Assert.Single(handler.RequestUris));
         database.Verify(
-            item => item.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()),
+            item => item.StringSetAsync(
+                It.IsAny<RedisKey>(),
+                It.IsAny<RedisValue>(),
+                It.IsAny<TimeSpan?>(),
+                It.IsAny<bool>(),
+                It.IsAny<When>(),
+                It.IsAny<CommandFlags>()),
             Times.Never);
     }
 
@@ -223,7 +294,6 @@ public sealed class GeminiModelContextCacheServiceTests
             {
                 ["Gemini:ApiKey"] = "test-api-key",
                 ["Gemini:MainModelName"] = "gemini-2.5-flash",
-                ["Gemini:ContextCache:MinSystemInstructionCharacters"] = "8192",
                 ["Gemini:ContextCache:TtlSeconds"] = "3600"
             })
             .Build();

@@ -29,7 +29,6 @@ public sealed class GeminiModelContextCacheService : IModelContextCacheService
     private readonly string _apiKey;
     private readonly string _modelName;
     private readonly bool _enabled;
-    private readonly int _minSystemInstructionCharacters;
     private readonly int? _configuredMinInputTokens;
     private readonly TimeSpan _ttl;
 
@@ -53,9 +52,6 @@ public sealed class GeminiModelContextCacheService : IModelContextCacheService
             ?? throw new InvalidOperationException("Gemini API key is not configured. Set 'Gemini:ApiKey'.");
         _modelName = configuration["Gemini:MainModelName"] ?? "gemini-2.5-flash";
         _enabled = configuration.GetValue<bool?>("Gemini:ContextCache:Enabled") ?? true;
-        _minSystemInstructionCharacters = Math.Max(
-            0,
-            configuration.GetValue<int?>("Gemini:ContextCache:MinSystemInstructionCharacters") ?? 8192);
         _configuredMinInputTokens = configuration.GetValue<int?>("Gemini:ContextCache:MinInputTokens");
 
         var ttlSeconds = Math.Max(60, configuration.GetValue<int?>("Gemini:ContextCache:TtlSeconds") ?? 3600);
@@ -68,8 +64,7 @@ public sealed class GeminiModelContextCacheService : IModelContextCacheService
         CancellationToken cancellationToken = default)
     {
         if (!_enabled ||
-            string.IsNullOrWhiteSpace(request.SystemInstruction) ||
-            request.SystemInstruction.Length < _minSystemInstructionCharacters)
+            string.IsNullOrWhiteSpace(request.SystemInstruction))
         {
             return null;
         }
