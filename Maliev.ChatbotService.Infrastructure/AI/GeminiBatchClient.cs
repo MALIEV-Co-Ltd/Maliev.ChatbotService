@@ -153,6 +153,11 @@ public sealed class GeminiBatchClient : IModelBatchClient
 
     private static string? TryGetState(JsonElement root)
     {
+        if (root.TryGetProperty("state", out var stateElement))
+        {
+            return stateElement.GetString();
+        }
+
         if (root.TryGetProperty("metadata", out var metadata) &&
             metadata.ValueKind == JsonValueKind.Object &&
             metadata.TryGetProperty("state", out var metadataState))
@@ -175,8 +180,7 @@ public sealed class GeminiBatchClient : IModelBatchClient
         out List<ModelBatchInlineResponse> inlineResponses)
     {
         inlineResponses = [];
-        if (!root.TryGetProperty("response", out var response) ||
-            !TryGetInlineResponseItems(response, out var responseItems))
+        if (!TryGetInlineResponseItems(root, out var responseItems))
         {
             return false;
         }
@@ -206,6 +210,26 @@ public sealed class GeminiBatchClient : IModelBatchClient
     }
 
     private static bool TryGetInlineResponseItems(
+        JsonElement root,
+        out JsonElement responseItems)
+    {
+        if (root.TryGetProperty("response", out var response) &&
+            TryGetInlineResponseItemsFromContainer(response, out responseItems))
+        {
+            return true;
+        }
+
+        if (root.TryGetProperty("dest", out var dest) &&
+            TryGetInlineResponseArray(dest, out responseItems))
+        {
+            return true;
+        }
+
+        responseItems = default;
+        return false;
+    }
+
+    private static bool TryGetInlineResponseItemsFromContainer(
         JsonElement response,
         out JsonElement responseItems)
     {
