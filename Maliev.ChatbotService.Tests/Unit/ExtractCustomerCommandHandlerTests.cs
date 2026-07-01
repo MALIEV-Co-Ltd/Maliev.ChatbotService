@@ -123,7 +123,7 @@ public sealed class ExtractCustomerCommandHandlerTests
         modelContextCacheService.Verify(item => item.GetOrCreateSystemInstructionCacheAsync(
             It.Is<ModelContextCacheRequest>(request =>
                 request.SystemInstruction == "Extract customer information.\n\nReturn only verified fields." &&
-                request.ModelName == null),
+                request.ModelName == "gemini-2.5-flash-lite"),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 }

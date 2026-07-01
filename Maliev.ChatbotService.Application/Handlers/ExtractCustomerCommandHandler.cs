@@ -1,5 +1,6 @@
 using Maliev.ChatbotService.Application.Commands;
 using Maliev.ChatbotService.Application.Interfaces;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -20,6 +21,7 @@ public class ExtractCustomerCommandHandler
     private readonly IGeminiClient _geminiClient;
     private readonly IModelContextCacheService _modelContextCacheService;
     private readonly ILogger<ExtractCustomerCommandHandler> _logger;
+    private readonly string _modelName;
 
     private static readonly object CustomerExtractionSchema = new
     {
@@ -72,16 +74,19 @@ public class ExtractCustomerCommandHandler
     /// <param name="geminiClient">The Gemini API client.</param>
     /// <param name="modelContextCacheService">The model context cache service.</param>
     /// <param name="logger">The logger.</param>
+    /// <param name="configuration">Application configuration.</param>
     public ExtractCustomerCommandHandler(
         ISystemInstructionRepository instructionRepository,
         IGeminiClient geminiClient,
         IModelContextCacheService modelContextCacheService,
-        ILogger<ExtractCustomerCommandHandler> logger)
+        ILogger<ExtractCustomerCommandHandler> logger,
+        IConfiguration? configuration = null)
     {
         _instructionRepository = instructionRepository;
         _geminiClient = geminiClient;
         _modelContextCacheService = modelContextCacheService;
         _logger = logger;
+        _modelName = configuration?["Gemini:IntentModelName"] ?? "gemini-2.5-flash-lite";
     }
 
     /// <summary>
@@ -164,6 +169,7 @@ public class ExtractCustomerCommandHandler
         // Call Gemini directly with structured output
         var geminiRequest = new GeminiRequest
         {
+            ModelName = _modelName,
             SystemInstruction = systemPrompt,
             Messages = new List<GeminiMessage>
             {
@@ -183,6 +189,7 @@ public class ExtractCustomerCommandHandler
         var cacheReference = await _modelContextCacheService.GetOrCreateSystemInstructionCacheAsync(
             new ModelContextCacheRequest
             {
+                ModelName = _modelName,
                 SystemInstruction = systemPrompt
             },
             cancellationToken);

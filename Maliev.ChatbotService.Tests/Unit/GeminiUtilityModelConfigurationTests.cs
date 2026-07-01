@@ -69,6 +69,45 @@ public sealed class GeminiUtilityModelConfigurationTests
     }
 
     [Fact]
+    public async Task ExtractCustomerCommandHandler_UsesConfiguredGeminiUtilityModel()
+    {
+        GeminiRequest? capturedRequest = null;
+        var geminiClient = CreateGeminiClientMock(
+            request => capturedRequest = request,
+            """{"first_name":"Jane","last_name":"Customer"}""");
+        var instructionRepository = new Mock<ISystemInstructionRepository>();
+        var modelContextCacheService = new Mock<IModelContextCacheService>();
+
+        instructionRepository
+            .Setup(item => item.GetActiveByTopicsAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<SystemInstruction>());
+        modelContextCacheService
+            .Setup(item => item.GetOrCreateSystemInstructionCacheAsync(
+                It.IsAny<ModelContextCacheRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ModelContextCacheReference?)null);
+
+        var handler = CreateWithConfiguration<ExtractCustomerCommandHandler>(
+            "gemini-2.5-flash-lite-configured",
+            services =>
+            {
+                services.AddSingleton(geminiClient.Object);
+                services.AddSingleton(instructionRepository.Object);
+                services.AddSingleton(modelContextCacheService.Object);
+                services.AddSingleton<ILogger<ExtractCustomerCommandHandler>>(
+                    NullLogger<ExtractCustomerCommandHandler>.Instance);
+            });
+
+        await handler.HandleAsync(new ExtractCustomerCommand
+        {
+            RawText = "Jane Customer, jane@example.com"
+        });
+
+        Assert.NotNull(capturedRequest);
+        Assert.Equal("gemini-2.5-flash-lite-configured", capturedRequest!.ModelName);
+    }
+
+    [Fact]
     public async Task ConversationSummaryService_UsesConfiguredGeminiUtilityModel()
     {
         var sessionId = Guid.NewGuid();
