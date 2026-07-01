@@ -374,6 +374,12 @@ public class GeminiFunctionCall
     /// be echoed back on the corresponding function response; may be null for models that omit it.
     /// </summary>
     public string? Id { get; set; }
+
+    /// <summary>
+    /// Gets or sets Gemini's opaque thought signature for this function-call part. When present, it
+    /// must be sent back on the same function-call part in subsequent manual REST history.
+    /// </summary>
+    public string? ThoughtSignature { get; set; }
 }
 
 /// <summary>

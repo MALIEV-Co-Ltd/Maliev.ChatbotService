@@ -102,6 +102,82 @@ public sealed class GeminiClientFunctionCallSerializationTests
     }
 
     [Fact]
+    public async Task SendMessageAsync_FunctionCallHistory_SerializesThoughtSignatureOnFunctionCallPart()
+    {
+        var handler = new CapturingHandler(
+            """{"candidates":[{"content":{"parts":[{"text":"done"}]},"finishReason":"STOP"}]}""");
+        var client = CreateClient(handler);
+
+        await client.SendMessageAsync(new GeminiRequest
+        {
+            SystemInstruction = "sys",
+            Messages =
+            [
+                new GeminiMessage { Role = "user", Content = "price this part" },
+                new GeminiMessage
+                {
+                    Role = "assistant",
+                    FunctionCalls =
+                    [
+                        new GeminiFunctionCall
+                        {
+                            Name = "quote_get_state",
+                            Id = "call-1",
+                            ThoughtSignature = "thought-signature-1",
+                            Args = new Dictionary<string, object> { ["part"] = "bracket" }
+                        }
+                    ]
+                },
+                new GeminiMessage
+                {
+                    Role = "user",
+                    FunctionResponses =
+                    [
+                        new GeminiFunctionResponse { Name = "quote_get_state", Id = "call-1", ResponseJson = "{\"ready\":true}" }
+                    ]
+                }
+            ]
+        });
+
+        using var doc = JsonDocument.Parse(handler.RequestBody!);
+        var functionCallPart = doc.RootElement.GetProperty("contents")[1].GetProperty("parts")[0];
+        Assert.Equal("thought-signature-1", functionCallPart.GetProperty("thoughtSignature").GetString());
+        Assert.False(functionCallPart.GetProperty("functionCall").TryGetProperty("thoughtSignature", out _));
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_FunctionCallResponse_CapturesThoughtSignature()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "candidates":[{
+                "content":{
+                  "parts":[{
+                    "functionCall":{
+                      "name":"quote_get_state",
+                      "id":"call-1",
+                      "args":{"part":"bracket"}
+                    },
+                    "thoughtSignature":"thought-signature-1"
+                  }]
+                },
+                "finishReason":"STOP"
+              }]
+            }
+            """);
+        var client = CreateClient(handler);
+
+        var response = await client.SendMessageAsync(new GeminiRequest
+        {
+            SystemInstruction = "sys",
+            Messages = [new GeminiMessage { Role = "user", Content = "price this part" }]
+        });
+
+        var functionCall = Assert.Single(response.FunctionCalls);
+        Assert.Equal("thought-signature-1", functionCall.ThoughtSignature);
+    }
+
+    [Fact]
     public async Task SendMessageAsync_NonObjectToolResult_WrappedAsResultObject()
     {
         var handler = new CapturingHandler("""{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}""");

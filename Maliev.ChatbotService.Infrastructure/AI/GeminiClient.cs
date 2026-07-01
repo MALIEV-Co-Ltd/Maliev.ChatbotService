@@ -426,9 +426,7 @@ public class GeminiClient : IGeminiClient
         if (message.FunctionCalls is { Count: > 0 })
         {
             var callParts = message.FunctionCalls
-                .Select(fc => fc.Id is { Length: > 0 }
-                    ? (object)new { functionCall = new { name = fc.Name, args = fc.Args, id = fc.Id } }
-                    : new { functionCall = new { name = fc.Name, args = fc.Args } })
+                .Select(BuildFunctionCallPart)
                 .ToArray();
             return new { role = "model", parts = callParts };
         }
@@ -461,6 +459,17 @@ public class GeminiClient : IGeminiClient
         }
 
         return new { role = message.Role == "assistant" ? "model" : "user", parts = messageParts.ToArray() };
+    }
+
+    private static object BuildFunctionCallPart(GeminiFunctionCall functionCall)
+    {
+        var functionCallValue = functionCall.Id is { Length: > 0 }
+            ? (object)new { name = functionCall.Name, args = functionCall.Args, id = functionCall.Id }
+            : new { name = functionCall.Name, args = functionCall.Args };
+
+        return functionCall.ThoughtSignature is { Length: > 0 }
+            ? new { functionCall = functionCallValue, thoughtSignature = functionCall.ThoughtSignature }
+            : new { functionCall = functionCallValue };
     }
 
     /// <summary>
@@ -686,6 +695,9 @@ public class GeminiClient : IGeminiClient
                     {
                         Name = fcProp.GetProperty("name").GetString() ?? string.Empty,
                         Id = fcProp.TryGetProperty("id", out var idProp) ? idProp.GetString() : null,
+                        ThoughtSignature = part.TryGetProperty("thoughtSignature", out var thoughtSignatureProp)
+                            ? thoughtSignatureProp.GetString()
+                            : null,
                         Args = new Dictionary<string, object>()
                     };
                     if (fcProp.TryGetProperty("args", out var argsProp))
