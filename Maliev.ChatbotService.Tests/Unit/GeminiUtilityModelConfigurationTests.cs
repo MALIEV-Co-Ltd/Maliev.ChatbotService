@@ -77,6 +77,7 @@ public sealed class GeminiUtilityModelConfigurationTests
             """{"first_name":"Jane","last_name":"Customer"}""");
         var instructionRepository = new Mock<ISystemInstructionRepository>();
         var modelContextCacheService = new Mock<IModelContextCacheService>();
+        var modelFileStagingService = new Mock<IModelFileStagingService>();
 
         instructionRepository
             .Setup(item => item.GetActiveByTopicsAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
@@ -94,6 +95,7 @@ public sealed class GeminiUtilityModelConfigurationTests
                 services.AddSingleton(geminiClient.Object);
                 services.AddSingleton(instructionRepository.Object);
                 services.AddSingleton(modelContextCacheService.Object);
+                services.AddSingleton(modelFileStagingService.Object);
                 services.AddSingleton<ILogger<ExtractCustomerCommandHandler>>(
                     NullLogger<ExtractCustomerCommandHandler>.Instance);
             });

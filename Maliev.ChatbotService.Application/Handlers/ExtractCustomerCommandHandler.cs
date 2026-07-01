@@ -16,12 +16,15 @@ public class ExtractCustomerCommandHandler
 {
     private const int MaxExtractionPromptTokens = 20000;
     private const int MaxExtractionOutputTokens = 4096;
+    private const long DefaultFileApiInlineThresholdBytes = 5L * 1024 * 1024;
 
     private readonly ISystemInstructionRepository _instructionRepository;
     private readonly IGeminiClient _geminiClient;
     private readonly IModelContextCacheService _modelContextCacheService;
+    private readonly IModelFileStagingService _modelFileStagingService;
     private readonly ILogger<ExtractCustomerCommandHandler> _logger;
     private readonly string _modelName;
+    private readonly long _fileApiInlineThresholdBytes;
 
     private static readonly object CustomerExtractionSchema = new
     {
@@ -73,20 +76,27 @@ public class ExtractCustomerCommandHandler
     /// <param name="instructionRepository">The system instruction repository.</param>
     /// <param name="geminiClient">The Gemini API client.</param>
     /// <param name="modelContextCacheService">The model context cache service.</param>
+    /// <param name="modelFileStagingService">The model file staging service.</param>
     /// <param name="logger">The logger.</param>
     /// <param name="configuration">Application configuration.</param>
     public ExtractCustomerCommandHandler(
         ISystemInstructionRepository instructionRepository,
         IGeminiClient geminiClient,
         IModelContextCacheService modelContextCacheService,
+        IModelFileStagingService modelFileStagingService,
         ILogger<ExtractCustomerCommandHandler> logger,
         IConfiguration? configuration = null)
     {
         _instructionRepository = instructionRepository;
         _geminiClient = geminiClient;
         _modelContextCacheService = modelContextCacheService;
+        _modelFileStagingService = modelFileStagingService;
         _logger = logger;
         _modelName = configuration?["Gemini:IntentModelName"] ?? "gemini-2.5-flash-lite";
+        _fileApiInlineThresholdBytes = Math.Max(
+            0,
+            configuration?.GetValue<long?>("Gemini:FileApiInlineThresholdBytes") ??
+                DefaultFileApiInlineThresholdBytes);
     }
 
     /// <summary>
@@ -135,18 +145,7 @@ public class ExtractCustomerCommandHandler
         {
             foreach (var file in command.Files)
             {
-                var contentType = file.MimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
-                    ? "image"
-                    : file.MimeType.Contains("pdf", StringComparison.OrdinalIgnoreCase)
-                        ? "PDF"
-                        : "document";
-
-                attachments.Add(new GeminiAttachment
-                {
-                    ContentType = contentType,
-                    Data = file.Base64Data,
-                    MimeType = file.MimeType
-                });
+                attachments.Add(await BuildAttachmentAsync(file, cancellationToken));
             }
 
             userMessageParts.Add($"Extract customer information from the {attachments.Count} attached file(s).");
@@ -249,6 +248,118 @@ public class ExtractCustomerCommandHandler
             _logger.LogError(ex, "Failed to deserialize extraction response: {Content}", geminiResponse.Content);
             return new ExtractCustomerResult { Success = false, ErrorMessage = $"Failed to parse AI response: {ex.Message}" };
         }
+    }
+
+    private async Task<GeminiAttachment> BuildAttachmentAsync(
+        ExtractionFileData file,
+        CancellationToken cancellationToken)
+    {
+        var contentType = ResolveContentType(file.MimeType);
+        var base64Payload = NormalizeBase64Payload(file.Base64Data);
+
+        if (ShouldStageFile(base64Payload, out var decodedBytes))
+        {
+            var stagedFile = await TryStageFileAsync(file, decodedBytes, cancellationToken);
+            if (stagedFile is not null)
+            {
+                return new GeminiAttachment
+                {
+                    ContentType = contentType,
+                    Data = stagedFile.FileUri,
+                    MimeType = string.IsNullOrWhiteSpace(stagedFile.MimeType) ? file.MimeType : stagedFile.MimeType
+                };
+            }
+        }
+
+        return new GeminiAttachment
+        {
+            ContentType = contentType,
+            Data = file.Base64Data,
+            MimeType = file.MimeType
+        };
+    }
+
+    private async Task<ModelFileReference?> TryStageFileAsync(
+        ExtractionFileData file,
+        byte[] decodedBytes,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _modelFileStagingService.StageFileAsync(
+                new ModelFileStagingRequest
+                {
+                    FileName = file.FileName,
+                    MimeType = file.MimeType,
+                    Content = decodedBytes
+                },
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Gemini file staging failed for extraction file {FileName}; falling back to inline payload.",
+                file.FileName);
+            return null;
+        }
+    }
+
+    private bool ShouldStageFile(string base64Payload, out byte[] decodedBytes)
+    {
+        decodedBytes = [];
+
+        if (_fileApiInlineThresholdBytes <= 0 ||
+            !TryGetBase64DecodedLength(base64Payload, out var decodedLength) ||
+            decodedLength < _fileApiInlineThresholdBytes)
+        {
+            return false;
+        }
+
+        try
+        {
+            decodedBytes = Convert.FromBase64String(base64Payload);
+            return true;
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+    }
+
+    private static string ResolveContentType(string mimeType)
+    {
+        return mimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
+            ? "image"
+            : mimeType.Contains("pdf", StringComparison.OrdinalIgnoreCase)
+                ? "PDF"
+                : "document";
+    }
+
+    private static string NormalizeBase64Payload(string base64Data)
+    {
+        var payloadStart = base64Data.IndexOf(',', StringComparison.Ordinal);
+        return payloadStart >= 0 ? base64Data[(payloadStart + 1)..] : base64Data;
+    }
+
+    private static bool TryGetBase64DecodedLength(string base64Payload, out long decodedLength)
+    {
+        var payload = new string(base64Payload.Where(c => !char.IsWhiteSpace(c)).ToArray());
+        if (payload.Length == 0 || payload.Length % 4 != 0)
+        {
+            decodedLength = 0;
+            return false;
+        }
+
+        var padding = payload.EndsWith("==", StringComparison.Ordinal)
+            ? 2
+            : payload.EndsWith("=", StringComparison.Ordinal) ? 1 : 0;
+        decodedLength = (payload.Length / 4L * 3L) - padding;
+        return decodedLength >= 0;
     }
 }
 

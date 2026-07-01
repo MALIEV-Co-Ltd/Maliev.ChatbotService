@@ -216,6 +216,7 @@ try
         builder.Services.AddScoped<IGeminiClient, TestingGeminiClient>();
         builder.Services.AddScoped<IModelContextCacheService, NoOpModelContextCacheService>();
         builder.Services.AddScoped<IModelBatchClient, NoOpModelBatchClient>();
+        builder.Services.AddScoped<IModelFileStagingService, NoOpModelFileStagingService>();
     }
     else
     {
@@ -247,11 +248,18 @@ try
                     args.Outcome.Result,
                     args.Outcome.Exception);
             });
+
+            builder.Services.AddHttpClient<IModelFileStagingService, GeminiModelFileStagingService>(client =>
+            {
+                client.BaseAddress = new Uri(externalClientsConfig.Gemini.BaseAddress);
+                client.Timeout = TimeSpan.FromSeconds(120);
+            });
         }
         else
         {
             builder.Services.AddScoped<IModelContextCacheService, NoOpModelContextCacheService>();
             builder.Services.AddScoped<IModelBatchClient, NoOpModelBatchClient>();
+            builder.Services.AddScoped<IModelFileStagingService, NoOpModelFileStagingService>();
         }
 
         builder.Services.AddHttpClient<GeminiModelProviderClient>(client =>

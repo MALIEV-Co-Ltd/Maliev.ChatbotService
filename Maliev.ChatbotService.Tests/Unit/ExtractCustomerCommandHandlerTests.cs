@@ -2,6 +2,7 @@ using Maliev.ChatbotService.Application.Commands;
 using Maliev.ChatbotService.Application.Handlers;
 using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Domain.Entities;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
@@ -15,6 +16,7 @@ public sealed class ExtractCustomerCommandHandlerTests
         var instructionRepository = new Mock<ISystemInstructionRepository>();
         var geminiClient = new Mock<IGeminiClient>();
         var modelContextCacheService = new Mock<IModelContextCacheService>();
+        var modelFileStagingService = new Mock<IModelFileStagingService>();
         GeminiRequest? capturedRequest = null;
 
         instructionRepository
@@ -27,6 +29,9 @@ public sealed class ExtractCustomerCommandHandlerTests
                 It.IsAny<ModelContextCacheRequest>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync((ModelContextCacheReference?)null);
+        modelFileStagingService
+            .Setup(item => item.StageFileAsync(It.IsAny<ModelFileStagingRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ModelFileReference?)null);
 
         geminiClient
             .Setup(item => item.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()))
@@ -41,6 +46,7 @@ public sealed class ExtractCustomerCommandHandlerTests
             instructionRepository.Object,
             geminiClient.Object,
             modelContextCacheService.Object,
+            modelFileStagingService.Object,
             NullLogger<ExtractCustomerCommandHandler>.Instance);
 
         var result = await handler.HandleAsync(new ExtractCustomerCommand
@@ -69,11 +75,88 @@ public sealed class ExtractCustomerCommandHandlerTests
     }
 
     [Fact]
+    public async Task HandleAsync_WithOversizedFileAttachment_StagesFileBeforeGeminiRequest()
+    {
+        var instructionRepository = new Mock<ISystemInstructionRepository>();
+        var geminiClient = new Mock<IGeminiClient>();
+        var modelContextCacheService = new Mock<IModelContextCacheService>();
+        var modelFileStagingService = new Mock<IModelFileStagingService>();
+        GeminiRequest? capturedRequest = null;
+        ModelFileStagingRequest? capturedStagingRequest = null;
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Gemini:FileApiInlineThresholdBytes"] = "8"
+            })
+            .Build();
+
+        instructionRepository
+            .Setup(item => item.GetActiveByTopicsAsync(
+                It.IsAny<IEnumerable<string>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<SystemInstruction>());
+        modelContextCacheService
+            .Setup(item => item.GetOrCreateSystemInstructionCacheAsync(
+                It.IsAny<ModelContextCacheRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ModelContextCacheReference?)null);
+        modelFileStagingService
+            .Setup(item => item.StageFileAsync(It.IsAny<ModelFileStagingRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<ModelFileStagingRequest, CancellationToken>((request, _) => capturedStagingRequest = request)
+            .ReturnsAsync(new ModelFileReference
+            {
+                FileUri = "https://generativelanguage.googleapis.com/v1beta/files/customer-form",
+                MimeType = "application/pdf"
+            });
+
+        geminiClient
+            .Setup(item => item.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<GeminiRequest, CancellationToken>((request, _) => capturedRequest = request)
+            .ReturnsAsync(new GeminiResponse
+            {
+                Success = true,
+                Content = """{"first_name":"Jane","last_name":"Customer"}"""
+            });
+
+        var handler = new ExtractCustomerCommandHandler(
+            instructionRepository.Object,
+            geminiClient.Object,
+            modelContextCacheService.Object,
+            modelFileStagingService.Object,
+            NullLogger<ExtractCustomerCommandHandler>.Instance,
+            configuration);
+
+        var result = await handler.HandleAsync(new ExtractCustomerCommand
+        {
+            Files =
+            [
+                new ExtractionFileData
+                {
+                    FileName = "customer-form.pdf",
+                    MimeType = "application/pdf",
+                    Base64Data = Convert.ToBase64String("large document payload"u8)
+                }
+            ]
+        });
+
+        Assert.True(result.Success);
+        Assert.NotNull(capturedStagingRequest);
+        Assert.Equal("customer-form.pdf", capturedStagingRequest!.FileName);
+        Assert.Equal("application/pdf", capturedStagingRequest.MimeType);
+        Assert.Equal("large document payload"u8.ToArray(), capturedStagingRequest.Content);
+        Assert.NotNull(capturedRequest);
+        var attachment = Assert.Single(capturedRequest!.Attachments!);
+        Assert.Equal("https://generativelanguage.googleapis.com/v1beta/files/customer-form", attachment.Data);
+        Assert.Equal("application/pdf", attachment.MimeType);
+    }
+
+    [Fact]
     public async Task HandleAsync_SystemPromptCacheHit_UsesCachedContentWithoutDuplicatingPrompt()
     {
         var instructionRepository = new Mock<ISystemInstructionRepository>();
         var geminiClient = new Mock<IGeminiClient>();
         var modelContextCacheService = new Mock<IModelContextCacheService>();
+        var modelFileStagingService = new Mock<IModelFileStagingService>();
         GeminiRequest? capturedRequest = null;
 
         instructionRepository
@@ -93,6 +176,9 @@ public sealed class ExtractCustomerCommandHandlerTests
                 It.IsAny<ModelContextCacheRequest>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ModelContextCacheReference { CachedContentName = "cachedContents/customer-extraction" });
+        modelFileStagingService
+            .Setup(item => item.StageFileAsync(It.IsAny<ModelFileStagingRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ModelFileReference?)null);
 
         geminiClient
             .Setup(item => item.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()))
@@ -107,6 +193,7 @@ public sealed class ExtractCustomerCommandHandlerTests
             instructionRepository.Object,
             geminiClient.Object,
             modelContextCacheService.Object,
+            modelFileStagingService.Object,
             NullLogger<ExtractCustomerCommandHandler>.Instance);
 
         var result = await handler.HandleAsync(new ExtractCustomerCommand
