@@ -14,6 +14,7 @@ public sealed class ExtractCustomerCommandHandlerTests
     {
         var instructionRepository = new Mock<ISystemInstructionRepository>();
         var geminiClient = new Mock<IGeminiClient>();
+        var modelContextCacheService = new Mock<IModelContextCacheService>();
         GeminiRequest? capturedRequest = null;
 
         instructionRepository
@@ -21,6 +22,11 @@ public sealed class ExtractCustomerCommandHandlerTests
                 It.IsAny<IEnumerable<string>>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<SystemInstruction>());
+        modelContextCacheService
+            .Setup(item => item.GetOrCreateSystemInstructionCacheAsync(
+                It.IsAny<ModelContextCacheRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ModelContextCacheReference?)null);
 
         geminiClient
             .Setup(item => item.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()))
@@ -34,6 +40,7 @@ public sealed class ExtractCustomerCommandHandlerTests
         var handler = new ExtractCustomerCommandHandler(
             instructionRepository.Object,
             geminiClient.Object,
+            modelContextCacheService.Object,
             NullLogger<ExtractCustomerCommandHandler>.Instance);
 
         var result = await handler.HandleAsync(new ExtractCustomerCommand
@@ -59,5 +66,64 @@ public sealed class ExtractCustomerCommandHandlerTests
         Assert.NotNull(capturedRequest.Attachments);
         Assert.Single(capturedRequest.Attachments);
         Assert.Equal("application/pdf", capturedRequest.Attachments![0].MimeType);
+    }
+
+    [Fact]
+    public async Task HandleAsync_SystemPromptCacheHit_UsesCachedContentWithoutDuplicatingPrompt()
+    {
+        var instructionRepository = new Mock<ISystemInstructionRepository>();
+        var geminiClient = new Mock<IGeminiClient>();
+        var modelContextCacheService = new Mock<IModelContextCacheService>();
+        GeminiRequest? capturedRequest = null;
+
+        instructionRepository
+            .Setup(item => item.GetActiveByTopicsAsync(
+                It.IsAny<IEnumerable<string>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<SystemInstruction>
+            {
+                new()
+                {
+                    PersonaDefinition = "Extract customer information.",
+                    BusinessConstraints = "Return only verified fields."
+                }
+            });
+        modelContextCacheService
+            .Setup(item => item.GetOrCreateSystemInstructionCacheAsync(
+                It.IsAny<ModelContextCacheRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ModelContextCacheReference { CachedContentName = "cachedContents/customer-extraction" });
+
+        geminiClient
+            .Setup(item => item.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<GeminiRequest, CancellationToken>((request, _) => capturedRequest = request)
+            .ReturnsAsync(new GeminiResponse
+            {
+                Success = true,
+                Content = """{"first_name":"Jane","last_name":"Customer"}"""
+            });
+
+        var handler = new ExtractCustomerCommandHandler(
+            instructionRepository.Object,
+            geminiClient.Object,
+            modelContextCacheService.Object,
+            NullLogger<ExtractCustomerCommandHandler>.Instance);
+
+        var result = await handler.HandleAsync(new ExtractCustomerCommand
+        {
+            RawText = "Jane Customer, jane@example.com"
+        });
+
+        Assert.True(result.Success);
+        Assert.NotNull(capturedRequest);
+        Assert.Equal("cachedContents/customer-extraction", capturedRequest!.CachedContentName);
+        Assert.Equal(string.Empty, capturedRequest.SystemInstruction);
+        Assert.Equal("application/json", capturedRequest.ResponseMimeType);
+        Assert.Equal("flex", capturedRequest.ServiceTier);
+        modelContextCacheService.Verify(item => item.GetOrCreateSystemInstructionCacheAsync(
+            It.Is<ModelContextCacheRequest>(request =>
+                request.SystemInstruction == "Extract customer information.\n\nReturn only verified fields." &&
+                request.ModelName == null),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 }

@@ -18,6 +18,7 @@ public class ExtractCustomerCommandHandler
 
     private readonly ISystemInstructionRepository _instructionRepository;
     private readonly IGeminiClient _geminiClient;
+    private readonly IModelContextCacheService _modelContextCacheService;
     private readonly ILogger<ExtractCustomerCommandHandler> _logger;
 
     private static readonly object CustomerExtractionSchema = new
@@ -69,14 +70,17 @@ public class ExtractCustomerCommandHandler
     /// </summary>
     /// <param name="instructionRepository">The system instruction repository.</param>
     /// <param name="geminiClient">The Gemini API client.</param>
+    /// <param name="modelContextCacheService">The model context cache service.</param>
     /// <param name="logger">The logger.</param>
     public ExtractCustomerCommandHandler(
         ISystemInstructionRepository instructionRepository,
         IGeminiClient geminiClient,
+        IModelContextCacheService modelContextCacheService,
         ILogger<ExtractCustomerCommandHandler> logger)
     {
         _instructionRepository = instructionRepository;
         _geminiClient = geminiClient;
+        _modelContextCacheService = modelContextCacheService;
         _logger = logger;
     }
 
@@ -175,6 +179,18 @@ public class ExtractCustomerCommandHandler
             ServiceTier = "flex",
             TimeoutSeconds = GeminiRequest.FlexInferenceTimeoutSeconds
         };
+
+        var cacheReference = await _modelContextCacheService.GetOrCreateSystemInstructionCacheAsync(
+            new ModelContextCacheRequest
+            {
+                SystemInstruction = systemPrompt
+            },
+            cancellationToken);
+        if (cacheReference is not null)
+        {
+            geminiRequest.CachedContentName = cacheReference.CachedContentName;
+            geminiRequest.SystemInstruction = string.Empty;
+        }
 
         var geminiResponse = await _geminiClient.SendMessageAsync(geminiRequest, cancellationToken);
 
