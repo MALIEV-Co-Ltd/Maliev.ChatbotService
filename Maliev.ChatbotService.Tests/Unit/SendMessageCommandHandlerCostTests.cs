@@ -274,6 +274,86 @@ public sealed class SendMessageCommandHandlerCostTests
     }
 
     [Fact]
+    public async Task HandleAsync_LargeInlineAttachment_StagesFileBeforeGeminiRequest()
+    {
+        var modelFileStagingService = new Mock<IModelFileStagingService>();
+        ModelFileStagingRequest? capturedStagingRequest = null;
+        modelFileStagingService
+            .Setup(item => item.StageFileAsync(It.IsAny<ModelFileStagingRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<ModelFileStagingRequest, CancellationToken>((request, _) => capturedStagingRequest = request)
+            .ReturnsAsync(new ModelFileReference
+            {
+                Name = "files/chat-drawing",
+                FileUri = "https://generativelanguage.googleapis.com/v1beta/files/chat-drawing",
+                MimeType = "application/pdf"
+            });
+        modelFileStagingService
+            .Setup(item => item.DeleteFileAsync("files/chat-drawing", It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var result = await SendWebsiteMessageAsync(
+            [
+                new AttachmentDto
+                {
+                    ContentType = ContentType.PDF,
+                    Data = Convert.ToBase64String("large drawing payload"u8),
+                    MimeType = "application/pdf",
+                    SizeBytes = "large drawing payload"u8.Length
+                }
+            ],
+            modelFileStagingService: modelFileStagingService,
+            fileApiInlineThresholdBytes: 8);
+
+        Assert.NotNull(capturedStagingRequest);
+        Assert.Equal("chat-attachment-1.pdf", capturedStagingRequest!.FileName);
+        Assert.Equal("application/pdf", capturedStagingRequest.MimeType);
+        Assert.Equal("large drawing payload"u8.ToArray(), capturedStagingRequest.Content);
+        Assert.NotNull(result.CapturedRequest);
+        var attachment = Assert.Single(result.CapturedRequest!.Messages[^1].Attachments!);
+        Assert.Equal("https://generativelanguage.googleapis.com/v1beta/files/chat-drawing", attachment.Data);
+        Assert.Equal("application/pdf", attachment.MimeType);
+        modelFileStagingService.Verify(
+            item => item.DeleteFileAsync("files/chat-drawing", It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task HandleAsync_LargeInlineAttachment_DeletesStagedFileAfterGeminiFailure()
+    {
+        var modelFileStagingService = new Mock<IModelFileStagingService>();
+        modelFileStagingService
+            .Setup(item => item.StageFileAsync(It.IsAny<ModelFileStagingRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ModelFileReference
+            {
+                Name = "files/chat-drawing",
+                FileUri = "https://generativelanguage.googleapis.com/v1beta/files/chat-drawing",
+                MimeType = "application/pdf"
+            });
+        modelFileStagingService
+            .Setup(item => item.DeleteFileAsync("files/chat-drawing", It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => SendWebsiteMessageAsync(
+            [
+                new AttachmentDto
+                {
+                    ContentType = ContentType.PDF,
+                    Data = Convert.ToBase64String("large drawing payload"u8),
+                    MimeType = "application/pdf",
+                    SizeBytes = "large drawing payload"u8.Length
+                }
+            ],
+            geminiSuccess: false,
+            geminiErrorMessage: "model failed",
+            modelFileStagingService: modelFileStagingService,
+            fileApiInlineThresholdBytes: 8));
+
+        modelFileStagingService.Verify(
+            item => item.DeleteFileAsync("files/chat-drawing", It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
     public async Task HandleAsync_ExternalHttpsAttachmentWithoutKnownSize_IsRejectedBeforeGeminiCall()
     {
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => SendWebsiteMessageAsync([
@@ -465,7 +545,11 @@ public sealed class SendMessageCommandHandlerCostTests
         string messageContent = "What materials can you print?",
         bool instructionEnableWebSearch = false,
         bool globalWebSearchEnabled = false,
-        string? cachedContentName = null)
+        string? cachedContentName = null,
+        Mock<IModelFileStagingService>? modelFileStagingService = null,
+        long? fileApiInlineThresholdBytes = null,
+        bool geminiSuccess = true,
+        string? geminiErrorMessage = null)
     {
         var sessionId = Guid.NewGuid();
         var userProfileId = Guid.NewGuid();
@@ -550,10 +634,13 @@ public sealed class SendMessageCommandHandlerCostTests
             .Callback<GeminiRequest, CancellationToken>((request, _) => capturedRequest = request)
             .ReturnsAsync(new GeminiResponse
             {
-                Success = true,
+                Success = geminiSuccess,
                 Content = "We can print PLA, PETG, ABS, ASA, nylon, and engineering materials.",
+                ErrorMessage = geminiErrorMessage,
                 TokenUsage = tokenUsage ?? new GeminiTokenUsage { TotalTokens = 25 }
             });
+
+        modelFileStagingService ??= new Mock<IModelFileStagingService>();
 
         var modelContextCacheService = new Mock<IModelContextCacheService>();
         modelContextCacheService
@@ -602,7 +689,8 @@ public sealed class SendMessageCommandHandlerCostTests
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Features:WebSearchEnabled"] = globalWebSearchEnabled.ToString()
+                ["Features:WebSearchEnabled"] = globalWebSearchEnabled.ToString(),
+                ["Gemini:FileApiInlineThresholdBytes"] = fileApiInlineThresholdBytes?.ToString()
             })
             .Build();
         var database = new Mock<IDatabase>();
@@ -634,11 +722,12 @@ public sealed class SendMessageCommandHandlerCostTests
             usageBudgetService.Object,
             geminiClient.Object,
             modelContextCacheService.Object,
+            modelFileStagingService.Object,
             systemInstructionService.Object,
             intentClassificationService.Object,
             languageDetectionService.Object,
             responseFormatterService.Object,
-            operationExecutionService: null,
+            null,
             new BusinessConstraintValidator(Mock.Of<ILogger<BusinessConstraintValidator>>()),
             operationLogRepository.Object,
             metrics.Object,

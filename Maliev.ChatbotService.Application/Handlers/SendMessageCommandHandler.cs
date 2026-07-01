@@ -25,6 +25,7 @@ public class SendMessageCommandHandler
     private readonly IUsageBudgetService _usageBudgetService;
     private readonly IGeminiClient _geminiClient;
     private readonly IModelContextCacheService _modelContextCacheService;
+    private readonly IModelFileStagingService _modelFileStagingService;
     private readonly ISystemInstructionService _systemInstructionService;
     private readonly IIntentClassificationService _intentClassificationService;
     private readonly ILanguageDetectionService _languageDetectionService;
@@ -41,6 +42,7 @@ public class SendMessageCommandHandler
     private readonly StackExchange.Redis.IConnectionMultiplexer _redis;
     private readonly ILogger<SendMessageCommandHandler> _logger;
     private readonly bool _webSearchGloballyEnabled;
+    private readonly long _fileApiInlineThresholdBytes;
 
     // Must exceed the worst-case agent loop so the per-session lock cannot expire mid-turn and let a
     // concurrent message interleave (C2). AgentChatHandler runs up to MaxIterations (10) iterations,
@@ -50,6 +52,7 @@ public class SendMessageCommandHandler
     private const int ChatMaxPromptTokens = 30000;
     private const int AgentThinkingBudgetTokens = 1024;
     private const int MaxStructuredOutputSchemaJsonCharacters = 16_384;
+    private const long DefaultFileApiInlineThresholdBytes = 5L * 1024 * 1024;
     private const string JsonResponseMimeType = "application/json";
     private static readonly HashSet<string> AllowedChatModelOverrides = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -69,6 +72,7 @@ public class SendMessageCommandHandler
     /// <param name="usageBudgetService">The daily token budget service.</param>
     /// <param name="geminiClient">The Gemini API client.</param>
     /// <param name="modelContextCacheService">The model context cache service.</param>
+    /// <param name="modelFileStagingService">The model file staging service.</param>
     /// <param name="systemInstructionService">The system instruction service.</param>
     /// <param name="intentClassificationService">The intent classification service.</param>
     /// <param name="languageDetectionService">The language detection service.</param>
@@ -95,6 +99,7 @@ public class SendMessageCommandHandler
         IUsageBudgetService usageBudgetService,
         IGeminiClient geminiClient,
         IModelContextCacheService modelContextCacheService,
+        IModelFileStagingService modelFileStagingService,
         ISystemInstructionService systemInstructionService,
         IIntentClassificationService intentClassificationService,
         ILanguageDetectionService languageDetectionService,
@@ -121,6 +126,7 @@ public class SendMessageCommandHandler
         _usageBudgetService = usageBudgetService;
         _geminiClient = geminiClient;
         _modelContextCacheService = modelContextCacheService;
+        _modelFileStagingService = modelFileStagingService;
         _systemInstructionService = systemInstructionService;
         _intentClassificationService = intentClassificationService;
         _languageDetectionService = languageDetectionService;
@@ -137,6 +143,10 @@ public class SendMessageCommandHandler
         _redis = redis;
         _logger = logger;
         _webSearchGloballyEnabled = configuration?.GetValue<bool>("Features:WebSearchEnabled") ?? false;
+        _fileApiInlineThresholdBytes = Math.Max(
+            0,
+            configuration?.GetValue<long?>("Gemini:FileApiInlineThresholdBytes") ??
+                DefaultFileApiInlineThresholdBytes);
     }
 
     /// <summary>
@@ -161,6 +171,8 @@ public class SendMessageCommandHandler
             _logger.LogWarning("Could not acquire lock for session {SessionId}. System busy.", command.SessionId);
             throw new InvalidOperationException("System is busy processing your previous message. Please wait a moment.");
         }
+
+        var stagedFileNames = new List<string>();
 
         try
         {
@@ -501,14 +513,17 @@ public class SendMessageCommandHandler
                 geminiMessages.Count > 0 &&
                 geminiMessages[geminiMessages.Count - 1].Role == "user")
             {
-                geminiMessages[geminiMessages.Count - 1].Attachments = command.Attachments
-                    .Select(a => new GeminiAttachment
-                    {
-                        ContentType = a.ContentType.ToString(),
-                        Data = a.Data,
-                        MimeType = a.MimeType
-                    })
-                    .ToList();
+                var currentTurnAttachments = new List<GeminiAttachment>();
+                for (var i = 0; i < command.Attachments.Count; i++)
+                {
+                    currentTurnAttachments.Add(await BuildCurrentTurnAttachmentAsync(
+                        command.Attachments[i],
+                        i + 1,
+                        stagedFileNames,
+                        cancellationToken));
+                }
+
+                geminiMessages[geminiMessages.Count - 1].Attachments = currentTurnAttachments;
             }
 
             var structuredOutput = ResolveStructuredOutput(command.ResponseMimeType, command.ResponseSchema);
@@ -755,8 +770,178 @@ public class SendMessageCommandHandler
         }
         finally
         {
-            await db.LockReleaseAsync(lockKey, lockValue);
+            try
+            {
+                await db.LockReleaseAsync(lockKey, lockValue);
+            }
+            finally
+            {
+                await DeleteStagedFilesAsync(stagedFileNames);
+            }
         }
+    }
+
+    private async Task<GeminiAttachment> BuildCurrentTurnAttachmentAsync(
+        AttachmentDto attachment,
+        int attachmentNumber,
+        ICollection<string> stagedFileNames,
+        CancellationToken cancellationToken)
+    {
+        if (ShouldStageInlineAttachment(attachment, out var decodedBytes))
+        {
+            var stagedFile = await TryStageCurrentTurnAttachmentAsync(
+                attachment,
+                attachmentNumber,
+                decodedBytes,
+                cancellationToken);
+
+            if (stagedFile is not null)
+            {
+                if (!string.IsNullOrWhiteSpace(stagedFile.Name))
+                {
+                    stagedFileNames.Add(stagedFile.Name);
+                }
+
+                return new GeminiAttachment
+                {
+                    ContentType = attachment.ContentType.ToString(),
+                    Data = stagedFile.FileUri,
+                    MimeType = string.IsNullOrWhiteSpace(stagedFile.MimeType)
+                        ? attachment.MimeType
+                        : stagedFile.MimeType
+                };
+            }
+        }
+
+        return new GeminiAttachment
+        {
+            ContentType = attachment.ContentType.ToString(),
+            Data = attachment.Data,
+            MimeType = attachment.MimeType
+        };
+    }
+
+    private async Task<ModelFileReference?> TryStageCurrentTurnAttachmentAsync(
+        AttachmentDto attachment,
+        int attachmentNumber,
+        byte[] decodedBytes,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _modelFileStagingService.StageFileAsync(
+                new ModelFileStagingRequest
+                {
+                    FileName = BuildChatAttachmentFileName(attachment, attachmentNumber),
+                    MimeType = attachment.MimeType,
+                    Content = decodedBytes
+                },
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Gemini file staging failed for chat attachment {AttachmentNumber}; falling back to inline payload.",
+                attachmentNumber);
+            return null;
+        }
+    }
+
+    private async Task DeleteStagedFilesAsync(IReadOnlyCollection<string> stagedFileNames)
+    {
+        if (stagedFileNames.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var fileName in stagedFileNames
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Distinct(StringComparer.Ordinal))
+        {
+            try
+            {
+                await _modelFileStagingService.DeleteFileAsync(fileName, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Gemini staged file cleanup failed for chat attachment {FileName}.",
+                    fileName);
+            }
+        }
+    }
+
+    private bool ShouldStageInlineAttachment(AttachmentDto attachment, out byte[] decodedBytes)
+    {
+        decodedBytes = [];
+        var base64Payload = NormalizeBase64Payload(attachment.Data);
+
+        if (_fileApiInlineThresholdBytes <= 0 ||
+            IsModelFetchedAttachmentReference(attachment.Data) ||
+            !TryGetBase64DecodedLength(base64Payload, out var decodedLength) ||
+            decodedLength < _fileApiInlineThresholdBytes)
+        {
+            return false;
+        }
+
+        try
+        {
+            decodedBytes = Convert.FromBase64String(base64Payload);
+            return true;
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+    }
+
+    private static string BuildChatAttachmentFileName(AttachmentDto attachment, int attachmentNumber)
+    {
+        var extension = attachment.MimeType.ToLowerInvariant() switch
+        {
+            "application/pdf" => ".pdf",
+            "image/png" => ".png",
+            "image/jpeg" => ".jpg",
+            "image/webp" => ".webp",
+            "video/mp4" => ".mp4",
+            "audio/mpeg" => ".mp3",
+            _ => string.Empty
+        };
+
+        return $"chat-attachment-{attachmentNumber}{extension}";
+    }
+
+    private static bool IsModelFetchedAttachmentReference(string data) =>
+        data.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+        data.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
+        data.StartsWith("gs://", StringComparison.OrdinalIgnoreCase);
+
+    private static string NormalizeBase64Payload(string base64Data)
+    {
+        var payloadStart = base64Data.IndexOf(',', StringComparison.Ordinal);
+        return payloadStart >= 0 ? base64Data[(payloadStart + 1)..] : base64Data;
+    }
+
+    private static bool TryGetBase64DecodedLength(string base64Payload, out long decodedLength)
+    {
+        var payload = new string(base64Payload.Where(c => !char.IsWhiteSpace(c)).ToArray());
+        if (payload.Length == 0 || payload.Length % 4 != 0)
+        {
+            decodedLength = 0;
+            return false;
+        }
+
+        var padding = payload.EndsWith("==", StringComparison.Ordinal)
+            ? 2
+            : payload.EndsWith("=", StringComparison.Ordinal) ? 1 : 0;
+        decodedLength = (payload.Length / 4L * 3L) - padding;
+        return decodedLength >= 0;
     }
 
     private async Task<GeminiResponse> SendGeminiMaybeStreamingAsync(
