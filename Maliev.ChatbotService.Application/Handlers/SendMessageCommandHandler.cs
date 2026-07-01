@@ -1384,9 +1384,11 @@ public class SendMessageCommandHandler
                 pricingBasis = estimate.PricingBasis,
                 uncachedPromptTokens = estimate.UncachedPromptTokens,
                 cachedPromptTokens = estimate.CachedPromptTokens,
+                toolUsePromptTokens = estimate.ToolUsePromptTokens,
                 outputTokens = estimate.OutputTokens,
                 uncachedPromptMicroUsd = estimate.UncachedPromptMicroUsd,
                 cachedPromptMicroUsd = estimate.CachedPromptMicroUsd,
+                toolUsePromptMicroUsd = estimate.ToolUsePromptMicroUsd,
                 outputMicroUsd = estimate.OutputMicroUsd,
                 totalMicroUsd = estimate.TotalMicroUsd
             };

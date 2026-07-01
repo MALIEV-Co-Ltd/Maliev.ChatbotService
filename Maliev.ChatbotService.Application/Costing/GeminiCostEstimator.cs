@@ -67,8 +67,10 @@ public static class GeminiCostEstimator
             : 0;
         var promptTokens = fallbackOutputTokens > 0 ? 0 : usage.PromptTokens;
         var cachedPromptTokens = fallbackOutputTokens > 0 ? 0 : usage.CachedPromptTokens;
+        var toolUsePromptTokens = fallbackOutputTokens > 0 ? 0 : usage.ToolUsePromptTokens;
         var cachedByModality = NormalizeModalityCounts(usage.CachedTokenDetails, cachedPromptTokens);
         var promptByModality = NormalizeModalityCounts(usage.PromptTokenDetails, promptTokens);
+        var toolUseByModality = NormalizeModalityCounts(usage.ToolUsePromptTokenDetails, toolUsePromptTokens);
         var uncachedByModality = SubtractCachedTokens(promptByModality, cachedByModality);
         NormalizeTotal(uncachedByModality, Math.Max(0, promptTokens - cachedPromptTokens));
 
@@ -83,6 +85,10 @@ public static class GeminiCostEstimator
             cachedByModality,
             rates.CachedTextImageVideoUsdPerMillion,
             rates.CachedAudioUsdPerMillion);
+        var toolUsePromptMicroUsd = EstimateInputMicroUsd(
+            toolUseByModality,
+            rates.InputTextImageVideoUsdPerMillion,
+            rates.InputAudioUsdPerMillion);
         var outputMicroUsd = ToMicroUsd(outputTokens, rates.OutputUsdPerMillion);
 
         return new GeminiCostEstimate
@@ -92,11 +98,13 @@ public static class GeminiCostEstimator
             PricingBasis = PricingBasis,
             UncachedPromptTokens = Math.Max(0, promptTokens - cachedPromptTokens),
             CachedPromptTokens = Math.Max(0, cachedPromptTokens),
+            ToolUsePromptTokens = Math.Max(0, toolUsePromptTokens),
             OutputTokens = outputTokens,
             UncachedPromptMicroUsd = uncachedPromptMicroUsd,
             CachedPromptMicroUsd = cachedPromptMicroUsd,
+            ToolUsePromptMicroUsd = toolUsePromptMicroUsd,
             OutputMicroUsd = outputMicroUsd,
-            TotalMicroUsd = uncachedPromptMicroUsd + cachedPromptMicroUsd + outputMicroUsd
+            TotalMicroUsd = uncachedPromptMicroUsd + cachedPromptMicroUsd + toolUsePromptMicroUsd + outputMicroUsd
         };
     }
 
@@ -105,10 +113,12 @@ public static class GeminiCostEstimator
         return usage.TotalTokens > 0 &&
             usage.PromptTokens <= 0 &&
             usage.CachedPromptTokens <= 0 &&
+            usage.ToolUsePromptTokens <= 0 &&
             usage.CompletionTokens <= 0 &&
             usage.ThoughtTokens <= 0 &&
             usage.PromptTokenDetails.Count == 0 &&
             usage.CachedTokenDetails.Count == 0 &&
+            usage.ToolUsePromptTokenDetails.Count == 0 &&
             usage.CandidateTokenDetails.Count == 0;
     }
 
@@ -259,6 +269,9 @@ public sealed class GeminiCostEstimate
     /// <summary>Gets or sets cached prompt tokens charged at cache-read rates.</summary>
     public int CachedPromptTokens { get; set; }
 
+    /// <summary>Gets or sets tool-use prompt tokens charged at input rates.</summary>
+    public int ToolUsePromptTokens { get; set; }
+
     /// <summary>Gets or sets generated output plus thinking tokens charged at output rates.</summary>
     public int OutputTokens { get; set; }
 
@@ -267,6 +280,9 @@ public sealed class GeminiCostEstimate
 
     /// <summary>Gets or sets estimated cached prompt cost in micro-USD.</summary>
     public long CachedPromptMicroUsd { get; set; }
+
+    /// <summary>Gets or sets estimated tool-use prompt cost in micro-USD.</summary>
+    public long ToolUsePromptMicroUsd { get; set; }
 
     /// <summary>Gets or sets estimated output plus thinking cost in micro-USD.</summary>
     public long OutputMicroUsd { get; set; }

@@ -42,6 +42,54 @@ public sealed class GeminiCostEstimatorTests
     }
 
     [Fact]
+    public void Estimate_UrlContextToolUseTokens_ChargesToolUseAtInputRates()
+    {
+        var usage = new GeminiTokenUsage
+        {
+            PromptTokens = 100,
+            ToolUsePromptTokens = 10000,
+            CompletionTokens = 50,
+            TotalTokens = 10150,
+            PromptTokenDetails =
+            [
+                new GeminiModalityTokenCount { Modality = "TEXT", TokenCount = 100 }
+            ],
+            ToolUsePromptTokenDetails =
+            [
+                new GeminiModalityTokenCount { Modality = "TEXT", TokenCount = 10000 }
+            ]
+        };
+
+        var estimate = GeminiCostEstimator.Estimate("gemini-2.5-flash", "standard", usage);
+
+        Assert.NotNull(estimate);
+        Assert.Equal(100, estimate!.UncachedPromptTokens);
+        Assert.Equal(10000, estimate.ToolUsePromptTokens);
+        Assert.Equal(30, estimate.UncachedPromptMicroUsd);
+        Assert.Equal(3000, estimate.ToolUsePromptMicroUsd);
+        Assert.Equal(125, estimate.OutputMicroUsd);
+        Assert.Equal(3155, estimate.TotalMicroUsd);
+    }
+
+    [Fact]
+    public void Estimate_ToolUseTokensWithoutPromptTokens_UsesInputRatesInsteadOfTotalFallback()
+    {
+        var usage = new GeminiTokenUsage
+        {
+            ToolUsePromptTokens = 500,
+            TotalTokens = 500
+        };
+
+        var estimate = GeminiCostEstimator.Estimate("gemini-2.5-flash-lite", null, usage);
+
+        Assert.NotNull(estimate);
+        Assert.Equal(0, estimate!.UncachedPromptTokens);
+        Assert.Equal(500, estimate.ToolUsePromptTokens);
+        Assert.Equal(50, estimate.ToolUsePromptMicroUsd);
+        Assert.Equal(50, estimate.TotalMicroUsd);
+    }
+
+    [Fact]
     public void Estimate_UnknownModel_ReturnsNull()
     {
         var estimate = GeminiCostEstimator.Estimate(

@@ -565,7 +565,7 @@ public sealed class SendMessageCommandHandlerCostTests
                 ToolUsePromptTokens = 12,
                 ThoughtTokens = 0,
                 CompletionTokens = 80,
-                TotalTokens = 1080,
+                TotalTokens = 1092,
                 PromptTokenDetails =
                 [
                     new GeminiModalityTokenCount { Modality = "TEXT", TokenCount = 1000 }
@@ -590,7 +590,7 @@ public sealed class SendMessageCommandHandlerCostTests
         Assert.Equal(12, tokenUsage.GetProperty("toolUsePromptTokens").GetInt32());
         Assert.Equal(0, tokenUsage.GetProperty("thoughtTokens").GetInt32());
         Assert.Equal(80, tokenUsage.GetProperty("completionTokens").GetInt32());
-        Assert.Equal(1080, tokenUsage.GetProperty("totalTokens").GetInt32());
+        Assert.Equal(1092, tokenUsage.GetProperty("totalTokens").GetInt32());
         var promptDetail = Assert.Single(tokenUsage.GetProperty("promptTokenDetails").EnumerateArray());
         Assert.Equal("TEXT", promptDetail.GetProperty("modality").GetString());
         Assert.Equal(1000, promptDetail.GetProperty("tokenCount").GetInt32());
@@ -600,17 +600,19 @@ public sealed class SendMessageCommandHandlerCostTests
         Assert.Equal("flex", costEstimate.GetProperty("serviceTier").GetString());
         Assert.Equal(600, costEstimate.GetProperty("uncachedPromptTokens").GetInt32());
         Assert.Equal(400, costEstimate.GetProperty("cachedPromptTokens").GetInt32());
+        Assert.Equal(12, costEstimate.GetProperty("toolUsePromptTokens").GetInt32());
         Assert.Equal(80, costEstimate.GetProperty("outputTokens").GetInt32());
         Assert.Equal(90, costEstimate.GetProperty("uncachedPromptMicroUsd").GetInt64());
         Assert.Equal(12, costEstimate.GetProperty("cachedPromptMicroUsd").GetInt64());
+        Assert.Equal(2, costEstimate.GetProperty("toolUsePromptMicroUsd").GetInt64());
         Assert.Equal(100, costEstimate.GetProperty("outputMicroUsd").GetInt64());
-        Assert.Equal(202, costEstimate.GetProperty("totalMicroUsd").GetInt64());
+        Assert.Equal(204, costEstimate.GetProperty("totalMicroUsd").GetInt64());
         result.UsageBudgetService.Verify(
             item => item.RecordModelUsageAsync(
                 It.IsAny<Guid>(),
                 It.Is<UsageBudgetCharge>(charge =>
-                    charge.Tokens == 1080 &&
-                    charge.CostMicroUsd == 202),
+                    charge.Tokens == 1092 &&
+                    charge.CostMicroUsd == 204),
                 It.IsAny<CancellationToken>()),
             Times.Once);
     }
