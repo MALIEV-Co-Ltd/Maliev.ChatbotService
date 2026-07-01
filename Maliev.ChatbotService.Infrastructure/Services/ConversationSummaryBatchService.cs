@@ -1,7 +1,9 @@
+using System.Text;
 using System.Text.Json;
 using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Domain.Entities;
 using Maliev.ChatbotService.Domain.Enums;
+using Maliev.ChatbotService.Infrastructure.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -13,7 +15,13 @@ namespace Maliev.ChatbotService.Infrastructure.Services;
 public class ConversationSummaryBatchService : IConversationSummaryBatchService
 {
     private const int DefaultBatchSummaryMaxSessions = 20;
+    private const int DefaultBatchSummaryMaxInlineBytes = 18 * 1024 * 1024;
     private const int OpenBatchPollLimit = 10;
+
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
 
     private readonly IConversationSummaryRepository _summaryRepository;
     private readonly IConversationSessionRepository _sessionRepository;
@@ -23,6 +31,7 @@ public class ConversationSummaryBatchService : IConversationSummaryBatchService
     private readonly ILogger<ConversationSummaryBatchService> _logger;
     private readonly string _modelName;
     private readonly int _maxBatchSessions;
+    private readonly int _maxBatchInlineBytes;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ConversationSummaryBatchService"/> class.
@@ -54,6 +63,10 @@ public class ConversationSummaryBatchService : IConversationSummaryBatchService
             configuredLimit > 0
             ? configuredLimit
             : DefaultBatchSummaryMaxSessions;
+        _maxBatchInlineBytes = int.TryParse(configuration["Gemini:BatchSummaryMaxInlineBytes"], out var configuredInlineBytes) &&
+            configuredInlineBytes > 0
+            ? configuredInlineBytes
+            : DefaultBatchSummaryMaxInlineBytes;
     }
 
     /// <inheritdoc/>
@@ -110,7 +123,7 @@ public class ConversationSummaryBatchService : IConversationSummaryBatchService
             return deferredSessionIds;
         }
 
-        foreach (var candidateBatch in candidates.Chunk(_maxBatchSessions))
+        foreach (var candidateBatch in ChunkCandidatesForInlineBatch(candidates))
         {
             try
             {
@@ -175,6 +188,64 @@ public class ConversationSummaryBatchService : IConversationSummaryBatchService
         }
 
         return deferredSessionIds;
+    }
+
+    private IEnumerable<SummaryBatchCandidate[]> ChunkCandidatesForInlineBatch(IReadOnlyList<SummaryBatchCandidate> candidates)
+    {
+        var batch = new List<SummaryBatchCandidate>();
+        foreach (var candidate in candidates)
+        {
+            if (batch.Count > 0 &&
+                (batch.Count >= _maxBatchSessions ||
+                 EstimateInlineBatchBytes(batch, candidate) > _maxBatchInlineBytes))
+            {
+                yield return batch.ToArray();
+                batch.Clear();
+            }
+
+            batch.Add(candidate);
+        }
+
+        if (batch.Count > 0)
+        {
+            yield return batch.ToArray();
+        }
+    }
+
+    private static int EstimateInlineBatchBytes(
+        IReadOnlyCollection<SummaryBatchCandidate> currentBatch,
+        SummaryBatchCandidate candidate)
+    {
+        var requests = currentBatch
+            .Select(item => item.Request)
+            .Append(candidate.Request)
+            .ToList();
+        return EstimateInlineBatchBytes(requests);
+    }
+
+    private static int EstimateInlineBatchBytes(IReadOnlyCollection<ModelBatchGenerateContentRequest> requests)
+    {
+        var payload = new Dictionary<string, object?>
+        {
+            ["batch"] = new Dictionary<string, object?>
+            {
+                ["display_name"] = "expired-session-summaries-00000000000000",
+                ["input_config"] = new Dictionary<string, object?>
+                {
+                    ["requests"] = new Dictionary<string, object?>
+                    {
+                        ["requests"] = requests.Select(item => new Dictionary<string, object?>
+                        {
+                            ["request"] = GeminiClient.BuildGeminiPayload(item.Request),
+                            ["metadata"] = item.Metadata
+                        }).ToArray()
+                    }
+                },
+                ["priority"] = "-10"
+            }
+        };
+
+        return Encoding.UTF8.GetByteCount(JsonSerializer.Serialize(payload, JsonOptions));
     }
 
     /// <inheritdoc/>

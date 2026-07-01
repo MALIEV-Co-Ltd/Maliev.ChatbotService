@@ -166,6 +166,68 @@ public sealed class ConversationSummaryBatchServiceTests
     }
 
     [Fact]
+    public async Task SubmitExpiredSessionSummariesAsync_AboveInlinePayloadByteLimit_SubmitsAllSessionsInChunks()
+    {
+        var firstSession = CreateSession();
+        var secondSession = CreateSession();
+        var summaryRepository = new Mock<IConversationSummaryRepository>();
+        var sessionRepository = new Mock<IConversationSessionRepository>();
+        var messageRepository = new Mock<IMessageRepository>();
+        var batchClient = new Mock<IModelBatchClient>();
+        var batchJobRepository = new Mock<IConversationSummaryBatchJobRepository>();
+        var batchCalls = 0;
+        var capturedBatchRequests = new List<ModelBatchRequest>();
+        var createdJobs = new List<ConversationSummaryBatchJob>();
+        var largeContent = new string('x', 4_000);
+
+        foreach (var session in new[] { firstSession, secondSession })
+        {
+            messageRepository
+                .Setup(x => x.GetRecentBySessionIdAsync(session.Id, 1000, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(CreateMessages(session.Id, largeContent));
+            batchJobRepository
+                .Setup(x => x.HasOpenItemForSessionAsync(session.Id, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(false);
+        }
+
+        batchClient
+            .Setup(x => x.CreateInlineGenerateContentBatchAsync(It.IsAny<ModelBatchRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<ModelBatchRequest, CancellationToken>((request, _) => capturedBatchRequests.Add(request))
+            .Returns<ModelBatchRequest, CancellationToken>((_, _) =>
+            {
+                batchCalls++;
+                return Task.FromResult(new ModelBatchJob
+                {
+                    Name = $"batches/summary-{batchCalls}",
+                    State = "JOB_STATE_PENDING"
+                });
+            });
+        batchJobRepository
+            .Setup(x => x.CreateAsync(It.IsAny<ConversationSummaryBatchJob>(), It.IsAny<CancellationToken>()))
+            .Callback<ConversationSummaryBatchJob, CancellationToken>((job, _) => createdJobs.Add(job))
+            .ReturnsAsync((ConversationSummaryBatchJob job, CancellationToken _) => job);
+
+        var service = CreateService(
+            summaryRepository,
+            sessionRepository,
+            messageRepository,
+            batchClient,
+            batchJobRepository,
+            batchSummaryMaxSessions: "20",
+            batchSummaryMaxInlineBytes: "12000");
+
+        var deferredSessionIds = await service.SubmitExpiredSessionSummariesAsync([firstSession, secondSession]);
+
+        Assert.Equal(2, batchCalls);
+        Assert.Equal(2, capturedBatchRequests.Count);
+        Assert.All(capturedBatchRequests, request => Assert.Single(request.Requests));
+        Assert.Equal(2, createdJobs.Count);
+        Assert.All(createdJobs, job => Assert.Single(job.Items));
+        Assert.Contains(firstSession.Id, deferredSessionIds);
+        Assert.Contains(secondSession.Id, deferredSessionIds);
+    }
+
+    [Fact]
     public async Task ProcessOpenBatchesAsync_SucceededInlineResponse_CreatesSummaryAndMarksItemSucceeded()
     {
         var session = CreateSession();
@@ -276,13 +338,15 @@ public sealed class ConversationSummaryBatchServiceTests
         Mock<IMessageRepository> messageRepository,
         Mock<IModelBatchClient> batchClient,
         Mock<IConversationSummaryBatchJobRepository> batchJobRepository,
-        string batchSummaryMaxSessions = "20")
+        string batchSummaryMaxSessions = "20",
+        string batchSummaryMaxInlineBytes = "18874368")
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["Gemini:IntentModelName"] = "gemini-2.5-flash-lite",
-                ["Gemini:BatchSummaryMaxSessions"] = batchSummaryMaxSessions
+                ["Gemini:BatchSummaryMaxSessions"] = batchSummaryMaxSessions,
+                ["Gemini:BatchSummaryMaxInlineBytes"] = batchSummaryMaxInlineBytes
             })
             .Build();
 
@@ -313,13 +377,16 @@ public sealed class ConversationSummaryBatchServiceTests
     }
 
     private static List<Message> CreateMessages(Guid sessionId) =>
+        CreateMessages(sessionId, "I need a quote for CNC parts.");
+
+    private static List<Message> CreateMessages(Guid sessionId, string userContent) =>
     [
         new Message
         {
             Id = Guid.NewGuid(),
             SessionId = sessionId,
             Role = MessageRole.User,
-            Content = "I need a quote for CNC parts.",
+            Content = userContent,
             CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-10)
         },
         new Message
