@@ -47,6 +47,13 @@ public class MessageRepository : IMessageRepository
     }
 
     /// <inheritdoc/>
+    public async Task<int> CountBySessionIdAsync(Guid sessionId, CancellationToken cancellationToken = default)
+    {
+        return await _context.Messages
+            .CountAsync(x => x.SessionId == sessionId, cancellationToken);
+    }
+
+    /// <inheritdoc/>
     public async Task<List<Message>> GetRecentBySessionIdAsync(Guid sessionId, int count, CancellationToken cancellationToken = default)
     {
         return await _context.Messages

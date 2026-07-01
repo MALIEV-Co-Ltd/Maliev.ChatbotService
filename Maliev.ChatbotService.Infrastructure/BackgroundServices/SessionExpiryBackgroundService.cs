@@ -85,12 +85,10 @@ public class SessionExpiryBackgroundService : BackgroundService
         {
             try
             {
-                // Check if session has any messages
-                var messages = await messageRepository.GetRecentBySessionIdAsync(session.Id, 1, cancellationToken);
-                var allMessages = await messageRepository.GetBySessionIdAsync(session.Id, cancellationToken);
-                var messageCount = allMessages.Count;
+                // Check whether the session has messages without loading message entities.
+                var messageCount = await messageRepository.CountBySessionIdAsync(session.Id, cancellationToken);
 
-                if (messages.Any())
+                if (messageCount > 0)
                 {
                     if (batchDeferredSessionIds.Contains(session.Id))
                     {

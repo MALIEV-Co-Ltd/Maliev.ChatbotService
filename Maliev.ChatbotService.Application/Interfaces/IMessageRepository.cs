@@ -32,6 +32,14 @@ public interface IMessageRepository
     Task<List<Message>> GetBySessionIdAsync(Guid sessionId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Counts messages for a conversation session without materializing message entities.
+    /// </summary>
+    /// <param name="sessionId">The session ID.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The number of messages in the session.</returns>
+    Task<int> CountBySessionIdAsync(Guid sessionId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Gets recent messages for a conversation session.
     /// </summary>
     /// <param name="sessionId">The session ID.</param>

@@ -154,6 +154,44 @@ public class MessageRepositoryTests : IAsyncLifetime
         Assert.Equal(message2.Id, messages.Last().Id);
     }
 
+    [Fact]
+    public async Task CountBySessionIdAsync_MultipleMessages_ReturnsCountWithoutMaterializingMessages()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var messageRepo = scope.ServiceProvider.GetRequiredService<IMessageRepository>();
+        var sessionRepo = scope.ServiceProvider.GetRequiredService<IConversationSessionRepository>();
+        var userRepo = scope.ServiceProvider.GetRequiredService<IUserProfileRepository>();
+
+        var userProfile = new UserProfile
+        {
+            Id = Guid.NewGuid(),
+            Role = UserRole.Customer,
+            CreatedAt = DateTimeOffset.UtcNow,
+            LastActiveAt = DateTimeOffset.UtcNow
+        };
+        await userRepo.CreateAsync(userProfile);
+
+        var session = new ConversationSession
+        {
+            Id = Guid.NewGuid(),
+            UserProfileId = userProfile.Id,
+            Channel = Channel.Website,
+            StartTime = DateTimeOffset.UtcNow,
+            LastActivityAt = DateTimeOffset.UtcNow,
+            ExpiresAt = DateTimeOffset.UtcNow.AddDays(1),
+            Language = Language.English,
+            Status = SessionStatus.Active
+        };
+        await sessionRepo.CreateAsync(session);
+
+        await CreateMessageAsync(messageRepo, session.Id, MessageRole.User, "first", DateTimeOffset.UtcNow.AddMinutes(-2));
+        await CreateMessageAsync(messageRepo, session.Id, MessageRole.Assistant, "second", DateTimeOffset.UtcNow.AddMinutes(-1));
+
+        var count = await messageRepo.CountBySessionIdAsync(session.Id);
+
+        Assert.Equal(2, count);
+    }
+
     /// <summary>
     /// Tests that multimodal messages with metadata are stored correctly.
     /// </summary>
