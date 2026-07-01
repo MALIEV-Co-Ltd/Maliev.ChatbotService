@@ -37,6 +37,27 @@ public sealed class GeminiClientFunctionCallSerializationTests
     }
 
     [Fact]
+    public async Task SendMessageAsync_ImageUrl_SerializesAsGeminiFileDataPart()
+    {
+        var handler = new CapturingHandler("""{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}""");
+        var client = CreateClient(handler);
+
+        await client.SendMessageAsync(new GeminiRequest
+        {
+            Prompt = "Analyze this technical drawing",
+            ImageUrl = "https://example.com/drawing.jpg?signature=abc",
+            MaxTokens = 1500
+        });
+
+        using var doc = JsonDocument.Parse(handler.RequestBody!);
+        var parts = doc.RootElement.GetProperty("contents")[0].GetProperty("parts").EnumerateArray().ToArray();
+        Assert.Equal("Analyze this technical drawing", parts[0].GetProperty("text").GetString());
+        var fileData = parts[1].GetProperty("fileData");
+        Assert.Equal("https://example.com/drawing.jpg?signature=abc", fileData.GetProperty("fileUri").GetString());
+        Assert.Equal("image/jpeg", fileData.GetProperty("mimeType").GetString());
+    }
+
+    [Fact]
     public async Task SendMessageAsync_PromptFeedbackBlock_ReturnsValidationFallback()
     {
         var handler = new CapturingHandler("""{"promptFeedback":{"blockReason":"SAFETY","safetyRatings":[]}}""");

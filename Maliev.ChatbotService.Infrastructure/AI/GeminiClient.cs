@@ -425,8 +425,10 @@ public class GeminiClient : IGeminiClient
             contentsParts.Add(BuildContentEntry(message));
         }
 
-        // Legacy: merge top-level request attachments into the last plain-text user message.
-        if (request.Attachments is { Count: > 0 } && contentsParts.Count > 0)
+        var topLevelAttachments = BuildTopLevelAttachments(request);
+
+        // Legacy: merge top-level request media into the last plain-text user message.
+        if (topLevelAttachments.Count > 0 && contentsParts.Count > 0)
         {
             var lastMessage = messages[^1];
             if (lastMessage.Role != "assistant" &&
@@ -439,12 +441,42 @@ public class GeminiClient : IGeminiClient
                     existingParts.AddRange(lastMessage.Attachments.Select(GetAttachmentPart));
                 }
 
-                existingParts.AddRange(request.Attachments.Select(GetAttachmentPart));
+                existingParts.AddRange(topLevelAttachments.Select(GetAttachmentPart));
                 contentsParts[^1] = new { role = "user", parts = existingParts.ToArray() };
             }
         }
 
         return contentsParts;
+    }
+
+    private static List<GeminiAttachment> BuildTopLevelAttachments(GeminiRequest request)
+    {
+        var attachments = request.Attachments?.ToList() ?? [];
+        if (!string.IsNullOrWhiteSpace(request.ImageUrl))
+        {
+            attachments.Add(new GeminiAttachment
+            {
+                MimeType = ResolveImageUrlMimeType(request.ImageUrl),
+                Data = request.ImageUrl.Trim()
+            });
+        }
+
+        return attachments;
+    }
+
+    private static string ResolveImageUrlMimeType(string imageUrl)
+    {
+        var path = Uri.TryCreate(imageUrl, UriKind.Absolute, out var uri)
+            ? uri.AbsolutePath
+            : imageUrl;
+
+        return path.Trim().ToLowerInvariant() switch
+        {
+            var value when value.EndsWith(".png", StringComparison.Ordinal) => "image/png",
+            var value when value.EndsWith(".webp", StringComparison.Ordinal) => "image/webp",
+            var value when value.EndsWith(".bmp", StringComparison.Ordinal) => "image/bmp",
+            _ => "image/jpeg"
+        };
     }
 
     private static List<GeminiMessage> BuildPromptMessages(string? prompt) =>
