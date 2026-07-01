@@ -11,6 +11,7 @@ namespace Maliev.ChatbotService.Application.Handlers;
 public class ExtractCustomerIntentCommandHandler
 {
     private const int MaxIntentOutputTokens = 128;
+    private const int MaxIntentPromptTokens = 4096;
 
     private readonly IGeminiClient _geminiClient;
     private readonly ISystemInstructionRepository _instructionRepository;
@@ -61,6 +62,7 @@ public class ExtractCustomerIntentCommandHandler
             Temperature = 0.1,
             ThinkingBudget = 0,
             MaxTokens = MaxIntentOutputTokens,
+            MaxPromptTokens = MaxIntentPromptTokens,
             TimeoutSeconds = 5,
             ResponseMimeType = "application/json",
             ResponseSchema = schema

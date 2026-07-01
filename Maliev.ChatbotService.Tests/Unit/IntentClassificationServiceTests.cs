@@ -43,6 +43,7 @@ public sealed class IntentClassificationServiceTests
         Assert.Equal("application/json", capturedRequest.ResponseMimeType);
         Assert.NotNull(capturedRequest.ResponseSchema);
         Assert.Equal(256, capturedRequest.MaxTokens);
+        Assert.Equal(4096, capturedRequest.MaxPromptTokens);
         Assert.Equal(0, capturedRequest.ThinkingBudget);
         Assert.Equal(0.1, capturedRequest.Temperature);
         Assert.Equal(5, capturedRequest.TimeoutSeconds);

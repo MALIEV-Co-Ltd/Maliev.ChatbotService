@@ -12,6 +12,7 @@ public class RefineSystemInstructionCommandHandler
 {
     private const int InstructionTextMaxLength = 5000;
     private const int MaxRefinementOutputTokens = 4096;
+    private const int MaxRefinementPromptTokens = 16000;
     private readonly IGeminiClient _geminiClient;
     private readonly ILogger<RefineSystemInstructionCommandHandler> _logger;
 
@@ -72,6 +73,7 @@ public class RefineSystemInstructionCommandHandler
             Temperature = 0.2,
             ThinkingBudget = 0,
             MaxTokens = MaxRefinementOutputTokens,
+            MaxPromptTokens = MaxRefinementPromptTokens,
             ServiceTier = "flex",
             TimeoutSeconds = GeminiRequest.FlexInferenceTimeoutSeconds
         };

@@ -42,6 +42,7 @@ public sealed class GeminiUtilityOutputBoundTests
         Assert.True(result.Success);
         Assert.NotNull(capturedRequest);
         Assert.Equal(128, capturedRequest!.MaxTokens);
+        Assert.Equal(4096, capturedRequest.MaxPromptTokens);
     }
 
     [Fact]
@@ -70,6 +71,7 @@ public sealed class GeminiUtilityOutputBoundTests
         Assert.True(result.Success);
         Assert.NotNull(capturedRequest);
         Assert.Equal(1024, capturedRequest!.MaxTokens);
+        Assert.Equal(4096, capturedRequest.MaxPromptTokens);
     }
 
     [Fact]
@@ -102,6 +104,7 @@ public sealed class GeminiUtilityOutputBoundTests
         Assert.Equal("Refined persona", result.PersonaDefinition);
         Assert.NotNull(capturedRequest);
         Assert.Equal(4096, capturedRequest!.MaxTokens);
+        Assert.Equal(16000, capturedRequest.MaxPromptTokens);
         Assert.Equal("flex", capturedRequest.ServiceTier);
         Assert.Equal(600, capturedRequest.TimeoutSeconds);
     }

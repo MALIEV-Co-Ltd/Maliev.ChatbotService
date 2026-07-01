@@ -10,6 +10,8 @@ namespace Maliev.ChatbotService.Infrastructure.Services;
 /// </summary>
 public class IntentClassificationService : IIntentClassificationService
 {
+    private const int MaxClassificationPromptTokens = 4096;
+
     private static readonly object IntentClassificationSchema = new
     {
         type = "object",
@@ -64,6 +66,7 @@ public class IntentClassificationService : IIntentClassificationService
             Temperature = 0.1, // Low temperature for deterministic classification
             ThinkingBudget = 0,
             MaxTokens = 256,
+            MaxPromptTokens = MaxClassificationPromptTokens,
             ResponseMimeType = "application/json",
             ResponseSchema = IntentClassificationSchema,
             TimeoutSeconds = 5

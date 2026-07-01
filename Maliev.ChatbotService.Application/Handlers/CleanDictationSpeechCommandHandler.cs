@@ -10,6 +10,7 @@ namespace Maliev.ChatbotService.Application.Handlers;
 public class CleanDictationSpeechCommandHandler
 {
     private const int MaxCleanupOutputTokens = 1024;
+    private const int MaxCleanupPromptTokens = 4096;
 
     private const string SystemInstruction =
         "You are a speech transcript cleanup assistant. Remove filler words, fix punctuation, " +
@@ -44,6 +45,7 @@ public class CleanDictationSpeechCommandHandler
             Temperature = 0.1,
             ThinkingBudget = 0,
             MaxTokens = MaxCleanupOutputTokens,
+            MaxPromptTokens = MaxCleanupPromptTokens,
             TimeoutSeconds = 5,
         };
 
