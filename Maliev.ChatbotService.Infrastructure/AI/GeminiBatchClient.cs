@@ -176,10 +176,7 @@ public sealed class GeminiBatchClient : IModelBatchClient
     {
         inlineResponses = [];
         if (!root.TryGetProperty("response", out var response) ||
-            !response.TryGetProperty("output", out var output) ||
-            !output.TryGetProperty("inlinedResponses", out var inlinedResponses) ||
-            !inlinedResponses.TryGetProperty("inlinedResponses", out var responseItems) ||
-            responseItems.ValueKind != JsonValueKind.Array)
+            !TryGetInlineResponseItems(response, out var responseItems))
         {
             return false;
         }
@@ -206,6 +203,52 @@ public sealed class GeminiBatchClient : IModelBatchClient
         }
 
         return true;
+    }
+
+    private static bool TryGetInlineResponseItems(
+        JsonElement response,
+        out JsonElement responseItems)
+    {
+        if (TryGetInlineResponseArray(response, out responseItems))
+        {
+            return true;
+        }
+
+        if (response.TryGetProperty("output", out var output) &&
+            TryGetInlineResponseArray(output, out responseItems))
+        {
+            return true;
+        }
+
+        responseItems = default;
+        return false;
+    }
+
+    private static bool TryGetInlineResponseArray(
+        JsonElement container,
+        out JsonElement responseItems)
+    {
+        responseItems = default;
+        if (!container.TryGetProperty("inlinedResponses", out var inlinedResponses))
+        {
+            return false;
+        }
+
+        if (inlinedResponses.ValueKind == JsonValueKind.Array)
+        {
+            responseItems = inlinedResponses;
+            return true;
+        }
+
+        if (inlinedResponses.ValueKind == JsonValueKind.Object &&
+            inlinedResponses.TryGetProperty("inlinedResponses", out var nestedResponses) &&
+            nestedResponses.ValueKind == JsonValueKind.Array)
+        {
+            responseItems = nestedResponses;
+            return true;
+        }
+
+        return false;
     }
 
     private static GeminiResponse ParseGenerateContentResponse(JsonElement generateContentResponse)

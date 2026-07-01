@@ -123,6 +123,55 @@ public sealed class GeminiBatchClientTests
         Assert.Equal("/v1beta/batches/batch-123", handler.Request.RequestUri!.AbsolutePath);
     }
 
+    [Fact]
+    public async Task GetBatchAsync_WithDocumentedInlineResponseShape_ParsesResponsesAndErrors()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "name":"batches/batch-456",
+              "done":true,
+              "metadata":{"state":"JOB_STATE_SUCCEEDED"},
+              "response":{
+                "inlinedResponses":[
+                  {
+                    "metadata":{"sessionId":"session-1","userProfileId":"user-1"},
+                    "response":{
+                      "candidates":[{"content":{"parts":[{"text":"{\"topics\":[\"quote\"]}"}]}}],
+                      "usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":5,"totalTokenCount":15}
+                    }
+                  },
+                  {
+                    "metadata":{"sessionId":"session-2"},
+                    "error":{"message":"Request was rejected"}
+                  }
+                ]
+              }
+            }
+            """);
+        var client = CreateClient(handler);
+
+        var result = await client.GetBatchAsync("batches/batch-456");
+
+        Assert.Equal("batches/batch-456", result.Name);
+        Assert.True(result.Done);
+        Assert.Equal("JOB_STATE_SUCCEEDED", result.State);
+        Assert.Equal(2, result.InlineResponses.Count);
+
+        var successfulResponse = result.InlineResponses[0];
+        Assert.Equal("session-1", successfulResponse.Metadata["sessionId"]?.ToString());
+        Assert.Equal("user-1", successfulResponse.Metadata["userProfileId"]?.ToString());
+        Assert.NotNull(successfulResponse.Response);
+        Assert.Equal("{\"topics\":[\"quote\"]}", successfulResponse.Response!.Content);
+        Assert.Equal(10, successfulResponse.Response.TokenUsage!.PromptTokens);
+        Assert.Equal(5, successfulResponse.Response.TokenUsage.CompletionTokens);
+        Assert.Equal(15, successfulResponse.Response.TokenUsage.TotalTokens);
+
+        var failedResponse = result.InlineResponses[1];
+        Assert.Equal("session-2", failedResponse.Metadata["sessionId"]?.ToString());
+        Assert.Null(failedResponse.Response);
+        Assert.Equal("Request was rejected", failedResponse.ErrorMessage);
+    }
+
     private static GeminiBatchClient CreateClient(CapturingHandler handler)
     {
         var configuration = new ConfigurationBuilder()
