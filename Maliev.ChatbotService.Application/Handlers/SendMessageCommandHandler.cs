@@ -49,6 +49,9 @@ public class SendMessageCommandHandler
     private readonly long _maxVideoSizeBytes;
     private readonly long _maxAudioSizeBytes;
     private readonly string _defaultChatModelName;
+    private readonly string _chatImageMediaResolution;
+    private readonly string _chatPdfMediaResolution;
+    private readonly string _chatVideoMediaResolution;
 
     // Must exceed the worst-case agent loop so the per-session lock cannot expire mid-turn and let a
     // concurrent message interleave (C2). AgentChatHandler runs up to MaxIterations (10) iterations,
@@ -63,6 +66,9 @@ public class SendMessageCommandHandler
     private const int DefaultMaxPdfSizeMb = 20;
     private const int DefaultMaxVideoSizeMb = 50;
     private const int DefaultMaxAudioSizeMb = 10;
+    private const string DefaultChatImageMediaResolution = "MEDIA_RESOLUTION_MEDIUM";
+    private const string DefaultChatPdfMediaResolution = "MEDIA_RESOLUTION_MEDIUM";
+    private const string DefaultChatVideoMediaResolution = "MEDIA_RESOLUTION_LOW";
     private const string JsonResponseMimeType = "application/json";
     private static readonly HashSet<string> AllowedChatModelOverrides = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -162,6 +168,18 @@ public class SendMessageCommandHandler
         _maxVideoSizeBytes = ResolveMaxFileSizeBytes(configuration, "FileUploadLimits:MaxVideoSizeMB", DefaultMaxVideoSizeMb);
         _maxAudioSizeBytes = ResolveMaxFileSizeBytes(configuration, "FileUploadLimits:MaxAudioSizeMB", DefaultMaxAudioSizeMb);
         _defaultChatModelName = configuration?["Gemini:MainModelName"] ?? "gemini-2.5-flash";
+        _chatImageMediaResolution = ResolveConfiguredMediaResolution(
+            configuration?["Gemini:Chat:ImageMediaResolution"],
+            "Gemini:Chat:ImageMediaResolution",
+            DefaultChatImageMediaResolution);
+        _chatPdfMediaResolution = ResolveConfiguredMediaResolution(
+            configuration?["Gemini:Chat:PdfMediaResolution"],
+            "Gemini:Chat:PdfMediaResolution",
+            DefaultChatPdfMediaResolution);
+        _chatVideoMediaResolution = ResolveConfiguredMediaResolution(
+            configuration?["Gemini:Chat:VideoMediaResolution"],
+            "Gemini:Chat:VideoMediaResolution",
+            DefaultChatVideoMediaResolution);
     }
 
     /// <summary>
@@ -1169,7 +1187,7 @@ public class SendMessageCommandHandler
         };
     }
 
-    private static string? ResolveMediaResolution(IEnumerable<GeminiMessage> messages)
+    private string? ResolveMediaResolution(IEnumerable<GeminiMessage> messages)
     {
         var mediaAttachments = messages
             .SelectMany(message => message.Attachments ?? [])
@@ -1181,9 +1199,25 @@ public class SendMessageCommandHandler
             return null;
         }
 
-        return mediaAttachments.All(IsVideoAttachment)
-            ? "MEDIA_RESOLUTION_LOW"
-            : "MEDIA_RESOLUTION_MEDIUM";
+        return mediaAttachments
+            .Select(ResolveMediaResolutionForAttachment)
+            .OrderByDescending(GetMediaResolutionRank)
+            .First();
+    }
+
+    private string ResolveMediaResolutionForAttachment(GeminiAttachment attachment)
+    {
+        if (IsVideoAttachment(attachment))
+        {
+            return _chatVideoMediaResolution;
+        }
+
+        if (IsPdfAttachment(attachment))
+        {
+            return _chatPdfMediaResolution;
+        }
+
+        return _chatImageMediaResolution;
     }
 
     private static bool IsMediaAttachment(GeminiAttachment attachment)
@@ -1207,6 +1241,49 @@ public class SendMessageCommandHandler
         }
 
         return attachment.MimeType.StartsWith("video/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsPdfAttachment(GeminiAttachment attachment)
+    {
+        if (Enum.TryParse<ContentType>(attachment.ContentType, ignoreCase: true, out var contentType))
+        {
+            return contentType == ContentType.PDF;
+        }
+
+        return attachment.MimeType.Equals("application/pdf", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ResolveConfiguredMediaResolution(
+        string? configuredValue,
+        string configurationKey,
+        string defaultValue)
+    {
+        if (string.IsNullOrWhiteSpace(configuredValue))
+        {
+            return defaultValue;
+        }
+
+        return configuredValue.Trim().ToUpperInvariant() switch
+        {
+            "LOW" or "MEDIA_RESOLUTION_LOW" => "MEDIA_RESOLUTION_LOW",
+            "MEDIUM" or "MEDIA_RESOLUTION_MEDIUM" => "MEDIA_RESOLUTION_MEDIUM",
+            "HIGH" or "MEDIA_RESOLUTION_HIGH" => "MEDIA_RESOLUTION_HIGH",
+            "UNSPECIFIED" or "MEDIA_RESOLUTION_UNSPECIFIED" => "MEDIA_RESOLUTION_UNSPECIFIED",
+            _ => throw new InvalidOperationException(
+                $"Unsupported Gemini media resolution configured at '{configurationKey}'. " +
+                "Use low, medium, high, unspecified, or the matching MEDIA_RESOLUTION_* enum value.")
+        };
+    }
+
+    private static int GetMediaResolutionRank(string mediaResolution)
+    {
+        return mediaResolution switch
+        {
+            "MEDIA_RESOLUTION_LOW" => 1,
+            "MEDIA_RESOLUTION_MEDIUM" or "MEDIA_RESOLUTION_UNSPECIFIED" => 2,
+            "MEDIA_RESOLUTION_HIGH" => 3,
+            _ => 0
+        };
     }
 
     private static string? ResolveChatModelName(string? requestedModelName)

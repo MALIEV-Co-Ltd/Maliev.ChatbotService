@@ -230,6 +230,62 @@ public sealed class SendMessageCommandHandlerCostTests
     }
 
     [Fact]
+    public async Task HandleAsync_ConfiguredImageMediaResolution_UsesConfiguredGeminiMediaResolution()
+    {
+        var result = await SendWebsiteMessageAsync(
+            [
+                new AttachmentDto
+                {
+                    ContentType = ContentType.Image,
+                    Data = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB",
+                    MimeType = "image/png",
+                    SizeBytes = 1024
+                }
+            ],
+            chatImageMediaResolution: "low");
+
+        Assert.NotNull(result.CapturedRequest);
+        Assert.Equal("MEDIA_RESOLUTION_LOW", result.CapturedRequest!.MediaResolution);
+    }
+
+    [Fact]
+    public async Task HandleAsync_ConfiguredVideoMediaResolution_UsesConfiguredGeminiMediaResolution()
+    {
+        var result = await SendWebsiteMessageAsync(
+            [
+                new AttachmentDto
+                {
+                    ContentType = ContentType.Video,
+                    Data = "AAAA",
+                    MimeType = "video/mp4",
+                    SizeBytes = 1024
+                }
+            ],
+            chatVideoMediaResolution: "high");
+
+        Assert.NotNull(result.CapturedRequest);
+        Assert.Equal("MEDIA_RESOLUTION_HIGH", result.CapturedRequest!.MediaResolution);
+    }
+
+    [Fact]
+    public async Task HandleAsync_UnsupportedChatMediaResolution_ThrowsConfigurationError()
+    {
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => SendWebsiteMessageAsync(
+            [
+                new AttachmentDto
+                {
+                    ContentType = ContentType.Image,
+                    Data = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB",
+                    MimeType = "image/png",
+                    SizeBytes = 1024
+                }
+            ],
+            chatImageMediaResolution: "maximum"));
+
+        Assert.Contains("Gemini:Chat:ImageMediaResolution", exception.Message);
+    }
+
+    [Fact]
     public async Task HandleAsync_AudioAttachmentOver10Mb_IsRejectedBeforeGeminiCall()
     {
         var geminiClient = new Mock<IGeminiClient>();
@@ -619,7 +675,10 @@ public sealed class SendMessageCommandHandlerCostTests
         long? fileApiInlineThresholdBytes = null,
         bool geminiSuccess = true,
         string? geminiErrorMessage = null,
-        string? responseServiceTier = null)
+        string? responseServiceTier = null,
+        string? chatImageMediaResolution = null,
+        string? chatPdfMediaResolution = null,
+        string? chatVideoMediaResolution = null)
     {
         var sessionId = Guid.NewGuid();
         var userProfileId = Guid.NewGuid();
@@ -765,6 +824,9 @@ public sealed class SendMessageCommandHandlerCostTests
             {
                 ["Features:WebSearchEnabled"] = globalWebSearchEnabled.ToString(),
                 ["Gemini:FileApiInlineThresholdBytes"] = fileApiInlineThresholdBytes?.ToString(),
+                ["Gemini:Chat:ImageMediaResolution"] = chatImageMediaResolution,
+                ["Gemini:Chat:PdfMediaResolution"] = chatPdfMediaResolution,
+                ["Gemini:Chat:VideoMediaResolution"] = chatVideoMediaResolution,
                 ["Gemini:MainModelName"] = "gemini-2.5-flash"
             })
             .Build();
