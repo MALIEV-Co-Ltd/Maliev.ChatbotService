@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace Maliev.ChatbotService.Tests.Unit;
 
 public sealed class ModelProviderConfigurationTests
@@ -96,6 +98,33 @@ public sealed class ModelProviderConfigurationTests
         Assert.Contains("\"HARM_CATEGORY_HATE_SPEECH\"", safetySettingsBlock, StringComparison.Ordinal);
         Assert.Contains("\"HARM_CATEGORY_SEXUALLY_EXPLICIT\"", safetySettingsBlock, StringComparison.Ordinal);
         Assert.Contains("\"HARM_CATEGORY_DANGEROUS_CONTENT\"", safetySettingsBlock, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AppSettings_DefinesVisibleGeminiCostControlDefaults()
+    {
+        var appsettings = File.ReadAllText(Path.Combine(
+            GetRepositoryRoot(),
+            "Maliev.ChatbotService.Api",
+            "appsettings.json"));
+
+        using var document = JsonDocument.Parse(appsettings);
+        var gemini = document.RootElement.GetProperty("Gemini");
+
+        Assert.Equal(5L * 1024 * 1024, gemini.GetProperty("FileApiInlineThresholdBytes").GetInt64());
+        Assert.Equal(3, gemini.GetProperty("FlexRetryMaxAttempts").GetInt32());
+        Assert.Equal(5000, gemini.GetProperty("FlexRetryBaseDelayMs").GetInt32());
+        Assert.Equal(20, gemini.GetProperty("BatchSummaryMaxSessions").GetInt32());
+        Assert.Equal(18 * 1024 * 1024, gemini.GetProperty("BatchSummaryMaxInlineBytes").GetInt32());
+        Assert.Equal(100, gemini.GetProperty("Webhooks").GetProperty("QueueCapacity").GetInt32());
+
+        var chat = gemini.GetProperty("Chat");
+        Assert.Equal("medium", chat.GetProperty("ImageMediaResolution").GetString());
+        Assert.Equal("medium", chat.GetProperty("PdfMediaResolution").GetString());
+        Assert.Equal("low", chat.GetProperty("VideoMediaResolution").GetString());
+        Assert.Equal(
+            "medium",
+            gemini.GetProperty("Extraction").GetProperty("MediaResolution").GetString());
     }
 
     [Fact]
