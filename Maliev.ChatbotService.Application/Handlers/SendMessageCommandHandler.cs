@@ -631,9 +631,15 @@ public class SendMessageCommandHandler
 
 
 
+            GeminiCostEstimate? costEstimate = null;
+
             if (geminiResponse.Success)
 
             {
+                costEstimate = GeminiCostEstimator.Estimate(
+                    geminiRequest.ModelName ?? _defaultChatModelName,
+                    geminiResponse.ServiceTier ?? geminiRequest.ServiceTier,
+                    geminiResponse.TokenUsage);
 
                 // Save assistant message ONLY if it was a successful AI response
 
@@ -669,10 +675,7 @@ public class SendMessageCommandHandler
 
                         serviceTier = geminiResponse.ServiceTier,
 
-                        costEstimate = BuildCostEstimateMetadata(
-                            geminiRequest.ModelName ?? _defaultChatModelName,
-                            geminiResponse.ServiceTier ?? geminiRequest.ServiceTier,
-                            geminiResponse.TokenUsage)
+                        costEstimate = BuildCostEstimateMetadata(costEstimate)
 
                     })
 
@@ -694,9 +697,13 @@ public class SendMessageCommandHandler
             // this is the sum across all loop iterations; null/zero usage is a no-op.
             if (geminiResponse.Success)
             {
-                await _usageBudgetService.RecordTokenUsageAsync(
+                await _usageBudgetService.RecordModelUsageAsync(
                     session.UserProfileId,
-                    geminiResponse.TokenUsage?.TotalTokens ?? 0,
+                    new UsageBudgetCharge
+                    {
+                        Tokens = geminiResponse.TokenUsage?.TotalTokens ?? 0,
+                        CostMicroUsd = costEstimate?.TotalMicroUsd ?? 0
+                    },
                     cancellationToken);
                 usageSnapshot = await _usageBudgetService.GetDailyTokenUsageSnapshotAsync(session.UserProfileId, cancellationToken);
             }
@@ -1259,12 +1266,8 @@ public class SendMessageCommandHandler
             .ToArray();
     }
 
-    private static object? BuildCostEstimateMetadata(
-        string? modelName,
-        string? serviceTier,
-        GeminiTokenUsage? tokenUsage)
+    private static object? BuildCostEstimateMetadata(GeminiCostEstimate? estimate)
     {
-        var estimate = GeminiCostEstimator.Estimate(modelName, serviceTier, tokenUsage);
         return estimate is null
             ? null
             : new

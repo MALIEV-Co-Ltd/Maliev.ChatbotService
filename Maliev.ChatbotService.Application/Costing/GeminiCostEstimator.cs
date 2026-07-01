@@ -62,12 +62,19 @@ public static class GeminiCostEstimator
             return null;
         }
 
-        var cachedByModality = NormalizeModalityCounts(usage.CachedTokenDetails, usage.CachedPromptTokens);
-        var promptByModality = NormalizeModalityCounts(usage.PromptTokenDetails, usage.PromptTokens);
+        var fallbackOutputTokens = ShouldUseTotalOnlyFallback(usage)
+            ? Math.Max(0, usage.TotalTokens)
+            : 0;
+        var promptTokens = fallbackOutputTokens > 0 ? 0 : usage.PromptTokens;
+        var cachedPromptTokens = fallbackOutputTokens > 0 ? 0 : usage.CachedPromptTokens;
+        var cachedByModality = NormalizeModalityCounts(usage.CachedTokenDetails, cachedPromptTokens);
+        var promptByModality = NormalizeModalityCounts(usage.PromptTokenDetails, promptTokens);
         var uncachedByModality = SubtractCachedTokens(promptByModality, cachedByModality);
-        NormalizeTotal(uncachedByModality, Math.Max(0, usage.PromptTokens - usage.CachedPromptTokens));
+        NormalizeTotal(uncachedByModality, Math.Max(0, promptTokens - cachedPromptTokens));
 
-        var outputTokens = Math.Max(0, usage.CompletionTokens) + Math.Max(0, usage.ThoughtTokens);
+        var outputTokens = fallbackOutputTokens > 0
+            ? fallbackOutputTokens
+            : Math.Max(0, usage.CompletionTokens) + Math.Max(0, usage.ThoughtTokens);
         var uncachedPromptMicroUsd = EstimateInputMicroUsd(
             uncachedByModality,
             rates.InputTextImageVideoUsdPerMillion,
@@ -83,14 +90,26 @@ public static class GeminiCostEstimator
             ModelName = normalizedModelName,
             ServiceTier = normalizedTier,
             PricingBasis = PricingBasis,
-            UncachedPromptTokens = Math.Max(0, usage.PromptTokens - usage.CachedPromptTokens),
-            CachedPromptTokens = Math.Max(0, usage.CachedPromptTokens),
+            UncachedPromptTokens = Math.Max(0, promptTokens - cachedPromptTokens),
+            CachedPromptTokens = Math.Max(0, cachedPromptTokens),
             OutputTokens = outputTokens,
             UncachedPromptMicroUsd = uncachedPromptMicroUsd,
             CachedPromptMicroUsd = cachedPromptMicroUsd,
             OutputMicroUsd = outputMicroUsd,
             TotalMicroUsd = uncachedPromptMicroUsd + cachedPromptMicroUsd + outputMicroUsd
         };
+    }
+
+    private static bool ShouldUseTotalOnlyFallback(GeminiTokenUsage usage)
+    {
+        return usage.TotalTokens > 0 &&
+            usage.PromptTokens <= 0 &&
+            usage.CachedPromptTokens <= 0 &&
+            usage.CompletionTokens <= 0 &&
+            usage.ThoughtTokens <= 0 &&
+            usage.PromptTokenDetails.Count == 0 &&
+            usage.CachedTokenDetails.Count == 0 &&
+            usage.CandidateTokenDetails.Count == 0;
     }
 
     private static Dictionary<string, int> NormalizeModalityCounts(

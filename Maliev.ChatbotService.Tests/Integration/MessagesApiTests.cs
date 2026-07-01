@@ -137,12 +137,20 @@ public class MessagesApiTests : IAsyncLifetime
                 Assert.Equal(100, result.UsageSnapshot!.UsedTokens);
                 Assert.Equal(150, result.UsageSnapshot.DailyTokenBudget);
                 Assert.Equal(50, result.UsageSnapshot.RemainingTokens);
+                Assert.Equal(250, result.UsageSnapshot.UsedCostMicroUsd);
+                Assert.Equal(5_000_000, result.UsageSnapshot.DailyCostBudgetMicroUsd);
+                Assert.Equal(4_999_750, result.UsageSnapshot.RemainingCostMicroUsd);
+                Assert.False(result.UsageSnapshot.IsTokenExceeded);
+                Assert.False(result.UsageSnapshot.IsCostExceeded);
                 Assert.False(result.UsageSnapshot.IsExceeded);
             }
             else if (i == 2)
             {
                 Assert.Equal(200, result.UsageSnapshot!.UsedTokens);
                 Assert.Equal(0, result.UsageSnapshot.RemainingTokens);
+                Assert.Equal(500, result.UsageSnapshot.UsedCostMicroUsd);
+                Assert.True(result.UsageSnapshot.IsTokenExceeded);
+                Assert.False(result.UsageSnapshot.IsCostExceeded);
                 Assert.True(result.UsageSnapshot.IsExceeded);
             }
         }

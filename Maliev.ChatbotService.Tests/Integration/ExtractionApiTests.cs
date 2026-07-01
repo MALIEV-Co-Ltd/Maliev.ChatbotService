@@ -85,6 +85,8 @@ public class ExtractionApiTests : IAsyncLifetime
         using var scope = _factory.Services.CreateScope();
         var budgetService = scope.ServiceProvider.GetRequiredService<IUsageBudgetService>();
         Assert.Equal(100, await budgetService.GetDailyTokenUsageAsync(userProfileId));
+        var snapshot = await budgetService.GetDailyTokenUsageSnapshotAsync(userProfileId);
+        Assert.Equal(20, snapshot.UsedCostMicroUsd);
     }
 
     /// <summary>
@@ -160,6 +162,8 @@ public class ExtractionApiTests : IAsyncLifetime
         using var scope = _factory.Services.CreateScope();
         var budgetService = scope.ServiceProvider.GetRequiredService<IUsageBudgetService>();
         Assert.Equal(100, await budgetService.GetDailyTokenUsageAsync(userProfileId));
+        var snapshot = await budgetService.GetDailyTokenUsageSnapshotAsync(userProfileId);
+        Assert.Equal(40, snapshot.UsedCostMicroUsd);
     }
 
     /// <summary>
@@ -275,6 +279,8 @@ public class ExtractionApiTests : IAsyncLifetime
         using var scope = _factory.Services.CreateScope();
         var budgetService = scope.ServiceProvider.GetRequiredService<IUsageBudgetService>();
         Assert.Equal(100, await budgetService.GetDailyTokenUsageAsync(userProfileId));
+        var snapshot = await budgetService.GetDailyTokenUsageSnapshotAsync(userProfileId);
+        Assert.Equal(40, snapshot.UsedCostMicroUsd);
     }
 
     /// <summary>

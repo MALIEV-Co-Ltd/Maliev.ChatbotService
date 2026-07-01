@@ -436,6 +436,14 @@ public sealed class SendMessageCommandHandlerCostTests
         Assert.Equal(12, costEstimate.GetProperty("cachedPromptMicroUsd").GetInt64());
         Assert.Equal(100, costEstimate.GetProperty("outputMicroUsd").GetInt64());
         Assert.Equal(202, costEstimate.GetProperty("totalMicroUsd").GetInt64());
+        result.UsageBudgetService.Verify(
+            item => item.RecordModelUsageAsync(
+                It.IsAny<Guid>(),
+                It.Is<UsageBudgetCharge>(charge =>
+                    charge.Tokens == 1080 &&
+                    charge.CostMicroUsd == 202),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]
@@ -656,6 +664,9 @@ public sealed class SendMessageCommandHandlerCostTests
         usageBudgetService
             .Setup(item => item.RecordTokenUsageAsync(userProfileId, It.IsAny<long>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(25);
+        usageBudgetService
+            .Setup(item => item.RecordModelUsageAsync(userProfileId, It.IsAny<UsageBudgetCharge>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UsageBudgetRecordResult { UsedTokens = 25 });
 
         var geminiClient = new Mock<IGeminiClient>();
         geminiClient
@@ -784,7 +795,14 @@ public sealed class SendMessageCommandHandlerCostTests
             ResponseSchema = responseSchema
         });
 
-        return new HandlerResult(capturedRequest, capturedContextCacheRequest, createdMessages, toolExecutor, intentClassificationService, modelContextCacheService);
+        return new HandlerResult(
+            capturedRequest,
+            capturedContextCacheRequest,
+            createdMessages,
+            toolExecutor,
+            intentClassificationService,
+            modelContextCacheService,
+            usageBudgetService);
     }
 
     private sealed record HandlerResult(
@@ -793,5 +811,6 @@ public sealed class SendMessageCommandHandlerCostTests
         IReadOnlyList<Message> CreatedMessages,
         Mock<IToolExecutorService> ToolExecutor,
         Mock<IIntentClassificationService> IntentClassificationService,
-        Mock<IModelContextCacheService> ModelContextCacheService);
+        Mock<IModelContextCacheService> ModelContextCacheService,
+        Mock<IUsageBudgetService> UsageBudgetService);
 }

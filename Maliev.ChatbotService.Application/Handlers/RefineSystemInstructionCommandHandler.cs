@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Maliev.ChatbotService.Application.Commands;
+using Maliev.ChatbotService.Application.Costing;
 using Maliev.ChatbotService.Application.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -105,6 +106,10 @@ public class RefineSystemInstructionCommandHandler
                 ? "Refined instruction clarity, scope, and guardrails."
                 : refined.Summary.Trim();
             refined.TokenUsage = response.TokenUsage;
+            refined.CostEstimate = GeminiCostEstimator.Estimate(
+                _modelName,
+                response.ServiceTier ?? request.ServiceTier,
+                response.TokenUsage);
 
             return refined;
         }

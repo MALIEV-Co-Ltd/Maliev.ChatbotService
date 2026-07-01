@@ -6,24 +6,27 @@ using StackExchange.Redis;
 namespace Maliev.ChatbotService.Infrastructure.Services;
 
 /// <summary>
-/// Redis-backed daily token budget (S2). Tracks cumulative model token usage per user in a rolling
-/// 24-hour window and enforces a soft ceiling. The window is implemented exactly like the per-hour
-/// message rate limiter: a counter whose TTL is set only when the key is first created, so usage
-/// rolls off 24 hours after the first recorded token of the window.
+/// Redis-backed daily model budget (S2). Tracks cumulative model token and estimated cost usage per
+/// user in rolling 24-hour windows and enforces soft ceilings. Each window is implemented exactly
+/// like the per-hour message rate limiter: a counter whose TTL is set only when the key is first
+/// created, so usage rolls off 24 hours after the first recorded charge of the window.
 /// </summary>
 public class RedisUsageBudgetService : IUsageBudgetService
 {
     private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<RedisUsageBudgetService> _logger;
     private readonly long _dailyTokenBudget;
+    private readonly long _dailyCostBudgetMicroUsd;
 
-    private const string KeyPrefix = "chatbot:tokenbudget:";
+    private const string TokenKeyPrefix = "chatbot:tokenbudget:";
+    private const string CostKeyPrefix = "chatbot:costbudget:";
 
     // Default daily budget per user. Deliberately a high code default (not in appsettings.json) so the
     // integration suite — which records only ~100 mock tokens per message — never trips it without
     // explicitly overriding the setting (the 38-spurious-429 lesson from the per-IP limiter). Set the
     // configured value to 0 to disable the budget entirely.
     private const long DefaultDailyTokenBudget = 2_000_000L;
+    private const long DefaultDailyCostBudgetMicroUsd = 5_000_000L;
 
     private static readonly long WindowMilliseconds = (long)TimeSpan.FromHours(24).TotalMilliseconds;
 
@@ -46,7 +49,7 @@ public class RedisUsageBudgetService : IUsageBudgetService
     /// Initializes a new instance of the <see cref="RedisUsageBudgetService"/> class.
     /// </summary>
     /// <param name="redis">The Redis connection multiplexer.</param>
-    /// <param name="configuration">Application configuration (reads <c>UsageBudget:DailyTokenBudget</c>).</param>
+    /// <param name="configuration">Application configuration (reads <c>UsageBudget:DailyTokenBudget</c> and <c>UsageBudget:DailyCostBudgetMicroUsd</c>).</param>
     /// <param name="logger">The logger.</param>
     public RedisUsageBudgetService(
         IConnectionMultiplexer redis,
@@ -56,18 +59,14 @@ public class RedisUsageBudgetService : IUsageBudgetService
         _redis = redis;
         _logger = logger;
         _dailyTokenBudget = configuration.GetValue<long?>("UsageBudget:DailyTokenBudget") ?? DefaultDailyTokenBudget;
+        _dailyCostBudgetMicroUsd = configuration.GetValue<long?>("UsageBudget:DailyCostBudgetMicroUsd") ?? DefaultDailyCostBudgetMicroUsd;
     }
 
     /// <inheritdoc/>
     public async Task<bool> IsDailyTokenBudgetExceededAsync(Guid userProfileId, CancellationToken cancellationToken = default)
     {
-        if (_dailyTokenBudget <= 0)
-        {
-            return false; // Budget disabled.
-        }
-
-        var usage = await GetDailyTokenUsageAsync(userProfileId, cancellationToken);
-        return usage >= _dailyTokenBudget;
+        var snapshot = await GetDailyTokenUsageSnapshotAsync(userProfileId, cancellationToken);
+        return snapshot.IsExceeded;
     }
 
     /// <inheritdoc/>
@@ -83,32 +82,55 @@ public class RedisUsageBudgetService : IUsageBudgetService
             return await GetDailyTokenUsageAsync(userProfileId, cancellationToken);
         }
 
-        var db = _redis.GetDatabase();
-        var result = await db.ScriptEvaluateAsync(
-            IncrementWithExpiryScript,
-            [GetKey(userProfileId)],
-            [tokens, WindowMilliseconds]);
+        var result = await RecordModelUsageAsync(
+            userProfileId,
+            new UsageBudgetCharge { Tokens = tokens },
+            cancellationToken);
+        return result.UsedTokens;
+    }
 
-        var newTotal = (long)result;
+    /// <inheritdoc/>
+    public async Task<UsageBudgetRecordResult> RecordModelUsageAsync(
+        Guid userProfileId,
+        UsageBudgetCharge usage,
+        CancellationToken cancellationToken = default)
+    {
+        var tokenTotal = _dailyTokenBudget > 0
+            ? await IncrementUsageAsync(GetTokenKey(userProfileId), usage.Tokens)
+            : 0;
+        var costTotal = _dailyCostBudgetMicroUsd > 0
+            ? await IncrementUsageAsync(GetCostKey(userProfileId), usage.CostMicroUsd)
+            : 0;
 
-        if (newTotal >= _dailyTokenBudget)
+        if (_dailyTokenBudget > 0 && tokenTotal >= _dailyTokenBudget)
         {
             _logger.LogWarning(
                 "User {UserProfileId} reached the daily token budget: {Total}/{Budget}",
                 userProfileId,
-                newTotal,
+                tokenTotal,
                 _dailyTokenBudget);
         }
 
-        return newTotal;
+        if (_dailyCostBudgetMicroUsd > 0 && costTotal >= _dailyCostBudgetMicroUsd)
+        {
+            _logger.LogWarning(
+                "User {UserProfileId} reached the daily Gemini cost budget: {TotalMicroUsd}/{BudgetMicroUsd}",
+                userProfileId,
+                costTotal,
+                _dailyCostBudgetMicroUsd);
+        }
+
+        return new UsageBudgetRecordResult
+        {
+            UsedTokens = tokenTotal,
+            UsedCostMicroUsd = costTotal
+        };
     }
 
     /// <inheritdoc/>
     public async Task<long> GetDailyTokenUsageAsync(Guid userProfileId, CancellationToken cancellationToken = default)
     {
-        var db = _redis.GetDatabase();
-        var value = await db.StringGetAsync(GetKey(userProfileId));
-        return value.HasValue && value.TryParse(out long usage) ? usage : 0;
+        return await GetUsageAsync(GetTokenKey(userProfileId));
     }
 
     /// <inheritdoc/>
@@ -116,30 +138,48 @@ public class RedisUsageBudgetService : IUsageBudgetService
         Guid userProfileId,
         CancellationToken cancellationToken = default)
     {
-        var usage = await GetDailyTokenUsageAsync(userProfileId, cancellationToken);
-        if (_dailyTokenBudget <= 0)
-        {
-            return new UsageBudgetSnapshot
-            {
-                IsEnabled = false,
-                UsedTokens = usage,
-                DailyTokenBudget = 0,
-                RemainingTokens = 0,
-                UsedRatio = 0,
-                IsExceeded = false
-            };
-        }
+        var tokenUsage = await GetDailyTokenUsageAsync(userProfileId, cancellationToken);
+        var costUsage = await GetUsageAsync(GetCostKey(userProfileId));
+        var tokenBudgetEnabled = _dailyTokenBudget > 0;
+        var costBudgetEnabled = _dailyCostBudgetMicroUsd > 0;
+        var tokenExceeded = tokenBudgetEnabled && tokenUsage >= _dailyTokenBudget;
+        var costExceeded = costBudgetEnabled && costUsage >= _dailyCostBudgetMicroUsd;
 
         return new UsageBudgetSnapshot
         {
-            IsEnabled = true,
-            UsedTokens = usage,
-            DailyTokenBudget = _dailyTokenBudget,
-            RemainingTokens = Math.Max(0, _dailyTokenBudget - usage),
-            UsedRatio = Math.Clamp((double)usage / _dailyTokenBudget, 0, 1),
-            IsExceeded = usage >= _dailyTokenBudget
+            IsEnabled = tokenBudgetEnabled || costBudgetEnabled,
+            UsedTokens = tokenUsage,
+            DailyTokenBudget = tokenBudgetEnabled ? _dailyTokenBudget : 0,
+            RemainingTokens = tokenBudgetEnabled ? Math.Max(0, _dailyTokenBudget - tokenUsage) : 0,
+            UsedRatio = tokenBudgetEnabled ? Math.Clamp((double)tokenUsage / _dailyTokenBudget, 0, 1) : 0,
+            UsedCostMicroUsd = costUsage,
+            DailyCostBudgetMicroUsd = costBudgetEnabled ? _dailyCostBudgetMicroUsd : 0,
+            RemainingCostMicroUsd = costBudgetEnabled ? Math.Max(0, _dailyCostBudgetMicroUsd - costUsage) : 0,
+            CostUsedRatio = costBudgetEnabled ? Math.Clamp((double)costUsage / _dailyCostBudgetMicroUsd, 0, 1) : 0,
+            IsTokenExceeded = tokenExceeded,
+            IsCostExceeded = costExceeded,
+            IsExceeded = tokenExceeded || costExceeded
         };
     }
 
-    private static RedisKey GetKey(Guid userProfileId) => $"{KeyPrefix}{userProfileId}";
+    private async Task<long> IncrementUsageAsync(RedisKey key, long amount)
+    {
+        var db = _redis.GetDatabase();
+        var result = await db.ScriptEvaluateAsync(
+            IncrementWithExpiryScript,
+            [key],
+            [amount, WindowMilliseconds]);
+        return (long)result;
+    }
+
+    private async Task<long> GetUsageAsync(RedisKey key)
+    {
+        var db = _redis.GetDatabase();
+        var value = await db.StringGetAsync(key);
+        return value.HasValue && value.TryParse(out long usage) ? usage : 0;
+    }
+
+    private static RedisKey GetTokenKey(Guid userProfileId) => $"{TokenKeyPrefix}{userProfileId}";
+
+    private static RedisKey GetCostKey(Guid userProfileId) => $"{CostKeyPrefix}{userProfileId}";
 }

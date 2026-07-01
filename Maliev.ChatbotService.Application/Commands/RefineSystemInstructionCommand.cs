@@ -1,3 +1,4 @@
+using Maliev.ChatbotService.Application.Costing;
 using Maliev.ChatbotService.Domain.Enums;
 using Maliev.ChatbotService.Application.Interfaces;
 
@@ -63,4 +64,9 @@ public class RefinedSystemInstructionResult
     /// Gets or sets the Gemini token usage reported for the refinement call.
     /// </summary>
     public GeminiTokenUsage? TokenUsage { get; set; }
+
+    /// <summary>
+    /// Gets or sets the estimated Gemini cost for the refinement call.
+    /// </summary>
+    public GeminiCostEstimate? CostEstimate { get; set; }
 }

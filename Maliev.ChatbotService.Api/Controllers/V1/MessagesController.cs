@@ -358,6 +358,12 @@ public class MessagesController : ControllerBase
                     DailyTokenBudget = result.UsageSnapshot.DailyTokenBudget,
                     RemainingTokens = result.UsageSnapshot.RemainingTokens,
                     UsedRatio = result.UsageSnapshot.UsedRatio,
+                    UsedCostMicroUsd = result.UsageSnapshot.UsedCostMicroUsd,
+                    DailyCostBudgetMicroUsd = result.UsageSnapshot.DailyCostBudgetMicroUsd,
+                    RemainingCostMicroUsd = result.UsageSnapshot.RemainingCostMicroUsd,
+                    CostUsedRatio = result.UsageSnapshot.CostUsedRatio,
+                    IsTokenExceeded = result.UsageSnapshot.IsTokenExceeded,
+                    IsCostExceeded = result.UsageSnapshot.IsCostExceeded,
                     IsExceeded = result.UsageSnapshot.IsExceeded
                 }
         };

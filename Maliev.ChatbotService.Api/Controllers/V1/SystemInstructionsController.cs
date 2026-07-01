@@ -4,6 +4,7 @@ using Maliev.ChatbotService.Api.Models.Requests;
 using Maliev.ChatbotService.Api.Models.Responses;
 using Maliev.ChatbotService.Application.Authorization;
 using Maliev.ChatbotService.Application.Commands;
+using Maliev.ChatbotService.Application.Costing;
 using Maliev.ChatbotService.Application.Handlers;
 using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Application.Queries;
@@ -178,7 +179,7 @@ public class SystemInstructionsController : ControllerBase
             };
 
             var refined = await _refineHandler.HandleAsync(command, cancellationToken);
-            await RecordTokenUsageAsync(refined.TokenUsage, cancellationToken);
+            await RecordModelUsageAsync(refined.TokenUsage, refined.CostEstimate, cancellationToken);
 
             return Ok(new RefinedSystemInstructionResponse
             {
@@ -193,7 +194,10 @@ public class SystemInstructionsController : ControllerBase
         }
     }
 
-    private async Task RecordTokenUsageAsync(GeminiTokenUsage? tokenUsage, CancellationToken cancellationToken)
+    private async Task RecordModelUsageAsync(
+        GeminiTokenUsage? tokenUsage,
+        GeminiCostEstimate? costEstimate,
+        CancellationToken cancellationToken)
     {
         if (tokenUsage?.TotalTokens is not > 0 ||
             !TryGetAuthenticatedUserProfileId(out var userProfileId))
@@ -201,7 +205,14 @@ public class SystemInstructionsController : ControllerBase
             return;
         }
 
-        await _usageBudgetService.RecordTokenUsageAsync(userProfileId, tokenUsage.TotalTokens, cancellationToken);
+        await _usageBudgetService.RecordModelUsageAsync(
+            userProfileId,
+            new UsageBudgetCharge
+            {
+                Tokens = tokenUsage.TotalTokens,
+                CostMicroUsd = costEstimate?.TotalMicroUsd ?? 0
+            },
+            cancellationToken);
     }
 
     private async Task<ActionResult?> TryBuildDailyBudgetExceededResultAsync(CancellationToken cancellationToken)

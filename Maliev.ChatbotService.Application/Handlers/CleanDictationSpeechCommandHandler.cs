@@ -1,5 +1,6 @@
 using Maliev.ChatbotService.Application.Commands;
 using Maliev.ChatbotService.Application.Configuration;
+using Maliev.ChatbotService.Application.Costing;
 using Maliev.ChatbotService.Application.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -72,7 +73,11 @@ public class CleanDictationSpeechCommandHandler
             {
                 Success = true,
                 CleanedText = response.Content.Trim(),
-                TokenUsage = response.TokenUsage
+                TokenUsage = response.TokenUsage,
+                CostEstimate = GeminiCostEstimator.Estimate(
+                    _modelName,
+                    response.ServiceTier ?? request.ServiceTier,
+                    response.TokenUsage)
             };
         }
         catch (Exception ex)
@@ -99,4 +104,7 @@ public class CleanDictationSpeechResult
 
     /// <summary>Gemini token usage reported for the speech cleanup call.</summary>
     public GeminiTokenUsage? TokenUsage { get; set; }
+
+    /// <summary>Estimated Gemini cost for the speech cleanup call.</summary>
+    public GeminiCostEstimate? CostEstimate { get; set; }
 }

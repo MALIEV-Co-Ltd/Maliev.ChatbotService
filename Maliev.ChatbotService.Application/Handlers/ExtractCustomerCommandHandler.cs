@@ -1,4 +1,5 @@
 using Maliev.ChatbotService.Application.Commands;
+using Maliev.ChatbotService.Application.Costing;
 using Maliev.ChatbotService.Application.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -249,7 +250,16 @@ public class ExtractCustomerCommandHandler
                     _logger.LogWarning("No addresses extracted by Gemini");
                 }
 
-                return new ExtractCustomerResult { Success = true, Data = extracted, TokenUsage = geminiResponse.TokenUsage };
+                return new ExtractCustomerResult
+                {
+                    Success = true,
+                    Data = extracted,
+                    TokenUsage = geminiResponse.TokenUsage,
+                    CostEstimate = GeminiCostEstimator.Estimate(
+                        _modelName,
+                        geminiResponse.ServiceTier ?? geminiRequest.ServiceTier,
+                        geminiResponse.TokenUsage)
+                };
             }
             catch (JsonException ex)
             {
@@ -423,6 +433,9 @@ public class ExtractCustomerResult
 
     /// <summary>Gets or sets the Gemini token usage reported for the extraction call.</summary>
     public GeminiTokenUsage? TokenUsage { get; set; }
+
+    /// <summary>Gets or sets the estimated Gemini cost for the extraction call.</summary>
+    public GeminiCostEstimate? CostEstimate { get; set; }
 }
 
 /// <summary>

@@ -1,6 +1,7 @@
 using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Infrastructure.Data;
 using Maliev.ChatbotService.Tests.Infrastructure;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Maliev.ChatbotService.Tests.Integration;
@@ -13,6 +14,7 @@ namespace Maliev.ChatbotService.Tests.Integration;
 public class UsageBudgetServiceTests : IAsyncLifetime
 {
     private const long DefaultBudget = 2_000_000L;
+    private const long DefaultCostBudgetMicroUsd = 5_000_000L;
     private readonly BaseIntegrationTestFactory<Program, ChatbotDbContext> _factory;
 
     public UsageBudgetServiceTests(BaseIntegrationTestFactory<Program, ChatbotDbContext> factory)
@@ -51,7 +53,68 @@ public class UsageBudgetServiceTests : IAsyncLifetime
         Assert.Equal(DefaultBudget, snapshot.DailyTokenBudget);
         Assert.Equal(DefaultBudget - 350, snapshot.RemainingTokens);
         Assert.Equal(350d / DefaultBudget, snapshot.UsedRatio);
+        Assert.Equal(0, snapshot.UsedCostMicroUsd);
+        Assert.Equal(DefaultCostBudgetMicroUsd, snapshot.DailyCostBudgetMicroUsd);
+        Assert.Equal(DefaultCostBudgetMicroUsd, snapshot.RemainingCostMicroUsd);
+        Assert.Equal(0, snapshot.CostUsedRatio);
+        Assert.False(snapshot.IsCostExceeded);
         Assert.False(snapshot.IsExceeded);
+    }
+
+    [Fact]
+    public async Task RecordModelUsage_AccumulatesTokenAndCostBudgets()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<IUsageBudgetService>();
+        var userId = Guid.NewGuid();
+
+        var first = await service.RecordModelUsageAsync(
+            userId,
+            new UsageBudgetCharge { Tokens = 100, CostMicroUsd = 250 });
+        var second = await service.RecordModelUsageAsync(
+            userId,
+            new UsageBudgetCharge { Tokens = 50, CostMicroUsd = 125 });
+
+        Assert.Equal(100, first.UsedTokens);
+        Assert.Equal(250, first.UsedCostMicroUsd);
+        Assert.Equal(150, second.UsedTokens);
+        Assert.Equal(375, second.UsedCostMicroUsd);
+
+        var snapshot = await service.GetDailyTokenUsageSnapshotAsync(userId);
+        Assert.True(snapshot.IsEnabled);
+        Assert.Equal(150, snapshot.UsedTokens);
+        Assert.Equal(375, snapshot.UsedCostMicroUsd);
+        Assert.Equal(DefaultCostBudgetMicroUsd - 375, snapshot.RemainingCostMicroUsd);
+        Assert.Equal(375d / DefaultCostBudgetMicroUsd, snapshot.CostUsedRatio);
+        Assert.False(snapshot.IsExceeded);
+    }
+
+    [Fact]
+    public async Task RecordModelUsage_BeyondCostBudget_MarksExceeded()
+    {
+        using var configuredFactory = _factory.WithWebHostBuilder(builder =>
+        {
+            builder.UseSetting("UsageBudget:DailyTokenBudget", "1000000");
+            builder.UseSetting("UsageBudget:DailyCostBudgetMicroUsd", "100");
+        });
+        using var scope = configuredFactory.Services.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<IUsageBudgetService>();
+        var userId = Guid.NewGuid();
+
+        var total = await service.RecordModelUsageAsync(
+            userId,
+            new UsageBudgetCharge { Tokens = 10, CostMicroUsd = 101 });
+
+        Assert.Equal(10, total.UsedTokens);
+        Assert.Equal(101, total.UsedCostMicroUsd);
+        Assert.True(await service.IsDailyTokenBudgetExceededAsync(userId));
+        var snapshot = await service.GetDailyTokenUsageSnapshotAsync(userId);
+        Assert.False(snapshot.IsTokenExceeded);
+        Assert.True(snapshot.IsCostExceeded);
+        Assert.True(snapshot.IsExceeded);
+        Assert.Equal(101, snapshot.UsedCostMicroUsd);
+        Assert.Equal(0, snapshot.RemainingCostMicroUsd);
+        Assert.Equal(1, snapshot.CostUsedRatio);
     }
 
     [Fact]

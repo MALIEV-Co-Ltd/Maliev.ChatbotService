@@ -51,4 +51,21 @@ public sealed class GeminiCostEstimatorTests
 
         Assert.Null(estimate);
     }
+
+    [Fact]
+    public void Estimate_TotalOnlyUsage_UsesConservativeOutputRate()
+    {
+        var estimate = GeminiCostEstimator.Estimate(
+            "gemini-2.5-flash",
+            null,
+            new GeminiTokenUsage { TotalTokens = 100 });
+
+        Assert.NotNull(estimate);
+        Assert.Equal("standard", estimate!.ServiceTier);
+        Assert.Equal(0, estimate.UncachedPromptTokens);
+        Assert.Equal(0, estimate.CachedPromptTokens);
+        Assert.Equal(100, estimate.OutputTokens);
+        Assert.Equal(250, estimate.OutputMicroUsd);
+        Assert.Equal(250, estimate.TotalMicroUsd);
+    }
 }

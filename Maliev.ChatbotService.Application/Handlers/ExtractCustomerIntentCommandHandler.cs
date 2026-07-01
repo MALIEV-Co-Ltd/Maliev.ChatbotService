@@ -1,5 +1,6 @@
 using Maliev.ChatbotService.Application.Commands;
 using Maliev.ChatbotService.Application.Configuration;
+using Maliev.ChatbotService.Application.Costing;
 using Maliev.ChatbotService.Application.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -103,7 +104,11 @@ public class ExtractCustomerIntentCommandHandler
                 NeedsCustomerData = result.NeedsCustomerData,
                 CustomerSearchTerm = result.CustomerSearchTerm,
                 NeedsHistory = result.NeedsHistory,
-                TokenUsage = response.TokenUsage
+                TokenUsage = response.TokenUsage,
+                CostEstimate = GeminiCostEstimator.Estimate(
+                    _modelName,
+                    response.ServiceTier ?? request.ServiceTier,
+                    response.TokenUsage)
             };
         }
         catch (Exception ex)
@@ -136,4 +141,6 @@ public class ExtractCustomerIntentResult
     public bool NeedsHistory { get; set; }
     /// <summary>Gemini token usage reported for the intent extraction call.</summary>
     public GeminiTokenUsage? TokenUsage { get; set; }
+    /// <summary>Estimated Gemini cost for the intent extraction call.</summary>
+    public GeminiCostEstimate? CostEstimate { get; set; }
 }
