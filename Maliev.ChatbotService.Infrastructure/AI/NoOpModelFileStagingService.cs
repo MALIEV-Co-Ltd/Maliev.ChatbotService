@@ -12,4 +12,10 @@ public sealed class NoOpModelFileStagingService : IModelFileStagingService
         ModelFileStagingRequest request,
         CancellationToken cancellationToken = default) =>
         Task.FromResult<ModelFileReference?>(null);
+
+    /// <inheritdoc/>
+    public Task DeleteFileAsync(
+        string fileName,
+        CancellationToken cancellationToken = default) =>
+        Task.CompletedTask;
 }

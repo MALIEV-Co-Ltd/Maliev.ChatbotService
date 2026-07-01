@@ -140,117 +140,130 @@ public class ExtractCustomerCommandHandler
 
         // Build attachments from file data for multimodal extraction
         var attachments = new List<GeminiAttachment>();
+        var stagedFileNames = new List<string>();
 
-        if (command.Files != null && command.Files.Count > 0)
-        {
-            foreach (var file in command.Files)
-            {
-                attachments.Add(await BuildAttachmentAsync(file, cancellationToken));
-            }
-
-            userMessageParts.Add($"Extract customer information from the {attachments.Count} attached file(s).");
-        }
-
-        if (command.StoragePaths.Count > 0 && attachments.Count == 0)
-        {
-            userMessageParts.Add($"Storage paths (for reference): {string.Join(", ", command.StoragePaths)}");
-        }
-
-        if (userMessageParts.Count == 0 && attachments.Count == 0)
-        {
-            return new ExtractCustomerResult { Success = false, ErrorMessage = "No files or text provided." };
-        }
-
-        var userMessage = userMessageParts.Count > 0
-            ? string.Join("\n\n", userMessageParts)
-            : "Extract customer information from the attached files.";
-
-        // Call Gemini directly with structured output
-        var geminiRequest = new GeminiRequest
-        {
-            ModelName = _modelName,
-            SystemInstruction = systemPrompt,
-            Messages = new List<GeminiMessage>
-            {
-                new() { Role = "user", Content = userMessage }
-            },
-            Attachments = attachments.Count > 0 ? attachments : null,
-            ResponseMimeType = "application/json",
-            ResponseSchema = CustomerExtractionSchema,
-            ThinkingBudget = 0,
-            MaxTokens = MaxExtractionOutputTokens,
-            MaxPromptTokens = MaxExtractionPromptTokens,
-            MediaResolution = attachments.Count > 0 ? "MEDIA_RESOLUTION_MEDIUM" : null,
-            ServiceTier = "flex",
-            TimeoutSeconds = GeminiRequest.FlexInferenceTimeoutSeconds
-        };
-
-        var cacheReference = await _modelContextCacheService.GetOrCreateSystemInstructionCacheAsync(
-            new ModelContextCacheRequest
-            {
-                ModelName = _modelName,
-                SystemInstruction = systemPrompt
-            },
-            cancellationToken);
-        if (cacheReference is not null)
-        {
-            geminiRequest.CachedContentName = cacheReference.CachedContentName;
-            geminiRequest.SystemInstruction = string.Empty;
-        }
-
-        var geminiResponse = await _geminiClient.SendMessageAsync(geminiRequest, cancellationToken);
-
-        // Log raw Gemini response for debugging
-        _logger.LogInformation("Raw Gemini extraction response: {Response}", geminiResponse.Content);
-
-        if (!geminiResponse.Success)
-        {
-            _logger.LogError("Gemini extraction call failed: {Error} (Type: {ErrorType})",
-                geminiResponse.ErrorMessage, geminiResponse.ErrorType);
-
-            return new ExtractCustomerResult
-            {
-                Success = false,
-                ErrorMessage = geminiResponse.ErrorMessage ?? "AI extraction failed."
-            };
-        }
-
-        // Parse the JSON response
         try
         {
-            var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
-            var extracted = JsonSerializer.Deserialize<ExtractedCustomerData>(geminiResponse.Content, options);
-
-            if (extracted == null)
+            if (command.Files != null && command.Files.Count > 0)
             {
-                return new ExtractCustomerResult { Success = false, ErrorMessage = "Failed to parse extracted data." };
-            }
-
-            // Log extracted addresses to verify AI populated address_line_1
-            if (extracted.Addresses != null && extracted.Addresses.Count > 0)
-            {
-                foreach (var addr in extracted.Addresses)
+                foreach (var file in command.Files)
                 {
-                    _logger.LogInformation(
-                        "Extracted address ({Type}): Line1='{Line1}', District='{District}', City='{City}', PostalCode='{PostalCode}'",
-                        addr.Type, addr.AddressLine1, addr.District, addr.City, addr.PostalCode);
+                    var builtAttachment = await BuildAttachmentAsync(file, cancellationToken);
+                    attachments.Add(builtAttachment.Attachment);
+                    if (!string.IsNullOrWhiteSpace(builtAttachment.StagedFileName))
+                    {
+                        stagedFileNames.Add(builtAttachment.StagedFileName);
+                    }
                 }
-            }
-            else
-            {
-                _logger.LogWarning("No addresses extracted by Gemini");
+
+                userMessageParts.Add($"Extract customer information from the {attachments.Count} attached file(s).");
             }
 
-            return new ExtractCustomerResult { Success = true, Data = extracted, TokenUsage = geminiResponse.TokenUsage };
+            if (command.StoragePaths.Count > 0 && attachments.Count == 0)
+            {
+                userMessageParts.Add($"Storage paths (for reference): {string.Join(", ", command.StoragePaths)}");
+            }
+
+            if (userMessageParts.Count == 0 && attachments.Count == 0)
+            {
+                return new ExtractCustomerResult { Success = false, ErrorMessage = "No files or text provided." };
+            }
+
+            var userMessage = userMessageParts.Count > 0
+                ? string.Join("\n\n", userMessageParts)
+                : "Extract customer information from the attached files.";
+
+            // Call Gemini directly with structured output
+            var geminiRequest = new GeminiRequest
+            {
+                ModelName = _modelName,
+                SystemInstruction = systemPrompt,
+                Messages = new List<GeminiMessage>
+                {
+                    new() { Role = "user", Content = userMessage }
+                },
+                Attachments = attachments.Count > 0 ? attachments : null,
+                ResponseMimeType = "application/json",
+                ResponseSchema = CustomerExtractionSchema,
+                ThinkingBudget = 0,
+                MaxTokens = MaxExtractionOutputTokens,
+                MaxPromptTokens = MaxExtractionPromptTokens,
+                MediaResolution = attachments.Count > 0 ? "MEDIA_RESOLUTION_MEDIUM" : null,
+                ServiceTier = "flex",
+                TimeoutSeconds = GeminiRequest.FlexInferenceTimeoutSeconds
+            };
+
+            var cacheReference = await _modelContextCacheService.GetOrCreateSystemInstructionCacheAsync(
+                new ModelContextCacheRequest
+                {
+                    ModelName = _modelName,
+                    SystemInstruction = systemPrompt
+                },
+                cancellationToken);
+            if (cacheReference is not null)
+            {
+                geminiRequest.CachedContentName = cacheReference.CachedContentName;
+                geminiRequest.SystemInstruction = string.Empty;
+            }
+
+            var geminiResponse = await _geminiClient.SendMessageAsync(geminiRequest, cancellationToken);
+
+            // Log raw Gemini response for debugging
+            _logger.LogInformation("Raw Gemini extraction response: {Response}", geminiResponse.Content);
+
+            if (!geminiResponse.Success)
+            {
+                _logger.LogError("Gemini extraction call failed: {Error} (Type: {ErrorType})",
+                    geminiResponse.ErrorMessage, geminiResponse.ErrorType);
+
+                return new ExtractCustomerResult
+                {
+                    Success = false,
+                    ErrorMessage = geminiResponse.ErrorMessage ?? "AI extraction failed."
+                };
+            }
+
+            // Parse the JSON response
+            try
+            {
+                var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
+                var extracted = JsonSerializer.Deserialize<ExtractedCustomerData>(geminiResponse.Content, options);
+
+                if (extracted == null)
+                {
+                    return new ExtractCustomerResult { Success = false, ErrorMessage = "Failed to parse extracted data." };
+                }
+
+                // Log extracted addresses to verify AI populated address_line_1
+                if (extracted.Addresses != null && extracted.Addresses.Count > 0)
+                {
+                    foreach (var addr in extracted.Addresses)
+                    {
+                        _logger.LogInformation(
+                            "Extracted address ({Type}): Line1='{Line1}', District='{District}', City='{City}', PostalCode='{PostalCode}'",
+                            addr.Type, addr.AddressLine1, addr.District, addr.City, addr.PostalCode);
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning("No addresses extracted by Gemini");
+                }
+
+                return new ExtractCustomerResult { Success = true, Data = extracted, TokenUsage = geminiResponse.TokenUsage };
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogError(ex, "Failed to deserialize extraction response: {Content}", geminiResponse.Content);
+                return new ExtractCustomerResult { Success = false, ErrorMessage = $"Failed to parse AI response: {ex.Message}" };
+            }
         }
-        catch (JsonException ex)
+        finally
         {
-            _logger.LogError(ex, "Failed to deserialize extraction response: {Content}", geminiResponse.Content);
-            return new ExtractCustomerResult { Success = false, ErrorMessage = $"Failed to parse AI response: {ex.Message}" };
+            await DeleteStagedFilesAsync(stagedFileNames);
         }
     }
 
-    private async Task<GeminiAttachment> BuildAttachmentAsync(
+    private async Task<BuiltExtractionAttachment> BuildAttachmentAsync(
         ExtractionFileData file,
         CancellationToken cancellationToken)
     {
@@ -262,21 +275,25 @@ public class ExtractCustomerCommandHandler
             var stagedFile = await TryStageFileAsync(file, decodedBytes, cancellationToken);
             if (stagedFile is not null)
             {
-                return new GeminiAttachment
-                {
-                    ContentType = contentType,
-                    Data = stagedFile.FileUri,
-                    MimeType = string.IsNullOrWhiteSpace(stagedFile.MimeType) ? file.MimeType : stagedFile.MimeType
-                };
+                return new BuiltExtractionAttachment(
+                    new GeminiAttachment
+                    {
+                        ContentType = contentType,
+                        Data = stagedFile.FileUri,
+                        MimeType = string.IsNullOrWhiteSpace(stagedFile.MimeType) ? file.MimeType : stagedFile.MimeType
+                    },
+                    stagedFile.Name);
             }
         }
 
-        return new GeminiAttachment
-        {
-            ContentType = contentType,
-            Data = file.Base64Data,
-            MimeType = file.MimeType
-        };
+        return new BuiltExtractionAttachment(
+            new GeminiAttachment
+            {
+                ContentType = contentType,
+                Data = file.Base64Data,
+                MimeType = file.MimeType
+            },
+            null);
     }
 
     private async Task<ModelFileReference?> TryStageFileAsync(
@@ -306,6 +323,31 @@ public class ExtractCustomerCommandHandler
                 "Gemini file staging failed for extraction file {FileName}; falling back to inline payload.",
                 file.FileName);
             return null;
+        }
+    }
+
+    private async Task DeleteStagedFilesAsync(IReadOnlyCollection<string> stagedFileNames)
+    {
+        if (stagedFileNames.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var fileName in stagedFileNames
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Distinct(StringComparer.Ordinal))
+        {
+            try
+            {
+                await _modelFileStagingService.DeleteFileAsync(fileName, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Gemini staged file cleanup failed for {FileName}.",
+                    fileName);
+            }
         }
     }
 
@@ -361,6 +403,8 @@ public class ExtractCustomerCommandHandler
         decodedLength = (payload.Length / 4L * 3L) - padding;
         return decodedLength >= 0;
     }
+
+    private sealed record BuiltExtractionAttachment(GeminiAttachment Attachment, string? StagedFileName);
 }
 
 /// <summary>

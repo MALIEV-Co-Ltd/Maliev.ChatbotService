@@ -13,6 +13,15 @@ public interface IModelFileStagingService
     Task<ModelFileReference?> StageFileAsync(
         ModelFileStagingRequest request,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Deletes a previously staged provider-native file by resource name.
+    /// </summary>
+    /// <param name="fileName">The provider file resource name.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task DeleteFileAsync(
+        string fileName,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>

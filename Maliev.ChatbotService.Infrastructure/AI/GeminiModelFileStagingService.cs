@@ -54,6 +54,31 @@ public sealed class GeminiModelFileStagingService : IModelFileStagingService
         return result;
     }
 
+    /// <inheritdoc/>
+    public async Task DeleteFileAsync(
+        string fileName,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            return;
+        }
+
+        var resourceName = fileName.TrimStart('/');
+        using var deleteRequest = new HttpRequestMessage(HttpMethod.Delete, $"v1beta/{resourceName}");
+        deleteRequest.Headers.Add("x-goog-api-key", _apiKey);
+
+        var response = await _httpClient.SendAsync(deleteRequest, cancellationToken);
+        var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException(
+                $"Gemini Files API delete failed for {fileName}: {(int)response.StatusCode} {responseContent}");
+        }
+
+        _logger.LogInformation("Deleted staged Gemini file {FileName}", fileName);
+    }
+
     private async Task<Uri> StartUploadAsync(
         ModelFileStagingRequest request,
         CancellationToken cancellationToken)

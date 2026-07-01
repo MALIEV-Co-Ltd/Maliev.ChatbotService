@@ -69,6 +69,20 @@ public sealed class GeminiModelFileStagingServiceTests
         Assert.Equal("application/pdf", uploadRequest.ContentHeaders["Content-Type"]);
     }
 
+    [Fact]
+    public async Task DeleteFileAsync_SendsGeminiFilesDeleteRequest()
+    {
+        var handler = new CapturingHandler(new CapturedResponse(HttpStatusCode.OK, "{}"));
+        var service = CreateService(handler);
+
+        await service.DeleteFileAsync("files/customer-form");
+
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal(HttpMethod.Delete, request.Method);
+        Assert.Equal("/v1beta/files/customer-form", request.Uri.AbsolutePath);
+        Assert.Equal("test-api-key", request.Headers["x-goog-api-key"]);
+    }
+
     private static GeminiModelFileStagingService CreateService(CapturingHandler handler)
     {
         var configuration = new ConfigurationBuilder()
