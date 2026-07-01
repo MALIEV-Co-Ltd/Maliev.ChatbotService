@@ -90,6 +90,45 @@ public sealed class GeminiCostEstimatorTests
     }
 
     [Fact]
+    public void Estimate_GroundedGoogleSearchPrompt_AddsGroundingSurcharge()
+    {
+        var usage = new GeminiTokenUsage
+        {
+            PromptTokens = 100,
+            CompletionTokens = 50,
+            TotalTokens = 150
+        };
+
+        var estimate = GeminiCostEstimator.Estimate(
+            "gemini-2.5-flash",
+            "standard",
+            usage,
+            googleSearchGroundingPromptCount: 1);
+
+        Assert.NotNull(estimate);
+        Assert.Equal(1, estimate!.GoogleSearchGroundingPromptCount);
+        Assert.Equal(35000, estimate.GoogleSearchGroundingMicroUsd);
+        Assert.Equal(30, estimate.UncachedPromptMicroUsd);
+        Assert.Equal(125, estimate.OutputMicroUsd);
+        Assert.Equal(35155, estimate.TotalMicroUsd);
+    }
+
+    [Fact]
+    public void Estimate_GroundedGoogleSearchPromptWithoutUsage_ReturnsGroundingSurcharge()
+    {
+        var estimate = GeminiCostEstimator.Estimate(
+            "gemini-2.5-flash",
+            null,
+            null,
+            googleSearchGroundingPromptCount: 1);
+
+        Assert.NotNull(estimate);
+        Assert.Equal(1, estimate!.GoogleSearchGroundingPromptCount);
+        Assert.Equal(35000, estimate.GoogleSearchGroundingMicroUsd);
+        Assert.Equal(35000, estimate.TotalMicroUsd);
+    }
+
+    [Fact]
     public void Estimate_UnknownModel_ReturnsNull()
     {
         var estimate = GeminiCostEstimator.Estimate(

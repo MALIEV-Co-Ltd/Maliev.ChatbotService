@@ -10,7 +10,7 @@ public static class GeminiCostEstimator
     /// <summary>
     /// Gets the pricing table basis used by this estimator.
     /// </summary>
-    public const string PricingBasis = "Gemini Developer API paid-tier token pricing verified 2026-07-01";
+    public const string PricingBasis = "Gemini Developer API paid-tier token and Google Search grounding pricing verified 2026-07-01";
 
     private const string StandardTier = "standard";
     private const string FlexTier = "flex";
@@ -21,17 +21,17 @@ public static class GeminiCostEstimator
     {
         ["gemini-2.5-flash"] = new ModelPricing(new Dictionary<string, TokenRates>(StringComparer.OrdinalIgnoreCase)
         {
-            [StandardTier] = new TokenRates(0.30m, 1.00m, 0.03m, 0.10m, 2.50m),
-            [FlexTier] = new TokenRates(0.15m, 0.50m, 0.03m, 0.10m, 1.25m),
-            [BatchTier] = new TokenRates(0.15m, 0.50m, 0.03m, 0.10m, 1.25m),
-            [PriorityTier] = new TokenRates(0.54m, 1.80m, 0.054m, 0.18m, 4.50m)
+            [StandardTier] = new TokenRates(0.30m, 1.00m, 0.03m, 0.10m, 2.50m, 35m),
+            [FlexTier] = new TokenRates(0.15m, 0.50m, 0.03m, 0.10m, 1.25m, 35m),
+            [BatchTier] = new TokenRates(0.15m, 0.50m, 0.03m, 0.10m, 1.25m, 35m),
+            [PriorityTier] = new TokenRates(0.54m, 1.80m, 0.054m, 0.18m, 4.50m, 35m)
         }),
         ["gemini-2.5-flash-lite"] = new ModelPricing(new Dictionary<string, TokenRates>(StringComparer.OrdinalIgnoreCase)
         {
-            [StandardTier] = new TokenRates(0.10m, 0.30m, 0.01m, 0.03m, 0.40m),
-            [FlexTier] = new TokenRates(0.05m, 0.15m, 0.01m, 0.03m, 0.20m),
-            [BatchTier] = new TokenRates(0.05m, 0.15m, 0.01m, 0.03m, 0.20m),
-            [PriorityTier] = new TokenRates(0.18m, 0.54m, 0.018m, 0.054m, 0.72m)
+            [StandardTier] = new TokenRates(0.10m, 0.30m, 0.01m, 0.03m, 0.40m, 35m),
+            [FlexTier] = new TokenRates(0.05m, 0.15m, 0.01m, 0.03m, 0.20m, 35m),
+            [BatchTier] = new TokenRates(0.05m, 0.15m, 0.01m, 0.03m, 0.20m, 35m),
+            [PriorityTier] = new TokenRates(0.18m, 0.54m, 0.018m, 0.054m, 0.72m, 35m)
         })
     };
 
@@ -41,10 +41,15 @@ public static class GeminiCostEstimator
     /// <param name="modelName">The Gemini model name used for the request.</param>
     /// <param name="serviceTier">The Gemini service tier. Null and unspecified resolve to standard.</param>
     /// <param name="usage">The token usage metadata reported by Gemini.</param>
+    /// <param name="googleSearchGroundingPromptCount">The count of grounded prompts with Google Search metadata.</param>
     /// <returns>The cost estimate, or null when the model or tier is unknown.</returns>
-    public static GeminiCostEstimate? Estimate(string? modelName, string? serviceTier, GeminiTokenUsage? usage)
+    public static GeminiCostEstimate? Estimate(
+        string? modelName,
+        string? serviceTier,
+        GeminiTokenUsage? usage,
+        int googleSearchGroundingPromptCount = 0)
     {
-        if (usage is null)
+        if (usage is null && googleSearchGroundingPromptCount <= 0)
         {
             return null;
         }
@@ -62,6 +67,8 @@ public static class GeminiCostEstimator
             return null;
         }
 
+        usage ??= new GeminiTokenUsage();
+        var boundedGroundingPromptCount = Math.Max(0, googleSearchGroundingPromptCount);
         var fallbackOutputTokens = ShouldUseTotalOnlyFallback(usage)
             ? Math.Max(0, usage.TotalTokens)
             : 0;
@@ -90,6 +97,9 @@ public static class GeminiCostEstimator
             rates.InputTextImageVideoUsdPerMillion,
             rates.InputAudioUsdPerMillion);
         var outputMicroUsd = ToMicroUsd(outputTokens, rates.OutputUsdPerMillion);
+        var googleSearchGroundingMicroUsd = ToPerThousandMicroUsd(
+            boundedGroundingPromptCount,
+            rates.GoogleSearchGroundingUsdPerThousandPrompts);
 
         return new GeminiCostEstimate
         {
@@ -99,12 +109,18 @@ public static class GeminiCostEstimator
             UncachedPromptTokens = Math.Max(0, promptTokens - cachedPromptTokens),
             CachedPromptTokens = Math.Max(0, cachedPromptTokens),
             ToolUsePromptTokens = Math.Max(0, toolUsePromptTokens),
+            GoogleSearchGroundingPromptCount = boundedGroundingPromptCount,
             OutputTokens = outputTokens,
             UncachedPromptMicroUsd = uncachedPromptMicroUsd,
             CachedPromptMicroUsd = cachedPromptMicroUsd,
             ToolUsePromptMicroUsd = toolUsePromptMicroUsd,
+            GoogleSearchGroundingMicroUsd = googleSearchGroundingMicroUsd,
             OutputMicroUsd = outputMicroUsd,
-            TotalMicroUsd = uncachedPromptMicroUsd + cachedPromptMicroUsd + toolUsePromptMicroUsd + outputMicroUsd
+            TotalMicroUsd = uncachedPromptMicroUsd +
+                cachedPromptMicroUsd +
+                toolUsePromptMicroUsd +
+                googleSearchGroundingMicroUsd +
+                outputMicroUsd
         };
     }
 
@@ -215,6 +231,16 @@ public static class GeminiCostEstimator
         return (long)Math.Round(tokens * usdPerMillionTokens, MidpointRounding.AwayFromZero);
     }
 
+    private static long ToPerThousandMicroUsd(int count, decimal usdPerThousand)
+    {
+        if (count <= 0)
+        {
+            return 0;
+        }
+
+        return (long)Math.Round(count * usdPerThousand * 1000m, MidpointRounding.AwayFromZero);
+    }
+
     private static string NormalizeServiceTier(string? serviceTier)
     {
         if (string.IsNullOrWhiteSpace(serviceTier) ||
@@ -246,7 +272,8 @@ public static class GeminiCostEstimator
         decimal InputAudioUsdPerMillion,
         decimal CachedTextImageVideoUsdPerMillion,
         decimal CachedAudioUsdPerMillion,
-        decimal OutputUsdPerMillion);
+        decimal OutputUsdPerMillion,
+        decimal GoogleSearchGroundingUsdPerThousandPrompts);
 }
 
 /// <summary>
@@ -272,6 +299,9 @@ public sealed class GeminiCostEstimate
     /// <summary>Gets or sets tool-use prompt tokens charged at input rates.</summary>
     public int ToolUsePromptTokens { get; set; }
 
+    /// <summary>Gets or sets Google Search grounded prompts charged at grounding rates.</summary>
+    public int GoogleSearchGroundingPromptCount { get; set; }
+
     /// <summary>Gets or sets generated output plus thinking tokens charged at output rates.</summary>
     public int OutputTokens { get; set; }
 
@@ -283,6 +313,9 @@ public sealed class GeminiCostEstimate
 
     /// <summary>Gets or sets estimated tool-use prompt cost in micro-USD.</summary>
     public long ToolUsePromptMicroUsd { get; set; }
+
+    /// <summary>Gets or sets estimated Google Search grounding cost in micro-USD.</summary>
+    public long GoogleSearchGroundingMicroUsd { get; set; }
 
     /// <summary>Gets or sets estimated output plus thinking cost in micro-USD.</summary>
     public long OutputMicroUsd { get; set; }

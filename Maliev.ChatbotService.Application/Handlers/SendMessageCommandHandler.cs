@@ -688,7 +688,8 @@ public class SendMessageCommandHandler
                 costEstimate = GeminiCostEstimator.Estimate(
                     geminiRequest.ModelName ?? _defaultChatModelName,
                     geminiResponse.ServiceTier ?? geminiRequest.ServiceTier,
-                    geminiResponse.TokenUsage);
+                    geminiResponse.TokenUsage,
+                    GetGoogleSearchGroundingPromptCount(geminiResponse));
 
                 // Save assistant message ONLY if it was a successful AI response
 
@@ -1398,14 +1399,19 @@ public class SendMessageCommandHandler
                 uncachedPromptTokens = estimate.UncachedPromptTokens,
                 cachedPromptTokens = estimate.CachedPromptTokens,
                 toolUsePromptTokens = estimate.ToolUsePromptTokens,
+                googleSearchGroundingPromptCount = estimate.GoogleSearchGroundingPromptCount,
                 outputTokens = estimate.OutputTokens,
                 uncachedPromptMicroUsd = estimate.UncachedPromptMicroUsd,
                 cachedPromptMicroUsd = estimate.CachedPromptMicroUsd,
                 toolUsePromptMicroUsd = estimate.ToolUsePromptMicroUsd,
+                googleSearchGroundingMicroUsd = estimate.GoogleSearchGroundingMicroUsd,
                 outputMicroUsd = estimate.OutputMicroUsd,
                 totalMicroUsd = estimate.TotalMicroUsd
             };
     }
+
+    private static int GetGoogleSearchGroundingPromptCount(GeminiResponse response) =>
+        response.GroundingWebSearchQueries.Count > 0 ? 1 : 0;
 
     /// <summary>
     /// Detects whether the user message explicitly requires Google Search grounding.
