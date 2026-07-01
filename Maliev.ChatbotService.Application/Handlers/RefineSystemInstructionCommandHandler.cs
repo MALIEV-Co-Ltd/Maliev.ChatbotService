@@ -104,6 +104,7 @@ public class RefineSystemInstructionCommandHandler
             refined.Summary = string.IsNullOrWhiteSpace(refined.Summary)
                 ? "Refined instruction clarity, scope, and guardrails."
                 : refined.Summary.Trim();
+            refined.TokenUsage = response.TokenUsage;
 
             return refined;
         }

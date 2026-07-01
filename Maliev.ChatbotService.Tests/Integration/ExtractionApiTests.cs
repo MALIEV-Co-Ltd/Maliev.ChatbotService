@@ -3,7 +3,9 @@ using System.Net;
 using System.Net.Http.Json;
 using Maliev.ChatbotService.Api.Models.Requests;
 using Maliev.ChatbotService.Api.Models.Responses;
+using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Tests.Infrastructure;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace Maliev.ChatbotService.Tests.Integration;
@@ -37,6 +39,9 @@ public class ExtractionApiTests : IAsyncLifetime
 
     private HttpClient CreateAuthenticatedClient() => _factory.CreateAuthenticatedClient();
 
+    private HttpClient CreateAuthenticatedClient(Guid userProfileId) =>
+        _factory.CreateAuthenticatedClient(userProfileId.ToString());
+
     /// <summary>
     /// Tests that ExtractCustomer with raw text returns extracted data.
     /// </summary>
@@ -58,6 +63,27 @@ public class ExtractionApiTests : IAsyncLifetime
         var result = await response.Content.ReadFromJsonAsync<ExtractCustomerResponse>(_factory.JsonSerializerOptions);
         Assert.NotNull(result);
         Assert.Equal("John", result?.FirstName);
+    }
+
+    /// <summary>
+    /// Tests that ExtractCustomer records successful Gemini token usage against the caller budget.
+    /// </summary>
+    [Fact]
+    public async Task ExtractCustomer_WithText_RecordsTokenUsageBudget()
+    {
+        var userProfileId = Guid.NewGuid();
+        var client = CreateAuthenticatedClient(userProfileId);
+        var request = new ExtractCustomerRequest
+        {
+            RawText = "John Doe from Acme Corp, email john@example.com"
+        };
+
+        var response = await client.PostAsJsonAsync("/chatbot/v1/extraction/customer", request, _factory.JsonSerializerOptions);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var scope = _factory.Services.CreateScope();
+        var budgetService = scope.ServiceProvider.GetRequiredService<IUsageBudgetService>();
+        Assert.Equal(100, await budgetService.GetDailyTokenUsageAsync(userProfileId));
     }
 
     /// <summary>
@@ -98,6 +124,27 @@ public class ExtractionApiTests : IAsyncLifetime
         var result = await response.Content.ReadFromJsonAsync<ExtractCustomerIntentResponse>(_factory.JsonSerializerOptions);
         Assert.NotNull(result);
         Assert.True(result?.NeedsCustomerData);
+    }
+
+    /// <summary>
+    /// Tests that ExtractCustomerIntent records successful Gemini token usage against the caller budget.
+    /// </summary>
+    [Fact]
+    public async Task ExtractCustomerIntent_RecordsTokenUsageBudget()
+    {
+        var userProfileId = Guid.NewGuid();
+        var client = CreateAuthenticatedClient(userProfileId);
+        var request = new ExtractCustomerIntentRequest
+        {
+            UserMessage = "Find Acme Corp contact info"
+        };
+
+        var response = await client.PostAsJsonAsync("/chatbot/v1/extraction/customer-intent", request, _factory.JsonSerializerOptions);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var scope = _factory.Services.CreateScope();
+        var budgetService = scope.ServiceProvider.GetRequiredService<IUsageBudgetService>();
+        Assert.Equal(100, await budgetService.GetDailyTokenUsageAsync(userProfileId));
     }
 
     /// <summary>
@@ -177,6 +224,28 @@ public class ExtractionApiTests : IAsyncLifetime
         var result = await response.Content.ReadFromJsonAsync<CleanDictationSpeechResponse>(_factory.JsonSerializerOptions);
         Assert.NotNull(result);
         Assert.NotNull(result?.CleanedText);
+    }
+
+    /// <summary>
+    /// Tests that CleanSpeech records successful Gemini token usage against the caller budget.
+    /// </summary>
+    [Fact]
+    public async Task CleanSpeech_WithText_RecordsTokenUsageBudget()
+    {
+        var userProfileId = Guid.NewGuid();
+        var client = CreateAuthenticatedClient(userProfileId);
+        var request = new CleanDictationSpeechRequest
+        {
+            Speech = "um hello test hello test",
+            Language = "en"
+        };
+
+        var response = await client.PostAsJsonAsync("/chatbot/v1/extraction/clean-speech", request, _factory.JsonSerializerOptions);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var scope = _factory.Services.CreateScope();
+        var budgetService = scope.ServiceProvider.GetRequiredService<IUsageBudgetService>();
+        Assert.Equal(100, await budgetService.GetDailyTokenUsageAsync(userProfileId));
     }
 
     /// <summary>

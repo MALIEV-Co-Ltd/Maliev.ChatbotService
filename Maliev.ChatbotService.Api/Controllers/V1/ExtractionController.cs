@@ -5,7 +5,9 @@ using Maliev.ChatbotService.Api.Models.Responses;
 using Maliev.ChatbotService.Application.Authorization;
 using Maliev.ChatbotService.Application.Commands;
 using Maliev.ChatbotService.Application.Handlers;
+using Maliev.ChatbotService.Application.Interfaces;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace Maliev.ChatbotService.Api.Controllers.V1;
 
@@ -34,6 +36,7 @@ public class ExtractionController : ControllerBase
     private readonly ExtractCustomerCommandHandler _handler;
     private readonly ExtractCustomerIntentCommandHandler _intentHandler;
     private readonly CleanDictationSpeechCommandHandler _speechHandler;
+    private readonly IUsageBudgetService _usageBudgetService;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ExtractionController"/> class.
@@ -41,11 +44,17 @@ public class ExtractionController : ControllerBase
     /// <param name="handler">The extract customer command handler.</param>
     /// <param name="intentHandler">The extract customer intent command handler.</param>
     /// <param name="speechHandler">The clean dictation speech command handler.</param>
-    public ExtractionController(ExtractCustomerCommandHandler handler, ExtractCustomerIntentCommandHandler intentHandler, CleanDictationSpeechCommandHandler speechHandler)
+    /// <param name="usageBudgetService">The usage budget service.</param>
+    public ExtractionController(
+        ExtractCustomerCommandHandler handler,
+        ExtractCustomerIntentCommandHandler intentHandler,
+        CleanDictationSpeechCommandHandler speechHandler,
+        IUsageBudgetService usageBudgetService)
     {
         _handler = handler;
         _intentHandler = intentHandler;
         _speechHandler = speechHandler;
+        _usageBudgetService = usageBudgetService;
     }
 
     /// <summary>
@@ -99,6 +108,8 @@ public class ExtractionController : ControllerBase
             return StatusCode(500, result.ErrorMessage);
         }
 
+        await RecordTokenUsageAsync(result.TokenUsage, ct);
+
         var response = MapToResponse(result.Data!);
         return Ok(response);
     }
@@ -131,6 +142,8 @@ public class ExtractionController : ControllerBase
         {
             return StatusCode(500, result.ErrorMessage);
         }
+
+        await RecordTokenUsageAsync(result.TokenUsage, ct);
 
         return Ok(new ExtractCustomerIntentResponse
         {
@@ -169,7 +182,31 @@ public class ExtractionController : ControllerBase
             return StatusCode(500, result.ErrorMessage);
         }
 
+        await RecordTokenUsageAsync(result.TokenUsage, ct);
+
         return Ok(new CleanDictationSpeechResponse { CleanedText = result.CleanedText });
+    }
+
+    private async Task RecordTokenUsageAsync(GeminiTokenUsage? tokenUsage, CancellationToken cancellationToken)
+    {
+        if (tokenUsage?.TotalTokens is not > 0 ||
+            !TryGetAuthenticatedUserProfileId(out var userProfileId))
+        {
+            return;
+        }
+
+        await _usageBudgetService.RecordTokenUsageAsync(userProfileId, tokenUsage.TotalTokens, cancellationToken);
+    }
+
+    private bool TryGetAuthenticatedUserProfileId(out Guid userProfileId)
+    {
+        userProfileId = default;
+        var userProfileIdClaim = User.FindFirst("sub")?.Value
+            ?? User.FindFirst("UserProfileId")?.Value
+            ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+        return !string.IsNullOrWhiteSpace(userProfileIdClaim) &&
+            Guid.TryParse(userProfileIdClaim, out userProfileId);
     }
 
     private static string? ValidateExtractionRequest(ExtractCustomerRequest request)

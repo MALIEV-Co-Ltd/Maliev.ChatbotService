@@ -11,6 +11,7 @@ using Maliev.ChatbotService.Domain.Entities;
 using Maliev.ChatbotService.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace Maliev.ChatbotService.Api.Controllers.V1;
 
@@ -28,6 +29,7 @@ public class SystemInstructionsController : ControllerBase
     private readonly UpdateSystemInstructionCommandHandler _updateHandler;
     private readonly GetSystemInstructionsQueryHandler _getQueryHandler;
     private readonly RefineSystemInstructionCommandHandler _refineHandler;
+    private readonly IUsageBudgetService _usageBudgetService;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SystemInstructionsController"/> class.
@@ -38,7 +40,8 @@ public class SystemInstructionsController : ControllerBase
         CreateSystemInstructionCommandHandler createHandler,
         UpdateSystemInstructionCommandHandler updateHandler,
         GetSystemInstructionsQueryHandler getQueryHandler,
-        RefineSystemInstructionCommandHandler refineHandler)
+        RefineSystemInstructionCommandHandler refineHandler,
+        IUsageBudgetService usageBudgetService)
     {
         _repository = repository;
         _service = service;
@@ -46,6 +49,7 @@ public class SystemInstructionsController : ControllerBase
         _updateHandler = updateHandler;
         _getQueryHandler = getQueryHandler;
         _refineHandler = refineHandler;
+        _usageBudgetService = usageBudgetService;
     }
 
     /// <summary>
@@ -167,6 +171,7 @@ public class SystemInstructionsController : ControllerBase
             };
 
             var refined = await _refineHandler.HandleAsync(command, cancellationToken);
+            await RecordTokenUsageAsync(refined.TokenUsage, cancellationToken);
 
             return Ok(new RefinedSystemInstructionResponse
             {
@@ -179,6 +184,28 @@ public class SystemInstructionsController : ControllerBase
         {
             return StatusCode(StatusCodes.Status502BadGateway, new { error = ex.Message });
         }
+    }
+
+    private async Task RecordTokenUsageAsync(GeminiTokenUsage? tokenUsage, CancellationToken cancellationToken)
+    {
+        if (tokenUsage?.TotalTokens is not > 0 ||
+            !TryGetAuthenticatedUserProfileId(out var userProfileId))
+        {
+            return;
+        }
+
+        await _usageBudgetService.RecordTokenUsageAsync(userProfileId, tokenUsage.TotalTokens, cancellationToken);
+    }
+
+    private bool TryGetAuthenticatedUserProfileId(out Guid userProfileId)
+    {
+        userProfileId = default;
+        var userProfileIdClaim = User.FindFirst("sub")?.Value
+            ?? User.FindFirst("UserProfileId")?.Value
+            ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+        return !string.IsNullOrWhiteSpace(userProfileIdClaim) &&
+            Guid.TryParse(userProfileIdClaim, out userProfileId);
     }
 
     /// <summary>

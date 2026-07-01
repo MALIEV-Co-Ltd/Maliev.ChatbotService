@@ -1,4 +1,5 @@
 using Maliev.ChatbotService.Domain.Enums;
+using Maliev.ChatbotService.Application.Interfaces;
 
 namespace Maliev.ChatbotService.Application.Commands;
 
@@ -57,4 +58,9 @@ public class RefinedSystemInstructionResult
     /// Gets or sets a concise summary of the improvements made.
     /// </summary>
     public string Summary { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the Gemini token usage reported for the refinement call.
+    /// </summary>
+    public GeminiTokenUsage? TokenUsage { get; set; }
 }

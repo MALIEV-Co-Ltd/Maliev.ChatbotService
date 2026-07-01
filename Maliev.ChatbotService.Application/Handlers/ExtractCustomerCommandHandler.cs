@@ -242,7 +242,7 @@ public class ExtractCustomerCommandHandler
                 _logger.LogWarning("No addresses extracted by Gemini");
             }
 
-            return new ExtractCustomerResult { Success = true, Data = extracted };
+            return new ExtractCustomerResult { Success = true, Data = extracted, TokenUsage = geminiResponse.TokenUsage };
         }
         catch (JsonException ex)
         {
@@ -265,6 +265,9 @@ public class ExtractCustomerResult
 
     /// <summary>Gets or sets the extracted customer data.</summary>
     public ExtractedCustomerData? Data { get; set; }
+
+    /// <summary>Gets or sets the Gemini token usage reported for the extraction call.</summary>
+    public GeminiTokenUsage? TokenUsage { get; set; }
 }
 
 /// <summary>

@@ -64,7 +64,12 @@ public class CleanDictationSpeechCommandHandler
                 return new CleanDictationSpeechResult { Success = false, ErrorMessage = response.ErrorMessage };
             }
 
-            return new CleanDictationSpeechResult { Success = true, CleanedText = response.Content.Trim() };
+            return new CleanDictationSpeechResult
+            {
+                Success = true,
+                CleanedText = response.Content.Trim(),
+                TokenUsage = response.TokenUsage
+            };
         }
         catch (Exception ex)
         {
@@ -87,4 +92,7 @@ public class CleanDictationSpeechResult
 
     /// <summary>The cleaned speech text.</summary>
     public string CleanedText { get; set; } = string.Empty;
+
+    /// <summary>Gemini token usage reported for the speech cleanup call.</summary>
+    public GeminiTokenUsage? TokenUsage { get; set; }
 }

@@ -98,7 +98,8 @@ public class ExtractCustomerIntentCommandHandler
                 Success = true,
                 NeedsCustomerData = result.NeedsCustomerData,
                 CustomerSearchTerm = result.CustomerSearchTerm,
-                NeedsHistory = result.NeedsHistory
+                NeedsHistory = result.NeedsHistory,
+                TokenUsage = response.TokenUsage
             };
         }
         catch (Exception ex)
@@ -129,4 +130,6 @@ public class ExtractCustomerIntentResult
     public string? CustomerSearchTerm { get; set; }
     /// <summary>Whether the user needs activity history.</summary>
     public bool NeedsHistory { get; set; }
+    /// <summary>Gemini token usage reported for the intent extraction call.</summary>
+    public GeminiTokenUsage? TokenUsage { get; set; }
 }

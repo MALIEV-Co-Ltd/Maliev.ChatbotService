@@ -3,8 +3,10 @@ using System.Net;
 using System.Net.Http.Json;
 using Maliev.ChatbotService.Api.Models.Requests;
 using Maliev.ChatbotService.Api.Models.Responses;
+using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Tests.Infrastructure;
 using Maliev.ChatbotService.Domain.Enums;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Maliev.ChatbotService.Tests.Integration;
 
@@ -34,6 +36,9 @@ public class AdminApiTests : IAsyncLifetime
     public Task DisposeAsync() => Task.CompletedTask;
 
     private HttpClient CreateAuthenticatedClient(string[]? permissions = null) => _factory.CreateAuthenticatedClient("test-user", permissions);
+
+    private HttpClient CreateAuthenticatedClient(Guid userProfileId, string[] permissions) =>
+        _factory.CreateAuthenticatedClient(permissions, userProfileId.ToString());
     /// <summary>
     /// Tests that GET /v1/admin/instructions with authentication returns system instructions list.
     /// </summary>
@@ -242,6 +247,31 @@ public class AdminApiTests : IAsyncLifetime
         Assert.Contains("Refined", refined.PersonaDefinition, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("customer-safe", refined.BusinessConstraints, StringComparison.OrdinalIgnoreCase);
         Assert.False(string.IsNullOrWhiteSpace(refined.Summary));
+    }
+
+    /// <summary>
+    /// Tests that POST /v1/admin/instructions/refine records successful Gemini token usage.
+    /// </summary>
+    [Fact]
+    public async Task RefineInstruction_WithAuthentication_RecordsTokenUsageBudget()
+    {
+        var userProfileId = Guid.NewGuid();
+        var client = CreateAuthenticatedClient(userProfileId, ["chatbot.instructions.write"]);
+        var request = new RefineSystemInstructionRequest
+        {
+            Name = "Customer Website Assistant",
+            Category = SystemInstructionCategory.Core,
+            TopicKey = "website",
+            PersonaDefinition = "Mali answers website questions.",
+            BusinessConstraints = "Keep customer data safe."
+        };
+
+        var response = await client.PostAsJsonAsync("/chatbot/v1/admin/instructions/refine", request, _factory.JsonSerializerOptions);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var scope = _factory.Services.CreateScope();
+        var budgetService = scope.ServiceProvider.GetRequiredService<IUsageBudgetService>();
+        Assert.Equal(100, await budgetService.GetDailyTokenUsageAsync(userProfileId));
     }
 
     /// <summary>
