@@ -224,12 +224,13 @@ public class ConversationSummaryBatchService : IConversationSummaryBatchService
             .Select(item => item.Request)
             .Append(candidate.Request)
             .ToList();
-        return EstimateInlineBatchBytes(requests, _defaultSafetySettings);
+        return EstimateInlineBatchBytes(requests, _defaultSafetySettings, _modelName);
     }
 
     private static int EstimateInlineBatchBytes(
         IReadOnlyCollection<ModelBatchGenerateContentRequest> requests,
-        IReadOnlyList<GeminiSafetySetting> defaultSafetySettings)
+        IReadOnlyList<GeminiSafetySetting> defaultSafetySettings,
+        string modelName)
     {
         var payload = new Dictionary<string, object?>
         {
@@ -242,7 +243,7 @@ public class ConversationSummaryBatchService : IConversationSummaryBatchService
                     {
                         ["requests"] = requests.Select(item => new Dictionary<string, object?>
                         {
-                            ["request"] = GeminiClient.BuildGeminiPayload(item.Request, defaultSafetySettings),
+                            ["request"] = GeminiClient.BuildGeminiPayload(item.Request, defaultSafetySettings, modelName),
                             ["metadata"] = item.Metadata
                         }).ToArray()
                     }

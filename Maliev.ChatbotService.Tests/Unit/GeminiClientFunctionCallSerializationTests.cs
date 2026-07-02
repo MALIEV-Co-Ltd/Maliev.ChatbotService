@@ -37,6 +37,49 @@ public sealed class GeminiClientFunctionCallSerializationTests
     }
 
     [Fact]
+    public async Task SendMessageAsync_Gemini25FlashWithoutThinkingBudget_DisablesThinkingByDefault()
+    {
+        var handler = new CapturingHandler("""{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}""");
+        var client = CreateClient(handler, new Dictionary<string, string?>
+        {
+            ["Gemini:MainModelName"] = "gemini-2.5-flash"
+        });
+
+        await client.SendMessageAsync(new GeminiRequest
+        {
+            Prompt = "Summarize this customer note.",
+            MaxTokens = 256
+        });
+
+        using var doc = JsonDocument.Parse(handler.RequestBody!);
+        var thinkingConfig = doc.RootElement
+            .GetProperty("generationConfig")
+            .GetProperty("thinkingConfig");
+        Assert.Equal(0, thinkingConfig.GetProperty("thinkingBudget").GetInt32());
+        Assert.False(thinkingConfig.TryGetProperty("includeThoughts", out _));
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_Gemini25ProWithoutThinkingBudget_DoesNotDisableRequiredThinking()
+    {
+        var handler = new CapturingHandler("""{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}""");
+        var client = CreateClient(handler, new Dictionary<string, string?>
+        {
+            ["Gemini:MainModelName"] = "gemini-2.5-pro"
+        });
+
+        await client.SendMessageAsync(new GeminiRequest
+        {
+            Prompt = "Analyze this customer note."
+        });
+
+        using var doc = JsonDocument.Parse(handler.RequestBody!);
+        Assert.False(
+            doc.RootElement.TryGetProperty("generationConfig", out var generationConfig) &&
+            generationConfig.TryGetProperty("thinkingConfig", out _));
+    }
+
+    [Fact]
     public async Task SendMessageAsync_ImageUrl_SerializesAsGeminiFileDataPart()
     {
         var handler = new CapturingHandler("""{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}""");

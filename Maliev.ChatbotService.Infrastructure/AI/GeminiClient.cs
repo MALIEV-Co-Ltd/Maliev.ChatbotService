@@ -80,7 +80,7 @@ public class GeminiClient : IGeminiClient
             }
 
             var url = $"v1beta/models/{modelName}:generateContent";
-            var json = BuildGeminiPayloadJson(request);
+            var json = BuildGeminiPayloadJson(request, modelName);
             var maxAttempts = ResolveMaxAttempts(request);
             for (var attempt = 1; attempt <= maxAttempts; attempt++)
             {
@@ -186,7 +186,7 @@ public class GeminiClient : IGeminiClient
         }
 
         var url = $"v1beta/models/{modelName}:streamGenerateContent?alt=sse";
-        var json = BuildGeminiPayloadJson(request);
+        var json = BuildGeminiPayloadJson(request, modelName);
         var maxAttempts = ResolveMaxAttempts(request);
 
         for (var attempt = 1; attempt <= maxAttempts; attempt++)
@@ -589,7 +589,8 @@ public class GeminiClient : IGeminiClient
 
     internal static Dictionary<string, object?> BuildGeminiPayload(
         GeminiRequest request,
-        IReadOnlyList<GeminiSafetySetting>? defaultSafetySettings = null)
+        IReadOnlyList<GeminiSafetySetting>? defaultSafetySettings = null,
+        string? modelName = null)
     {
         var contentsParts = BuildContents(request);
 
@@ -632,7 +633,7 @@ public class GeminiClient : IGeminiClient
             }).ToArray();
         }
 
-        var generationConfig = BuildGenerationConfig(request);
+        var generationConfig = BuildGenerationConfig(request, request.ModelName ?? modelName);
         if (generationConfig.Count > 0)
         {
             payload["generationConfig"] = generationConfig;
@@ -677,8 +678,8 @@ public class GeminiClient : IGeminiClient
         return payload;
     }
 
-    private string BuildGeminiPayloadJson(GeminiRequest request) =>
-        JsonSerializer.Serialize(BuildGeminiPayload(request, _defaultSafetySettings), JsonOptions);
+    private string BuildGeminiPayloadJson(GeminiRequest request, string modelName) =>
+        JsonSerializer.Serialize(BuildGeminiPayload(request, _defaultSafetySettings, modelName), JsonOptions);
 
     private static IReadOnlyList<GeminiSafetySetting> ResolveSafetySettings(
         GeminiRequest request,
@@ -723,7 +724,7 @@ public class GeminiClient : IGeminiClient
     {
         var payload = new Dictionary<string, object?>
         {
-            ["generateContentRequest"] = BuildGeminiPayload(request, _defaultSafetySettings)
+            ["generateContentRequest"] = BuildGeminiPayload(request, _defaultSafetySettings, modelName)
         };
 
         var json = JsonSerializer.Serialize(payload, JsonOptions);
@@ -748,7 +749,7 @@ public class GeminiClient : IGeminiClient
             : 0;
     }
 
-    private static Dictionary<string, object?> BuildGenerationConfig(GeminiRequest request)
+    private static Dictionary<string, object?> BuildGenerationConfig(GeminiRequest request, string? modelName)
     {
         var generationConfig = new Dictionary<string, object?>();
 
@@ -776,12 +777,14 @@ public class GeminiClient : IGeminiClient
             generationConfig["mediaResolution"] = request.MediaResolution;
         }
 
-        if (request.ThinkingBudget is not null || request.IncludeThoughts)
+        var thinkingBudget = request.ThinkingBudget ??
+            (ShouldDefaultDisableThinking(modelName) ? 0 : null);
+        if (thinkingBudget is not null || request.IncludeThoughts)
         {
             var thinkingConfig = new Dictionary<string, object?>();
-            if (request.ThinkingBudget is not null)
+            if (thinkingBudget is not null)
             {
-                thinkingConfig["thinkingBudget"] = request.ThinkingBudget.Value;
+                thinkingConfig["thinkingBudget"] = thinkingBudget.Value;
             }
 
             if (request.IncludeThoughts)
@@ -793,6 +796,22 @@ public class GeminiClient : IGeminiClient
         }
 
         return generationConfig;
+    }
+
+    private static bool ShouldDefaultDisableThinking(string? modelName)
+    {
+        if (string.IsNullOrWhiteSpace(modelName))
+        {
+            return false;
+        }
+
+        var normalizedModelName = modelName.Trim();
+        if (normalizedModelName.StartsWith("models/", StringComparison.OrdinalIgnoreCase))
+        {
+            normalizedModelName = normalizedModelName["models/".Length..];
+        }
+
+        return normalizedModelName.StartsWith("gemini-2.5-flash", StringComparison.OrdinalIgnoreCase);
     }
 
     private GeminiResponse ParseGeminiResponse(JsonElement geminiResponse, bool allowCandidateLessResponse = false)

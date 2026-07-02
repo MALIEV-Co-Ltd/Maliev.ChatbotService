@@ -137,6 +137,45 @@ public sealed class GeminiBatchClientTests
     }
 
     [Fact]
+    public async Task CreateInlineGenerateContentBatchAsync_Gemini25FlashWithoutThinkingBudget_DisablesThinkingByDefault()
+    {
+        var handler = new CapturingHandler("""{"name":"batches/batch-123","metadata":{"state":"JOB_STATE_PENDING"}}""");
+        var client = CreateClient(handler);
+
+        await client.CreateInlineGenerateContentBatchAsync(new ModelBatchRequest
+        {
+            DisplayName = "expired-session-summaries",
+            ModelName = "gemini-2.5-flash-lite",
+            Requests =
+            [
+                new ModelBatchGenerateContentRequest
+                {
+                    Request = new GeminiRequest
+                    {
+                        SystemInstruction = "Summarize the conversation.",
+                        Messages =
+                        [
+                            new GeminiMessage { Role = "user", Content = "User: hello\nAssistant: hi" }
+                        ],
+                        MaxTokens = 1024
+                    }
+                }
+            ]
+        });
+
+        using var payload = JsonDocument.Parse(handler.RequestBody!);
+        var thinkingConfig = payload.RootElement
+            .GetProperty("batch")
+            .GetProperty("input_config")
+            .GetProperty("requests")
+            .GetProperty("requests")[0]
+            .GetProperty("request")
+            .GetProperty("generationConfig")
+            .GetProperty("thinkingConfig");
+        Assert.Equal(0, thinkingConfig.GetProperty("thinkingBudget").GetInt32());
+    }
+
+    [Fact]
     public async Task GetBatchAsync_ParsesOperationStateAndInlineResponses()
     {
         var handler = new CapturingHandler("""

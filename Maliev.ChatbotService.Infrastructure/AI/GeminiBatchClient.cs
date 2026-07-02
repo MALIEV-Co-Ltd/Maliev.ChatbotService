@@ -54,7 +54,7 @@ public sealed class GeminiBatchClient : IModelBatchClient
         }
 
         var modelName = NormalizeModelName(request.ModelName ?? _modelName);
-        var payload = BuildCreateBatchPayload(request, _defaultSafetySettings);
+        var payload = BuildCreateBatchPayload(request, _defaultSafetySettings, modelName);
 
         using var httpRequest = new HttpRequestMessage(
             HttpMethod.Post,
@@ -110,7 +110,8 @@ public sealed class GeminiBatchClient : IModelBatchClient
 
     private static Dictionary<string, object?> BuildCreateBatchPayload(
         ModelBatchRequest request,
-        IReadOnlyList<GeminiSafetySetting> defaultSafetySettings)
+        IReadOnlyList<GeminiSafetySetting> defaultSafetySettings,
+        string modelName)
     {
         var batch = new Dictionary<string, object?>
         {
@@ -121,7 +122,7 @@ public sealed class GeminiBatchClient : IModelBatchClient
                 {
                     ["requests"] = request.Requests.Select(item => new Dictionary<string, object?>
                     {
-                        ["request"] = GeminiClient.BuildGeminiPayload(item.Request, defaultSafetySettings),
+                        ["request"] = GeminiClient.BuildGeminiPayload(item.Request, defaultSafetySettings, modelName),
                         ["metadata"] = item.Metadata
                     }).ToArray()
                 }
