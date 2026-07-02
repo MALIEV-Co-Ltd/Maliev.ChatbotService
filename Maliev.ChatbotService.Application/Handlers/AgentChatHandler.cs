@@ -98,6 +98,7 @@ public class AgentChatHandler
                     MediaResolution = request.MediaResolution,
                     CachedContentName = request.CachedContentName,
                     EnableWebSearch = request.EnableWebSearch,
+                    EnableUrlContext = request.EnableUrlContext,
                     ServiceTier = request.ServiceTier,
                     Store = request.Store
                 };
