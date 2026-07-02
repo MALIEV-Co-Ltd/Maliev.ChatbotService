@@ -391,6 +391,69 @@ public sealed class ExtractCustomerCommandHandlerTests
     }
 
     [Fact]
+    public async Task HandleAsync_WhenOversizedFileStagingFails_DoesNotInlineLargePayloadOrCallGemini()
+    {
+        var instructionRepository = new Mock<ISystemInstructionRepository>();
+        var geminiClient = new Mock<IGeminiClient>();
+        var modelContextCacheService = new Mock<IModelContextCacheService>();
+        var modelFileStagingService = new Mock<IModelFileStagingService>();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Gemini:FileApiInlineThresholdBytes"] = "8"
+            })
+            .Build();
+
+        instructionRepository
+            .Setup(item => item.GetActiveByTopicsAsync(
+                It.IsAny<IEnumerable<string>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<SystemInstruction>());
+        modelContextCacheService
+            .Setup(item => item.GetOrCreateSystemInstructionCacheAsync(
+                It.IsAny<ModelContextCacheRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ModelContextCacheReference?)null);
+        modelFileStagingService
+            .Setup(item => item.StageFileAsync(It.IsAny<ModelFileStagingRequest>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("files api unavailable"));
+        geminiClient
+            .Setup(item => item.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GeminiResponse
+            {
+                Success = true,
+                Content = """{"first_name":"Jane","last_name":"Customer"}"""
+            });
+
+        var handler = new ExtractCustomerCommandHandler(
+            instructionRepository.Object,
+            geminiClient.Object,
+            modelContextCacheService.Object,
+            modelFileStagingService.Object,
+            NullLogger<ExtractCustomerCommandHandler>.Instance,
+            configuration);
+
+        var result = await handler.HandleAsync(new ExtractCustomerCommand
+        {
+            Files =
+            [
+                new ExtractionFileData
+                {
+                    FileName = "customer-form.pdf",
+                    MimeType = "application/pdf",
+                    Base64Data = Convert.ToBase64String("large document payload"u8)
+                }
+            ]
+        });
+
+        Assert.False(result.Success);
+        Assert.Contains("file staging", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        geminiClient.Verify(
+            item => item.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
     public async Task HandleAsync_WithStagedFile_DeletesFileAfterSuccessfulGeminiCall()
     {
         var instructionRepository = new Mock<ISystemInstructionRepository>();

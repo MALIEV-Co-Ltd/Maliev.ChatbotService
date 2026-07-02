@@ -575,6 +575,35 @@ public sealed class SendMessageCommandHandlerCostTests
     }
 
     [Fact]
+    public async Task HandleAsync_WhenLargeInlineAttachmentStagingFails_DoesNotInlineLargePayloadOrCallGemini()
+    {
+        var modelFileStagingService = new Mock<IModelFileStagingService>();
+        modelFileStagingService
+            .Setup(item => item.StageFileAsync(It.IsAny<ModelFileStagingRequest>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("files api unavailable"));
+        var geminiClient = new Mock<IGeminiClient>();
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => SendWebsiteMessageAsync(
+            [
+                new AttachmentDto
+                {
+                    ContentType = ContentType.PDF,
+                    Data = Convert.ToBase64String("large drawing payload"u8),
+                    MimeType = "application/pdf",
+                    SizeBytes = "large drawing payload"u8.Length
+                }
+            ],
+            modelFileStagingService: modelFileStagingService,
+            geminiClientOverride: geminiClient,
+            fileApiInlineThresholdBytes: 8));
+
+        Assert.Contains("file staging", exception.Message, StringComparison.OrdinalIgnoreCase);
+        geminiClient.Verify(
+            item => item.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
     public async Task HandleAsync_LargeInlineAttachment_DeletesStagedFileAfterGeminiFailure()
     {
         var modelFileStagingService = new Mock<IModelFileStagingService>();

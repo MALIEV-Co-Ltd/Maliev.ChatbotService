@@ -897,6 +897,8 @@ public class SendMessageCommandHandler
                         : stagedFile.MimeType
                 };
             }
+
+            throw new InvalidOperationException("Gemini file staging failed for an oversized attachment.");
         }
 
         return new GeminiAttachment
@@ -932,7 +934,7 @@ public class SendMessageCommandHandler
         {
             _logger.LogWarning(
                 ex,
-                "Gemini file staging failed for chat attachment {AttachmentNumber}; falling back to inline payload.",
+                "Gemini file staging failed for chat attachment {AttachmentNumber}.",
                 attachmentNumber);
             return null;
         }

@@ -164,7 +164,23 @@ public class ExtractCustomerCommandHandler
             {
                 foreach (var file in command.Files)
                 {
-                    var builtAttachment = await BuildAttachmentAsync(file, cancellationToken);
+                    BuiltExtractionAttachment builtAttachment;
+                    try
+                    {
+                        builtAttachment = await BuildAttachmentAsync(file, cancellationToken);
+                    }
+                    catch (OversizedFileStagingException ex)
+                    {
+                        _logger.LogWarning(
+                            ex,
+                            "Gemini file staging failed for oversized extraction file; refusing inline fallback.");
+                        return new ExtractCustomerResult
+                        {
+                            Success = false,
+                            ErrorMessage = "Gemini file staging failed for an oversized file."
+                        };
+                    }
+
                     attachments.Add(builtAttachment.Attachment);
                     if (!string.IsNullOrWhiteSpace(builtAttachment.StagedFileName))
                     {
@@ -297,6 +313,8 @@ public class ExtractCustomerCommandHandler
                     },
                     stagedFile.Name);
             }
+
+            throw new OversizedFileStagingException("Gemini file staging failed for an oversized extraction file.");
         }
 
         return new BuiltExtractionAttachment(
@@ -333,7 +351,7 @@ public class ExtractCustomerCommandHandler
         {
             _logger.LogWarning(
                 ex,
-                "Gemini file staging failed for extraction file {FileName}; falling back to inline payload.",
+                "Gemini file staging failed for extraction file {FileName}.",
                 file.FileName);
             return null;
         }
@@ -437,6 +455,14 @@ public class ExtractCustomerCommandHandler
     }
 
     private sealed record BuiltExtractionAttachment(GeminiAttachment Attachment, string? StagedFileName);
+
+    private sealed class OversizedFileStagingException : Exception
+    {
+        public OversizedFileStagingException(string message)
+            : base(message)
+        {
+        }
+    }
 }
 
 /// <summary>
