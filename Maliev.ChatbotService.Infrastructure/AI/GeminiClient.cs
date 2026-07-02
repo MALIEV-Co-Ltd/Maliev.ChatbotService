@@ -650,12 +650,12 @@ public class GeminiClient : IGeminiClient
             var toolsList = new List<object>();
             if (useBuiltInSearch)
             {
-                toolsList.Add(new { googleSearch = new { } });
+                toolsList.Add(new { google_search = new { } });
             }
 
             if (useUrlContext)
             {
-                toolsList.Add(new { urlContext = new { } });
+                toolsList.Add(new { url_context = new { } });
             }
 
             if (hasTools)

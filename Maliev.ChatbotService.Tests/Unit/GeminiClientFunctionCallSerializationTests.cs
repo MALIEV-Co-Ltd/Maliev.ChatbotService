@@ -700,7 +700,8 @@ public sealed class GeminiClientFunctionCallSerializationTests
         using var doc = JsonDocument.Parse(handler.RequestBody!);
         var tools = doc.RootElement.GetProperty("tools").EnumerateArray().ToArray();
         Assert.Single(tools);
-        Assert.True(tools[0].TryGetProperty("googleSearch", out _));
+        Assert.True(tools[0].TryGetProperty("google_search", out _));
+        Assert.False(tools[0].TryGetProperty("googleSearch", out _));
         Assert.False(doc.RootElement.TryGetProperty("toolConfig", out _));
     }
 
@@ -720,7 +721,8 @@ public sealed class GeminiClientFunctionCallSerializationTests
         using var doc = JsonDocument.Parse(handler.RequestBody!);
         var tools = doc.RootElement.GetProperty("tools").EnumerateArray().ToArray();
         Assert.Single(tools);
-        Assert.True(tools[0].TryGetProperty("urlContext", out _));
+        Assert.True(tools[0].TryGetProperty("url_context", out _));
+        Assert.False(tools[0].TryGetProperty("urlContext", out _));
         Assert.False(doc.RootElement.TryGetProperty("toolConfig", out _));
     }
 
@@ -741,8 +743,10 @@ public sealed class GeminiClientFunctionCallSerializationTests
         using var doc = JsonDocument.Parse(handler.RequestBody!);
         var tools = doc.RootElement.GetProperty("tools").EnumerateArray().ToArray();
         Assert.Equal(2, tools.Length);
-        Assert.Contains(tools, tool => tool.TryGetProperty("googleSearch", out _));
-        Assert.Contains(tools, tool => tool.TryGetProperty("urlContext", out _));
+        Assert.Contains(tools, tool => tool.TryGetProperty("google_search", out _));
+        Assert.Contains(tools, tool => tool.TryGetProperty("url_context", out _));
+        Assert.DoesNotContain(tools, tool => tool.TryGetProperty("googleSearch", out _));
+        Assert.DoesNotContain(tools, tool => tool.TryGetProperty("urlContext", out _));
         Assert.False(doc.RootElement.TryGetProperty("toolConfig", out _));
     }
 
