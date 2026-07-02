@@ -963,6 +963,38 @@ public sealed class SendMessageCommandHandlerCostTests
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    [Fact]
+    public async Task HandleAsync_QuoteEngineAgentTools_SkipsSystemInstructionCache()
+    {
+        var result = await SendWebsiteMessageAsync(
+            channel: Channel.QuoteEngine,
+            messageContent: "Can you quote this part for CNC machining?",
+            cachedContentName: "cachedContents/quote-engine-system-prompt",
+            toolDeclarations:
+            [
+                new GeminiToolDeclaration
+                {
+                    FunctionDeclarations =
+                    [
+                        new GeminiFunctionDeclaration
+                        {
+                            Name = "quote_get_state",
+                            Description = "Get quote state.",
+                            Parameters = new { type = "OBJECT", properties = new { } }
+                        }
+                    ]
+                }
+            ]);
+
+        Assert.NotNull(result.CapturedRequest);
+        Assert.Null(result.CapturedRequest!.CachedContentName);
+        Assert.Equal("You are MALIEV's customer assistant.", result.CapturedRequest.SystemInstruction);
+        Assert.NotNull(result.CapturedRequest.Tools);
+        result.ModelContextCacheService.Verify(item => item.GetOrCreateSystemInstructionCacheAsync(
+            It.IsAny<ModelContextCacheRequest>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     private static async Task<HandlerResult> SendWebsiteMessageAsync(
         List<AttachmentDto>? attachments = null,
         GeminiTokenUsage? tokenUsage = null,

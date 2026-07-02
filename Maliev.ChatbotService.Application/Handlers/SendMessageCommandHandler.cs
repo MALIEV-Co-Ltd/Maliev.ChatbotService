@@ -623,17 +623,20 @@ public class SendMessageCommandHandler
                 Store = false
             };
 
-            var cacheReference = await _modelContextCacheService.GetOrCreateSystemInstructionCacheAsync(
-                new ModelContextCacheRequest
-                {
-                    ModelName = geminiRequest.ModelName,
-                    SystemInstruction = systemInstructionText
-                },
-                cancellationToken);
-            if (cacheReference is not null)
+            if (!hasAgentTools)
             {
-                geminiRequest.CachedContentName = cacheReference.CachedContentName;
-                geminiRequest.SystemInstruction = string.Empty;
+                var cacheReference = await _modelContextCacheService.GetOrCreateSystemInstructionCacheAsync(
+                    new ModelContextCacheRequest
+                    {
+                        ModelName = geminiRequest.ModelName,
+                        SystemInstruction = systemInstructionText
+                    },
+                    cancellationToken);
+                if (cacheReference is not null)
+                {
+                    geminiRequest.CachedContentName = cacheReference.CachedContentName;
+                    geminiRequest.SystemInstruction = string.Empty;
+                }
             }
 
             // Use the agent loop only for channels with scoped, allowlisted tool profiles.
