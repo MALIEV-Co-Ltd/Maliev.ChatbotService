@@ -560,6 +560,46 @@ public sealed class GeminiClientFunctionCallSerializationTests
         Assert.Equal("600", Assert.Single(serverTimeout));
     }
 
+    [Fact]
+    public async Task SendMessageAsync_FlexTierWithoutExplicitTimeout_UsesFlexInferenceServerTimeout()
+    {
+        var handler = new CapturingHandler("""{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}""");
+        var client = CreateClient(handler);
+
+        await client.SendMessageAsync(new GeminiRequest
+        {
+            SystemInstruction = "sys",
+            ServiceTier = "flex",
+            Messages = [new GeminiMessage { Role = "user", Content = "Summarize this background record." }]
+        });
+
+        Assert.NotNull(handler.RequestHeaders);
+        Assert.True(handler.RequestHeaders!.TryGetValue("X-Server-Timeout", out var serverTimeout));
+        Assert.Equal("600", Assert.Single(serverTimeout));
+    }
+
+    [Fact]
+    public async Task StreamMessageAsync_FlexTierWithoutExplicitTimeout_UsesFlexInferenceServerTimeout()
+    {
+        var handler = new CapturingHandler("""
+            data: {"candidates":[{"content":{"parts":[{"text":"ok"}]}}],"usageMetadata":{"serviceTier":"flex"}}
+
+            """);
+        var client = CreateClient(handler);
+
+        await foreach (var _ in client.StreamMessageAsync(new GeminiRequest
+        {
+            ServiceTier = "flex",
+            Messages = [new GeminiMessage { Role = "user", Content = "Summarize this background record." }]
+        }))
+        {
+        }
+
+        Assert.NotNull(handler.RequestHeaders);
+        Assert.True(handler.RequestHeaders!.TryGetValue("X-Server-Timeout", out var serverTimeout));
+        Assert.Equal("600", Assert.Single(serverTimeout));
+    }
+
     [Theory]
     [InlineData(HttpStatusCode.ServiceUnavailable)]
     [InlineData(HttpStatusCode.TooManyRequests)]

@@ -65,12 +65,13 @@ public class GeminiClient : IGeminiClient
     public async Task<GeminiResponse> SendMessageAsync(GeminiRequest request, CancellationToken cancellationToken = default)
     {
         Interlocked.Increment(ref _totalApiCalls);
+        var effectiveTimeoutSeconds = ResolveEffectiveTimeoutSeconds(request);
 
         try
         {
             var modelName = request.ModelName ?? _modelName;
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            cts.CancelAfter(TimeSpan.FromSeconds(request.TimeoutSeconds));
+            cts.CancelAfter(TimeSpan.FromSeconds(effectiveTimeoutSeconds));
 
             var promptLimitResponse = await TryEnforcePromptTokenLimitAsync(request, modelName, cts.Token);
             if (promptLimitResponse is not null)
@@ -84,7 +85,7 @@ public class GeminiClient : IGeminiClient
             for (var attempt = 1; attempt <= maxAttempts; attempt++)
             {
                 using var messageRequest = new HttpRequestMessage(HttpMethod.Post, url);
-                AddGeminiHeaders(messageRequest, request);
+                AddGeminiHeaders(messageRequest, request, effectiveTimeoutSeconds);
                 messageRequest.Content = new StringContent(json, Encoding.UTF8, "application/json");
 
                 var response = await _httpClient.SendAsync(messageRequest, cts.Token);
@@ -142,7 +143,7 @@ public class GeminiClient : IGeminiClient
         }
         catch (OperationCanceledException)
         {
-            _logger.LogWarning("Gemini API request timed out after {Timeout} seconds", request.TimeoutSeconds);
+            _logger.LogWarning("Gemini API request timed out after {Timeout} seconds", effectiveTimeoutSeconds);
             UpdateSuccessRate();
             return GetFallbackResponse("GeminiAPITimeout");
         }
@@ -168,8 +169,9 @@ public class GeminiClient : IGeminiClient
         var groundingWebSearchQueries = new List<string>();
         GeminiTokenUsage? tokenUsage = null;
         string? streamServiceTier = null;
+        var effectiveTimeoutSeconds = ResolveEffectiveTimeoutSeconds(request);
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        cts.CancelAfter(TimeSpan.FromSeconds(request.TimeoutSeconds));
+        cts.CancelAfter(TimeSpan.FromSeconds(effectiveTimeoutSeconds));
 
         var modelName = request.ModelName ?? _modelName;
         var promptLimitResponse = await TryEnforcePromptTokenLimitAsync(request, modelName, cts.Token);
@@ -190,7 +192,7 @@ public class GeminiClient : IGeminiClient
         for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {
             using var messageRequest = new HttpRequestMessage(HttpMethod.Post, url);
-            AddGeminiHeaders(messageRequest, request);
+            AddGeminiHeaders(messageRequest, request, effectiveTimeoutSeconds);
             messageRequest.Content = new StringContent(json, Encoding.UTF8, "application/json");
 
             using var response = await _httpClient.SendAsync(
@@ -387,17 +389,34 @@ public class GeminiClient : IGeminiClient
     private static bool IsSupportedExternalFileMimeType(string mimeType)
         => MessagePipelinePolicy.IsSupportedGeminiExternalUrlMimeType(mimeType);
 
-    private void AddGeminiHeaders(HttpRequestMessage messageRequest, GeminiRequest request)
+    private static int ResolveEffectiveTimeoutSeconds(GeminiRequest request)
+    {
+        var timeoutSeconds = request.TimeoutSeconds > 0
+            ? request.TimeoutSeconds
+            : 10;
+
+        return IsFlexTier(request)
+            ? Math.Max(timeoutSeconds, GeminiRequest.FlexInferenceTimeoutSeconds)
+            : timeoutSeconds;
+    }
+
+    private static bool IsFlexTier(GeminiRequest request) =>
+        string.Equals(request.ServiceTier, "flex", StringComparison.OrdinalIgnoreCase);
+
+    private void AddGeminiHeaders(
+        HttpRequestMessage messageRequest,
+        GeminiRequest request,
+        int effectiveTimeoutSeconds)
     {
         messageRequest.Headers.Add("x-goog-api-key", _apiKey);
-        if (string.Equals(request.ServiceTier, "flex", StringComparison.OrdinalIgnoreCase))
+        if (IsFlexTier(request))
         {
-            messageRequest.Headers.Add("X-Server-Timeout", request.TimeoutSeconds.ToString(CultureInfo.InvariantCulture));
+            messageRequest.Headers.Add("X-Server-Timeout", effectiveTimeoutSeconds.ToString(CultureInfo.InvariantCulture));
         }
     }
 
     private int ResolveMaxAttempts(GeminiRequest request) =>
-        string.Equals(request.ServiceTier, "flex", StringComparison.OrdinalIgnoreCase)
+        IsFlexTier(request)
             ? _flexRetryMaxAttempts
             : 1;
 
@@ -407,7 +426,7 @@ public class GeminiClient : IGeminiClient
         int attempt,
         int maxAttempts)
     {
-        if (!string.Equals(request.ServiceTier, "flex", StringComparison.OrdinalIgnoreCase) ||
+        if (!IsFlexTier(request) ||
             attempt >= maxAttempts)
         {
             return false;
