@@ -1,6 +1,10 @@
+using System.Reflection;
+using System.Text;
+using System.Text.Json;
 using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Domain.Entities;
 using Maliev.ChatbotService.Domain.Enums;
+using Maliev.ChatbotService.Infrastructure.AI;
 using Maliev.ChatbotService.Infrastructure.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -228,6 +232,53 @@ public sealed class ConversationSummaryBatchServiceTests
         Assert.All(createdJobs, job => Assert.Single(job.Items));
         Assert.Contains(firstSession.Id, deferredSessionIds);
         Assert.Contains(secondSession.Id, deferredSessionIds);
+    }
+
+    [Fact]
+    public void EstimateInlineBatchBytes_UsesDocumentedGeminiBatchRestFieldNames()
+    {
+        var request = new ModelBatchGenerateContentRequest
+        {
+            Request = new GeminiRequest
+            {
+                SystemInstruction = "Summarize the conversation.",
+                Messages =
+                [
+                    new GeminiMessage { Role = "user", Content = "User: hello\nAssistant: hi" }
+                ],
+                ThinkingBudget = 0,
+                MaxTokens = 1024
+            },
+            Metadata = new Dictionary<string, object?>
+            {
+                ["sessionId"] = "session-1",
+                ["userProfileId"] = "user-1"
+            }
+        };
+        var requests = new List<ModelBatchGenerateContentRequest> { request };
+
+        var actualBytes = InvokeInlineBatchByteEstimator(requests);
+        var expectedBytes = Encoding.UTF8.GetByteCount(JsonSerializer.Serialize(new Dictionary<string, object?>
+        {
+            ["batch"] = new Dictionary<string, object?>
+            {
+                ["displayName"] = "expired-session-summaries-00000000000000",
+                ["inputConfig"] = new Dictionary<string, object?>
+                {
+                    ["requests"] = new Dictionary<string, object?>
+                    {
+                        ["requests"] = requests.Select(item => new Dictionary<string, object?>
+                        {
+                            ["request"] = InvokeGeminiPayloadBuilder(item.Request),
+                            ["metadata"] = item.Metadata
+                        }).ToArray()
+                    }
+                },
+                ["priority"] = "-10"
+            }
+        }, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
+
+        Assert.Equal(expectedBytes, actualBytes);
     }
 
     [Fact]
@@ -613,6 +664,34 @@ public sealed class ConversationSummaryBatchServiceTests
             batchJobRepository.Object,
             configuration,
             NullLogger<ConversationSummaryBatchService>.Instance);
+    }
+
+    private static int InvokeInlineBatchByteEstimator(IReadOnlyCollection<ModelBatchGenerateContentRequest> requests)
+    {
+        var method = typeof(ConversationSummaryBatchService).GetMethod(
+            "EstimateInlineBatchBytes",
+            BindingFlags.NonPublic | BindingFlags.Static,
+            binder: null,
+            [typeof(IReadOnlyCollection<ModelBatchGenerateContentRequest>), typeof(IReadOnlyList<GeminiSafetySetting>), typeof(string)],
+            modifiers: null);
+        Assert.NotNull(method);
+        return (int)method!.Invoke(
+            null,
+            [requests, Array.Empty<GeminiSafetySetting>(), "gemini-2.5-flash-lite"])!;
+    }
+
+    private static Dictionary<string, object?> InvokeGeminiPayloadBuilder(GeminiRequest request)
+    {
+        var method = typeof(GeminiClient).GetMethod(
+            "BuildGeminiPayload",
+            BindingFlags.NonPublic | BindingFlags.Static,
+            binder: null,
+            [typeof(GeminiRequest), typeof(IReadOnlyList<GeminiSafetySetting>), typeof(string)],
+            modifiers: null);
+        Assert.NotNull(method);
+        return (Dictionary<string, object?>)method!.Invoke(
+            null,
+            [request, Array.Empty<GeminiSafetySetting>(), "gemini-2.5-flash-lite"])!;
     }
 
     private static ConversationSession CreateSession()

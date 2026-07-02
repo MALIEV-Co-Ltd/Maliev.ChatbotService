@@ -236,8 +236,8 @@ public class ConversationSummaryBatchService : IConversationSummaryBatchService
         {
             ["batch"] = new Dictionary<string, object?>
             {
-                ["display_name"] = "expired-session-summaries-00000000000000",
-                ["input_config"] = new Dictionary<string, object?>
+                ["displayName"] = "expired-session-summaries-00000000000000",
+                ["inputConfig"] = new Dictionary<string, object?>
                 {
                     ["requests"] = new Dictionary<string, object?>
                     {
