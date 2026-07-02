@@ -220,8 +220,11 @@ public class ExtractCustomerCommandHandler
 
             var geminiResponse = await _geminiClient.SendMessageAsync(geminiRequest, cancellationToken);
 
-            // Log raw Gemini response for debugging
-            _logger.LogInformation("Raw Gemini extraction response: {Response}", geminiResponse.Content);
+            _logger.LogInformation(
+                "Gemini extraction response received. Success={Success}, ContentLength={ContentLength}, HasTokenUsage={HasTokenUsage}",
+                geminiResponse.Success,
+                geminiResponse.Content.Length,
+                geminiResponse.TokenUsage is not null);
 
             if (!geminiResponse.Success)
             {
@@ -246,20 +249,9 @@ public class ExtractCustomerCommandHandler
                     return new ExtractCustomerResult { Success = false, ErrorMessage = "Failed to parse extracted data." };
                 }
 
-                // Log extracted addresses to verify AI populated address_line_1
-                if (extracted.Addresses != null && extracted.Addresses.Count > 0)
-                {
-                    foreach (var addr in extracted.Addresses)
-                    {
-                        _logger.LogInformation(
-                            "Extracted address ({Type}): Line1='{Line1}', District='{District}', City='{City}', PostalCode='{PostalCode}'",
-                            addr.Type, addr.AddressLine1, addr.District, addr.City, addr.PostalCode);
-                    }
-                }
-                else
-                {
-                    _logger.LogWarning("No addresses extracted by Gemini");
-                }
+                _logger.LogInformation(
+                    "Gemini customer extraction parsed successfully with {AddressCount} address(es).",
+                    extracted.Addresses?.Count ?? 0);
 
                 return new ExtractCustomerResult
                 {
@@ -274,7 +266,7 @@ public class ExtractCustomerCommandHandler
             }
             catch (JsonException ex)
             {
-                _logger.LogError(ex, "Failed to deserialize extraction response: {Content}", geminiResponse.Content);
+                _logger.LogError(ex, "Failed to deserialize extraction response.");
                 return new ExtractCustomerResult { Success = false, ErrorMessage = $"Failed to parse AI response: {ex.Message}" };
             }
         }

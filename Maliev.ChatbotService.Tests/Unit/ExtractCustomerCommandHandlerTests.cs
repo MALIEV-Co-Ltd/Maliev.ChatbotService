@@ -3,6 +3,7 @@ using Maliev.ChatbotService.Application.Handlers;
 using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Domain.Entities;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
@@ -118,6 +119,114 @@ public sealed class ExtractCustomerCommandHandlerTests
         Assert.NotNull(capturedRequest.Attachments);
         Assert.Single(capturedRequest.Attachments);
         Assert.Equal("application/pdf", capturedRequest.Attachments![0].MimeType);
+    }
+
+    [Fact]
+    public async Task HandleAsync_SuccessfulExtraction_DoesNotLogRawCustomerData()
+    {
+        var instructionRepository = new Mock<ISystemInstructionRepository>();
+        var geminiClient = new Mock<IGeminiClient>();
+        var modelContextCacheService = new Mock<IModelContextCacheService>();
+        var modelFileStagingService = new Mock<IModelFileStagingService>();
+        var logger = new CapturingLogger<ExtractCustomerCommandHandler>();
+
+        instructionRepository
+            .Setup(item => item.GetActiveByTopicsAsync(
+                It.IsAny<IEnumerable<string>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<SystemInstruction>());
+        modelContextCacheService
+            .Setup(item => item.GetOrCreateSystemInstructionCacheAsync(
+                It.IsAny<ModelContextCacheRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ModelContextCacheReference?)null);
+        geminiClient
+            .Setup(item => item.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GeminiResponse
+            {
+                Success = true,
+                Content = """
+                    {
+                      "first_name": "Jane",
+                      "last_name": "Customer",
+                      "mobile": "+66898950690",
+                      "addresses": [
+                        {
+                          "address_line_1": "36/1 Moo 3",
+                          "district": "Khlong Suan Phlu",
+                          "city": "Ayutthaya",
+                          "postal_code": "13000"
+                        }
+                      ]
+                    }
+                    """
+            });
+
+        var handler = new ExtractCustomerCommandHandler(
+            instructionRepository.Object,
+            geminiClient.Object,
+            modelContextCacheService.Object,
+            modelFileStagingService.Object,
+            logger);
+
+        var result = await handler.HandleAsync(new ExtractCustomerCommand
+        {
+            RawText = "Jane Customer, +66898950690, 36/1 Moo 3, Ayutthaya 13000"
+        });
+
+        Assert.True(result.Success);
+        var logs = string.Join('\n', logger.Messages);
+        Assert.DoesNotContain("Jane", logs);
+        Assert.DoesNotContain("+66898950690", logs);
+        Assert.DoesNotContain("36/1 Moo 3", logs);
+        Assert.DoesNotContain("13000", logs);
+    }
+
+    [Fact]
+    public async Task HandleAsync_InvalidExtractionJson_DoesNotLogRawResponseContent()
+    {
+        var instructionRepository = new Mock<ISystemInstructionRepository>();
+        var geminiClient = new Mock<IGeminiClient>();
+        var modelContextCacheService = new Mock<IModelContextCacheService>();
+        var modelFileStagingService = new Mock<IModelFileStagingService>();
+        var logger = new CapturingLogger<ExtractCustomerCommandHandler>();
+
+        instructionRepository
+            .Setup(item => item.GetActiveByTopicsAsync(
+                It.IsAny<IEnumerable<string>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<SystemInstruction>());
+        modelContextCacheService
+            .Setup(item => item.GetOrCreateSystemInstructionCacheAsync(
+                It.IsAny<ModelContextCacheRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ModelContextCacheReference?)null);
+        geminiClient
+            .Setup(item => item.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GeminiResponse
+            {
+                Success = true,
+                Content = "Jane Customer, +66898950690, 36/1 Moo 3, Ayutthaya 13000"
+            });
+
+        var handler = new ExtractCustomerCommandHandler(
+            instructionRepository.Object,
+            geminiClient.Object,
+            modelContextCacheService.Object,
+            modelFileStagingService.Object,
+            logger);
+
+        var result = await handler.HandleAsync(new ExtractCustomerCommand
+        {
+            RawText = "Jane Customer, +66898950690, 36/1 Moo 3, Ayutthaya 13000"
+        });
+
+        Assert.False(result.Success);
+        var logs = string.Join('\n', logger.Messages);
+        Assert.DoesNotContain("Jane Customer", logs);
+        Assert.DoesNotContain("+66898950690", logs);
+        Assert.DoesNotContain("36/1 Moo 3", logs);
+        Assert.DoesNotContain("13000", logs);
     }
 
     [Fact]
@@ -558,5 +667,35 @@ public sealed class ExtractCustomerCommandHandlerTests
                 request.SystemInstruction == "Extract customer information.\n\nReturn only verified fields." &&
                 request.ModelName == "gemini-2.5-flash-lite"),
             It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    private sealed class CapturingLogger<T> : ILogger<T>
+    {
+        public List<string> Messages { get; } = [];
+
+        public IDisposable BeginScope<TState>(TState state)
+            where TState : notnull =>
+            NullScope.Instance;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            Messages.Add(formatter(state, exception));
+        }
+    }
+
+    private sealed class NullScope : IDisposable
+    {
+        public static readonly NullScope Instance = new();
+
+        public void Dispose()
+        {
+        }
     }
 }
