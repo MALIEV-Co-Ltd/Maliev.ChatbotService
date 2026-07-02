@@ -90,7 +90,7 @@ public sealed class GeminiModelFileStagingService : IModelFileStagingService
         if (!response.IsSuccessStatusCode)
         {
             throw new InvalidOperationException(
-                $"Gemini Files API delete failed for {fileName}: {(int)response.StatusCode} {responseContent}");
+                $"Gemini Files API delete failed for {fileName}: {ModelProviderErrorSanitizer.Summarize(response, responseContent)}");
         }
 
         _logger.LogInformation("Deleted staged Gemini file {FileName}", fileName);
@@ -122,7 +122,7 @@ public sealed class GeminiModelFileStagingService : IModelFileStagingService
         if (!response.IsSuccessStatusCode)
         {
             throw new InvalidOperationException(
-                $"Gemini Files API start upload failed: {(int)response.StatusCode} {responseContent}");
+                $"Gemini Files API start upload failed: {ModelProviderErrorSanitizer.Summarize(response, responseContent)}");
         }
 
         if (!response.Headers.TryGetValues("X-Goog-Upload-URL", out var values) &&
@@ -160,7 +160,7 @@ public sealed class GeminiModelFileStagingService : IModelFileStagingService
         if (!response.IsSuccessStatusCode)
         {
             throw new InvalidOperationException(
-                $"Gemini Files API upload failed: {(int)response.StatusCode} {responseContent}");
+                $"Gemini Files API upload failed: {ModelProviderErrorSanitizer.Summarize(response, responseContent)}");
         }
 
         return ParseFileMetadata(responseContent, request.MimeType);
@@ -233,7 +233,7 @@ public sealed class GeminiModelFileStagingService : IModelFileStagingService
         if (!response.IsSuccessStatusCode)
         {
             throw new InvalidOperationException(
-                $"Gemini Files API get failed for {fileName}: {(int)response.StatusCode} {responseContent}");
+                $"Gemini Files API get failed for {fileName}: {ModelProviderErrorSanitizer.Summarize(response, responseContent)}");
         }
 
         return ParseFileMetadata(responseContent, fallbackMimeType);

@@ -298,9 +298,9 @@ public sealed class GeminiModelContextCacheService : IModelContextCacheService
         if (!response.IsSuccessStatusCode)
         {
             _logger.LogWarning(
-                "Gemini context cache countTokens returned {StatusCode}: {Content}",
+                "Gemini context cache countTokens returned {StatusCode}: {ErrorSummary}",
                 response.StatusCode,
-                responseContent);
+                ModelProviderErrorSanitizer.Summarize(response, responseContent));
             throw new InvalidOperationException("Gemini context cache countTokens failed.");
         }
 
@@ -334,9 +334,9 @@ public sealed class GeminiModelContextCacheService : IModelContextCacheService
             !response.IsSuccessStatusCode)
         {
             _logger.LogWarning(
-                "Gemini context cache create returned {StatusCode}: {Content}",
+                "Gemini context cache create returned {StatusCode}: {ErrorSummary}",
                 response.StatusCode,
-                responseContent);
+                ModelProviderErrorSanitizer.Summarize(response, responseContent));
             return null;
         }
 

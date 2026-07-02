@@ -69,9 +69,9 @@ public sealed class GeminiBatchClient : IModelBatchClient
         if (!response.IsSuccessStatusCode)
         {
             _logger.LogError(
-                "Gemini Batch API create returned {StatusCode}: {Content}",
+                "Gemini Batch API create returned {StatusCode}: {ErrorSummary}",
                 response.StatusCode,
-                responseContent);
+                ModelProviderErrorSanitizer.Summarize(response, responseContent));
             throw new InvalidOperationException("Gemini Batch API create failed.");
         }
 
@@ -97,9 +97,9 @@ public sealed class GeminiBatchClient : IModelBatchClient
         if (!response.IsSuccessStatusCode)
         {
             _logger.LogError(
-                "Gemini Batch API get returned {StatusCode}: {Content}",
+                "Gemini Batch API get returned {StatusCode}: {ErrorSummary}",
                 response.StatusCode,
-                responseContent);
+                ModelProviderErrorSanitizer.Summarize(response, responseContent));
             throw new InvalidOperationException("Gemini Batch API get failed.");
         }
 

@@ -119,7 +119,10 @@ public class GeminiClient : IGeminiClient
                         return WithServiceTier(GetFallbackResponse("GeminiAPIRateLimit"), responseServiceTier);
                     }
 
-                    _logger.LogError("Gemini API returned error: {StatusCode} - {Content}", response.StatusCode, responseContent);
+                    _logger.LogError(
+                        "Gemini API returned error: {StatusCode} - {ErrorSummary}",
+                        response.StatusCode,
+                        ModelProviderErrorSanitizer.Summarize(response, responseContent));
                     UpdateSuccessRate();
                     return WithServiceTier(GetFallbackResponse("GeminiAPIError"), responseServiceTier);
                 }
@@ -223,7 +226,10 @@ public class GeminiClient : IGeminiClient
                     continue;
                 }
 
-                _logger.LogError("Gemini streaming API returned error: {StatusCode} - {Content}", response.StatusCode, responseContent);
+                _logger.LogError(
+                    "Gemini streaming API returned error: {StatusCode} - {ErrorSummary}",
+                    response.StatusCode,
+                    ModelProviderErrorSanitizer.Summarize(response, responseContent));
                 UpdateSuccessRate();
                 yield return new GeminiStreamEvent
                 {
@@ -737,9 +743,9 @@ public class GeminiClient : IGeminiClient
         if (!response.IsSuccessStatusCode)
         {
             _logger.LogWarning(
-                "Gemini countTokens returned error: {StatusCode} - {Content}",
+                "Gemini countTokens returned error: {StatusCode} - {ErrorSummary}",
                 response.StatusCode,
-                responseContent);
+                ModelProviderErrorSanitizer.Summarize(response, responseContent));
             throw new InvalidOperationException("Gemini countTokens failed.");
         }
 

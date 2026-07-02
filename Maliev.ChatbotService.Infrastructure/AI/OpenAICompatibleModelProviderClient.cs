@@ -86,9 +86,9 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogError(
-                    "OpenAI-compatible provider returned error: {StatusCode} - {Content}",
+                    "OpenAI-compatible provider returned error: {StatusCode} - {ErrorSummary}",
                     response.StatusCode,
-                    responseContent);
+                    ModelProviderErrorSanitizer.Summarize(response, responseContent));
                 return GetFallbackResponse(response.StatusCode == System.Net.HttpStatusCode.TooManyRequests
                     ? "ModelProviderRateLimit"
                     : "ModelProviderError");
@@ -189,9 +189,9 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
         {
             var responseContent = await response.Content.ReadAsStringAsync(cts.Token);
             _logger.LogError(
-                "OpenAI-compatible streaming provider returned error: {StatusCode} - {Content}",
+                "OpenAI-compatible streaming provider returned error: {StatusCode} - {ErrorSummary}",
                 response.StatusCode,
-                responseContent);
+                ModelProviderErrorSanitizer.Summarize(response, responseContent));
             yield return new GeminiStreamEvent
             {
                 Type = "final",
@@ -348,9 +348,9 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
         if (!response.IsSuccessStatusCode)
         {
             _logger.LogWarning(
-                "Gemini OpenAI-compatible countTokens returned error: {StatusCode} - {Content}",
+                "Gemini OpenAI-compatible countTokens returned error: {StatusCode} - {ErrorSummary}",
                 response.StatusCode,
-                responseContent);
+                ModelProviderErrorSanitizer.Summarize(response, responseContent));
             throw new InvalidOperationException("Gemini countTokens failed.");
         }
 
