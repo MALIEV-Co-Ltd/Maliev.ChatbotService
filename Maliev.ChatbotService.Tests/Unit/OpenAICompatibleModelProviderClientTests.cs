@@ -143,6 +143,61 @@ public sealed class OpenAICompatibleModelProviderClientTests
     }
 
     [Fact]
+    public async Task SendMessageAsync_FunctionCallWithStructuredArguments_PreservesNestedJsonForToolForwarding()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "choices": [
+                {
+                  "message": {
+                    "content": null,
+                    "tool_calls": [
+                      {
+                        "id": "call-1",
+                        "type": "function",
+                        "function": {
+                          "name": "quote_generate_3d_preview",
+                          "arguments": "{\"description\":\"Rectangular part\",\"cad_commands\":[{\"op\":\"box\",\"id\":\"part\",\"params\":[30,50,100]}],\"metadata\":{\"units\":\"mm\"}}"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+            """, "application/json");
+        var client = CreateClient(handler);
+
+        var response = await client.SendMessageAsync(new GeminiRequest
+        {
+            Messages = [new GeminiMessage { Role = "user", Content = "Generate a CAD preview." }]
+        });
+
+        Assert.True(response.Success);
+        var functionCall = Assert.Single(response.FunctionCalls);
+        Assert.Equal("quote_generate_3d_preview", functionCall.Name);
+        Assert.Equal("call-1", functionCall.Id);
+
+        var forwardingOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+        };
+        var forwardedJson = JsonSerializer.Serialize(functionCall.Args, forwardingOptions);
+        using var forwarded = JsonDocument.Parse(forwardedJson);
+        Assert.Equal("Rectangular part", forwarded.RootElement.GetProperty("description").GetString());
+
+        var cadCommands = forwarded.RootElement.GetProperty("cad_commands");
+        Assert.Equal(JsonValueKind.Array, cadCommands.ValueKind);
+        var command = Assert.Single(cadCommands.EnumerateArray());
+        Assert.Equal("box", command.GetProperty("op").GetString());
+        Assert.Equal(JsonValueKind.Array, command.GetProperty("params").ValueKind);
+
+        var metadata = forwarded.RootElement.GetProperty("metadata");
+        Assert.Equal(JsonValueKind.Object, metadata.ValueKind);
+        Assert.Equal("mm", metadata.GetProperty("units").GetString());
+    }
+
+    [Fact]
     public async Task SendMessageAsync_WithAudioAttachment_SerializesInputAudioPart()
     {
         var handler = new CapturingHandler("""

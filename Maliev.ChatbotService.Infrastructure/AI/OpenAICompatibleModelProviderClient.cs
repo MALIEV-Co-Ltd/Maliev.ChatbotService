@@ -886,7 +886,7 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
                     JsonValueKind.Number => item.Value.TryGetInt64(out var longValue) ? longValue : item.Value.GetDouble(),
                     JsonValueKind.True => true,
                     JsonValueKind.False => false,
-                    _ => item.Value.GetRawText()
+                    _ => item.Value.Clone()
                 });
     }
 
