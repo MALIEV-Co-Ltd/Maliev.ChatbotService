@@ -184,6 +184,47 @@ public sealed class GeminiModelFileStagingServiceTests
     }
 
     [Fact]
+    public async Task StageFileAsync_OpenAiCompatibleGeminiConfiguration_UsesCompatibleKey()
+    {
+        var handler = new CapturingHandler(
+            new CapturedResponse(
+                HttpStatusCode.OK,
+                string.Empty,
+                new Dictionary<string, string>
+                {
+                    ["X-Goog-Upload-URL"] = "https://generativelanguage.googleapis.com/upload-session"
+                }),
+            new CapturedResponse(
+                HttpStatusCode.OK,
+                """
+                {
+                  "file": {
+                    "name": "files/customer-form",
+                    "uri": "https://generativelanguage.googleapis.com/v1beta/files/customer-form",
+                    "mimeType": "application/pdf",
+                    "state": "ACTIVE"
+                  }
+                }
+                """));
+        var service = CreateService(handler, new Dictionary<string, string?>
+        {
+            ["Gemini:ApiKey"] = null,
+            ["Llm:OpenAICompatible:ApiKey"] = "compatible-key"
+        });
+
+        var result = await service.StageFileAsync(new ModelFileStagingRequest
+        {
+            FileName = "customer-form.pdf",
+            MimeType = "application/pdf",
+            Content = "pdf bytes"u8.ToArray()
+        });
+
+        Assert.NotNull(result);
+        Assert.Equal("compatible-key", handler.Requests[0].Headers["x-goog-api-key"]);
+        Assert.Equal("compatible-key", handler.Requests[1].Headers["x-goog-api-key"]);
+    }
+
+    [Fact]
     public async Task DeleteFileAsync_SendsGeminiFilesDeleteRequest()
     {
         var handler = new CapturingHandler(new CapturedResponse(HttpStatusCode.OK, "{}"));

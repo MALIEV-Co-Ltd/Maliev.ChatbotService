@@ -38,8 +38,7 @@ public sealed class GeminiModelFileStagingService : IModelFileStagingService
     {
         _httpClient = httpClient;
         _logger = logger;
-        _apiKey = configuration["Gemini:ApiKey"] ??
-            throw new InvalidOperationException("Gemini API key is not configured.");
+        _apiKey = GeminiApiConfiguration.ResolveApiKey(configuration);
         _processingPollAttempts = Math.Clamp(
             configuration.GetValue<int?>(ProcessingPollAttemptsConfigurationKey) ?? DefaultProcessingPollAttempts,
             0,

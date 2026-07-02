@@ -51,9 +51,8 @@ public sealed class GeminiModelContextCacheService : IModelContextCacheService
         _httpClient = httpClient;
         _redis = redis;
         _logger = logger;
-        _apiKey = configuration["Gemini:ApiKey"]
-            ?? throw new InvalidOperationException("Gemini API key is not configured. Set 'Gemini:ApiKey'.");
-        _modelName = configuration["Gemini:MainModelName"] ?? "gemini-2.5-flash";
+        _apiKey = GeminiApiConfiguration.ResolveApiKey(configuration);
+        _modelName = GeminiApiConfiguration.ResolveMainModelName(configuration);
         _enabled = configuration.GetValue<bool?>("Gemini:ContextCache:Enabled") ?? true;
         _configuredMinInputTokens = configuration.GetValue<int?>("Gemini:ContextCache:MinInputTokens");
         _maxStorageCostMicroUsd = Math.Max(

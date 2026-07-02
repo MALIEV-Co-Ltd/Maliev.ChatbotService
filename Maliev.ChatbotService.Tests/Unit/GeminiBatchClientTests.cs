@@ -176,6 +176,43 @@ public sealed class GeminiBatchClientTests
     }
 
     [Fact]
+    public async Task CreateInlineGenerateContentBatchAsync_OpenAiCompatibleGeminiConfiguration_UsesCompatibleKeyAndModel()
+    {
+        var handler = new CapturingHandler("""{"name":"batches/batch-123","metadata":{"state":"JOB_STATE_PENDING"}}""");
+        var client = CreateClient(handler, new Dictionary<string, string?>
+        {
+            ["Gemini:ApiKey"] = null,
+            ["Gemini:MainModelName"] = null,
+            ["Llm:OpenAICompatible:ApiKey"] = "compatible-key",
+            ["Llm:OpenAICompatible:ModelName"] = "gemini-2.5-flash-lite"
+        });
+
+        await client.CreateInlineGenerateContentBatchAsync(new ModelBatchRequest
+        {
+            DisplayName = "expired-session-summaries",
+            ModelName = null,
+            Requests =
+            [
+                new ModelBatchGenerateContentRequest
+                {
+                    Request = new GeminiRequest
+                    {
+                        SystemInstruction = "Summarize the conversation.",
+                        Messages =
+                        [
+                            new GeminiMessage { Role = "user", Content = "User: hello\nAssistant: hi" }
+                        ],
+                        MaxTokens = 1024
+                    }
+                }
+            ]
+        });
+
+        Assert.Equal("/v1beta/models/gemini-2.5-flash-lite:batchGenerateContent", handler.Request!.RequestUri!.AbsolutePath);
+        Assert.Equal("compatible-key", handler.Request.Headers.GetValues("x-goog-api-key").Single());
+    }
+
+    [Fact]
     public async Task GetBatchAsync_ParsesOperationStateAndInlineResponses()
     {
         var handler = new CapturingHandler("""

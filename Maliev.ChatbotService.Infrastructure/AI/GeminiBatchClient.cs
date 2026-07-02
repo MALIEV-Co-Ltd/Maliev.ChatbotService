@@ -37,9 +37,8 @@ public sealed class GeminiBatchClient : IModelBatchClient
     {
         _httpClient = httpClient;
         _logger = logger;
-        _apiKey = configuration["Gemini:ApiKey"]
-            ?? throw new InvalidOperationException("Gemini API key is not configured. Set 'Gemini:ApiKey'.");
-        _modelName = configuration["Gemini:MainModelName"] ?? "gemini-2.5-flash";
+        _apiKey = GeminiApiConfiguration.ResolveApiKey(configuration);
+        _modelName = GeminiApiConfiguration.ResolveMainModelName(configuration);
         _defaultSafetySettings = GeminiSafetySettingsOptions.FromConfiguration(configuration).SafetySettings;
     }
 

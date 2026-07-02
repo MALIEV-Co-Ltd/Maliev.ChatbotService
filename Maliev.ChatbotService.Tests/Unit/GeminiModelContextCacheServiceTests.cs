@@ -121,6 +121,66 @@ public sealed class GeminiModelContextCacheServiceTests
     }
 
     [Fact]
+    public async Task GetOrCreateSystemInstructionCacheAsync_OpenAiCompatibleGeminiConfiguration_UsesCompatibleKeyAndModel()
+    {
+        var handler = new CapturingHandler(
+            """{"totalTokens":2048}""",
+            """{"name":"cachedContents/created"}""");
+        var database = CreateRedisDatabase();
+        database
+            .Setup(item => item.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync(RedisValue.Null);
+        database
+            .Setup(item => item.LockTakeAsync(
+                It.IsAny<RedisKey>(),
+                It.IsAny<RedisValue>(),
+                It.IsAny<TimeSpan>(),
+                It.IsAny<CommandFlags>()))
+            .ReturnsAsync(true);
+        database
+            .Setup(item => item.LockReleaseAsync(
+                It.IsAny<RedisKey>(),
+                It.IsAny<RedisValue>(),
+                It.IsAny<CommandFlags>()))
+            .ReturnsAsync(true);
+        database
+            .Setup(item => item.StringSetAsync(
+                It.IsAny<RedisKey>(),
+                It.IsAny<RedisValue>(),
+                It.IsAny<TimeSpan?>(),
+                It.IsAny<bool>(),
+                It.IsAny<When>(),
+                It.IsAny<CommandFlags>()))
+            .ReturnsAsync(true);
+
+        var service = CreateService(handler, database.Object, new Dictionary<string, string?>
+        {
+            ["Gemini:ApiKey"] = null,
+            ["Gemini:MainModelName"] = null,
+            ["Llm:OpenAICompatible:ApiKey"] = "compatible-key",
+            ["Llm:OpenAICompatible:ModelName"] = "gemini-2.5-flash-lite"
+        });
+
+        var result = await service.GetOrCreateSystemInstructionCacheAsync(new ModelContextCacheRequest
+        {
+            ModelName = null,
+            SystemInstruction = new string('x', 9000)
+        });
+
+        Assert.NotNull(result);
+        Assert.Equal("cachedContents/created", result!.CachedContentName);
+        Assert.Equal(
+            ["/v1beta/models/gemini-2.5-flash-lite:countTokens", "/v1beta/cachedContents"],
+            handler.RequestUris);
+        Assert.All(
+            handler.Requests,
+            request => Assert.Equal("compatible-key", request.Headers.GetValues("x-goog-api-key").Single()));
+
+        using var payload = JsonDocument.Parse(handler.RequestBodies[1]);
+        Assert.Equal("models/gemini-2.5-flash-lite", payload.RootElement.GetProperty("model").GetString());
+    }
+
+    [Fact]
     public async Task GetOrCreateSystemInstructionCacheAsync_ShortCharactersButTokenEligible_CreatesCache()
     {
         var handler = new CapturingHandler(
