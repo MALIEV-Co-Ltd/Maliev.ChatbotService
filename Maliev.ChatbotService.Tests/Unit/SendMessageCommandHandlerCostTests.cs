@@ -746,6 +746,44 @@ public sealed class SendMessageCommandHandlerCostTests
     }
 
     [Fact]
+    public async Task HandleAsync_GeminiGroundedPromptCount_PersistsProviderPromptCountInCostBreakdown()
+    {
+        var result = await SendWebsiteMessageAsync(
+            groundingWebSearchQueries:
+            [
+                "latest ASA material datasheet",
+                "official ASTM D638 source"
+            ],
+            googleSearchGroundingPromptCount: 2,
+            tokenUsage: new GeminiTokenUsage
+            {
+                PromptTokens = 100,
+                CompletionTokens = 50,
+                TotalTokens = 150
+            });
+
+        var assistantMessage = Assert.Single(result.CreatedMessages, message => message.Role == MessageRole.Assistant);
+        Assert.NotNull(assistantMessage.MetadataJson);
+        using var metadata = JsonDocument.Parse(assistantMessage.MetadataJson!);
+
+        var groundingMetadata = metadata.RootElement.GetProperty("groundingMetadata");
+        Assert.Equal(2, groundingMetadata.GetProperty("groundedPromptCount").GetInt32());
+
+        var costEstimate = metadata.RootElement.GetProperty("costEstimate");
+        Assert.Equal(2, costEstimate.GetProperty("googleSearchGroundingPromptCount").GetInt32());
+        Assert.Equal(70000, costEstimate.GetProperty("googleSearchGroundingMicroUsd").GetInt64());
+        Assert.Equal(70155, costEstimate.GetProperty("totalMicroUsd").GetInt64());
+        result.UsageBudgetService.Verify(
+            item => item.RecordModelUsageAsync(
+                It.IsAny<Guid>(),
+                It.Is<UsageBudgetCharge>(charge =>
+                    charge.Tokens == 150 &&
+                    charge.CostMicroUsd == 70155),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
     public async Task HandleAsync_OpenAiCompatibleGeminiModelConfiguration_PersistsCostForConfiguredModel()
     {
         var result = await SendWebsiteMessageAsync(
@@ -1022,6 +1060,7 @@ public sealed class SendMessageCommandHandlerCostTests
         string? chatVideoMediaResolution = null,
         bool urlContextEnabled = false,
         IReadOnlyList<string>? groundingWebSearchQueries = null,
+        int googleSearchGroundingPromptCount = 0,
         Dictionary<string, string?>? configurationOverrides = null)
     {
         var sessionId = Guid.NewGuid();
@@ -1115,6 +1154,7 @@ public sealed class SendMessageCommandHandlerCostTests
                 ErrorMessage = geminiErrorMessage,
                 ServiceTier = responseServiceTier,
                 GroundingWebSearchQueries = groundingWebSearchQueries?.ToList() ?? [],
+                GoogleSearchGroundingPromptCount = googleSearchGroundingPromptCount,
                 TokenUsage = tokenUsage ?? new GeminiTokenUsage { TotalTokens = 25 }
             });
 

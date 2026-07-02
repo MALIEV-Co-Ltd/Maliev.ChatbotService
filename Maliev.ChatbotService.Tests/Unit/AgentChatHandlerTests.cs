@@ -793,6 +793,7 @@ public class AgentChatHandlerTests
         Assert.Equal(15, result.TokenUsage.ThoughtTokens);
         Assert.Equal(50, result.TokenUsage.CompletionTokens);
         Assert.Equal("flex", result.ServiceTier);
+        Assert.Equal(2, result.GoogleSearchGroundingPromptCount);
         Assert.Equal(
             ["latest ASA material datasheet", "official ASTM D638 source"],
             result.GroundingWebSearchQueries);

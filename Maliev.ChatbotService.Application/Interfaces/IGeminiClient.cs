@@ -245,6 +245,11 @@ public class GeminiResponse
     public List<string> GroundingWebSearchQueries { get; set; } = [];
 
     /// <summary>
+    /// Gets or sets the number of Gemini prompts that used Google Search grounding.
+    /// </summary>
+    public int GoogleSearchGroundingPromptCount { get; set; }
+
+    /// <summary>
     /// Gets or sets the error type if unsuccessful.
     /// </summary>
     public string? ErrorType { get; set; }

@@ -77,6 +77,7 @@ public class AgentChatHandler
         var sawUsage = false;
         string? serviceTier = null;
         var groundingWebSearchQueries = new List<string>();
+        var googleSearchGroundingPromptCount = 0;
         var stagedFileNames = new List<string>();
 
         try
@@ -106,6 +107,7 @@ public class AgentChatHandler
                 var response = await SendGeminiMaybeStreamingAsync(iterationRequest, onTextDelta, onThoughtDelta, cancellationToken);
                 serviceTier = response.ServiceTier ?? serviceTier;
                 AddGroundingWebSearchQueries(groundingWebSearchQueries, response.GroundingWebSearchQueries);
+                googleSearchGroundingPromptCount += GetGoogleSearchGroundingPromptCount(response);
 
                 if (response.TokenUsage is { } usage)
                 {
@@ -133,7 +135,8 @@ public class AgentChatHandler
                         ThinkingSteps = thinkingSteps,
                         TokenUsage = sawUsage ? accumulatedUsage : null,
                         ServiceTier = serviceTier,
-                        GroundingWebSearchQueries = groundingWebSearchQueries
+                        GroundingWebSearchQueries = groundingWebSearchQueries,
+                        GoogleSearchGroundingPromptCount = googleSearchGroundingPromptCount
                     };
                 }
 
@@ -147,7 +150,8 @@ public class AgentChatHandler
                         ThinkingSteps = thinkingSteps,
                         TokenUsage = sawUsage ? accumulatedUsage : null,
                         ServiceTier = serviceTier,
-                        GroundingWebSearchQueries = groundingWebSearchQueries
+                        GroundingWebSearchQueries = groundingWebSearchQueries,
+                        GoogleSearchGroundingPromptCount = googleSearchGroundingPromptCount
                     };
                 }
 
@@ -282,7 +286,8 @@ public class AgentChatHandler
                 ThinkingSteps = thinkingSteps,
                 TokenUsage = sawUsage ? accumulatedUsage : null,
                 ServiceTier = serviceTier,
-                GroundingWebSearchQueries = groundingWebSearchQueries
+                GroundingWebSearchQueries = groundingWebSearchQueries,
+                GoogleSearchGroundingPromptCount = googleSearchGroundingPromptCount
             };
         }
         finally
@@ -540,6 +545,11 @@ public class AgentChatHandler
             }
         }
     }
+
+    private static int GetGoogleSearchGroundingPromptCount(GeminiResponse response) =>
+        response.GoogleSearchGroundingPromptCount > 0
+            ? response.GoogleSearchGroundingPromptCount
+            : response.GroundingWebSearchQueries.Count > 0 ? 1 : 0;
 }
 
 /// <summary>
@@ -563,4 +573,6 @@ public class AgentChatResult
     public string? ServiceTier { get; set; }
     /// <summary>Gemini Google Search grounding queries reported across provider calls.</summary>
     public List<string> GroundingWebSearchQueries { get; set; } = new();
+    /// <summary>Number of Gemini prompts that used Google Search grounding across provider calls.</summary>
+    public int GoogleSearchGroundingPromptCount { get; set; }
 }

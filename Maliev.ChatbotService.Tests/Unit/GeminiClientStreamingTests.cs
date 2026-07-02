@@ -143,6 +143,7 @@ public sealed class GeminiClientStreamingTests
         Assert.Equal(
             ["latest ISO 9001 source", "official ASTM D638 source"],
             final.Response.GroundingWebSearchQueries);
+        Assert.Equal(1, final.Response.GoogleSearchGroundingPromptCount);
     }
 
     [Fact]

@@ -667,7 +667,8 @@ public class SendMessageCommandHandler
                     IsFallback = agentResult.IsFallback,
                     TokenUsage = agentResult.TokenUsage,
                     ServiceTier = agentResult.ServiceTier,
-                    GroundingWebSearchQueries = agentResult.GroundingWebSearchQueries
+                    GroundingWebSearchQueries = agentResult.GroundingWebSearchQueries,
+                    GoogleSearchGroundingPromptCount = agentResult.GoogleSearchGroundingPromptCount
                 };
             }
             else
@@ -1447,10 +1448,12 @@ public class SendMessageCommandHandler
 
     private static object? BuildGroundingMetadata(GeminiResponse response)
     {
-        return response.GroundingWebSearchQueries.Count == 0
+        var groundedPromptCount = GetGoogleSearchGroundingPromptCount(response);
+        return groundedPromptCount == 0 && response.GroundingWebSearchQueries.Count == 0
             ? null
             : new
             {
+                groundedPromptCount,
                 webSearchQueries = response.GroundingWebSearchQueries.ToArray()
             };
     }
@@ -1490,7 +1493,9 @@ public class SendMessageCommandHandler
     }
 
     private static int GetGoogleSearchGroundingPromptCount(GeminiResponse response) =>
-        response.GroundingWebSearchQueries.Count > 0 ? 1 : 0;
+        response.GoogleSearchGroundingPromptCount > 0
+            ? response.GoogleSearchGroundingPromptCount
+            : response.GroundingWebSearchQueries.Count > 0 ? 1 : 0;
 
     /// <summary>
     /// Detects whether the user message explicitly requires Google Search grounding.

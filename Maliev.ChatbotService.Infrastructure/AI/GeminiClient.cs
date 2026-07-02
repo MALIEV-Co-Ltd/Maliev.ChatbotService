@@ -170,6 +170,7 @@ public class GeminiClient : IGeminiClient
         var accumulatedThought = new StringBuilder();
         var functionCalls = new List<GeminiFunctionCall>();
         var groundingWebSearchQueries = new List<string>();
+        var googleSearchGroundingPromptCount = 0;
         GeminiTokenUsage? tokenUsage = null;
         string? streamServiceTier = null;
         var effectiveTimeoutSeconds = ResolveEffectiveTimeoutSeconds(request);
@@ -302,6 +303,11 @@ public class GeminiClient : IGeminiClient
                     groundingWebSearchQueries.AddRange(parsed.GroundingWebSearchQueries);
                 }
 
+                if (parsed.GoogleSearchGroundingPromptCount > 0)
+                {
+                    googleSearchGroundingPromptCount = 1;
+                }
+
                 tokenUsage = parsed.TokenUsage ?? tokenUsage;
             }
 
@@ -318,7 +324,8 @@ public class GeminiClient : IGeminiClient
                     FunctionCalls = functionCalls,
                     TokenUsage = tokenUsage,
                     ServiceTier = streamServiceTier,
-                    GroundingWebSearchQueries = groundingWebSearchQueries
+                    GroundingWebSearchQueries = groundingWebSearchQueries,
+                    GoogleSearchGroundingPromptCount = googleSearchGroundingPromptCount
                 }
             };
             yield break;
@@ -948,6 +955,8 @@ public class GeminiClient : IGeminiClient
             }
         }
 
+        var groundingWebSearchQueries = ParseGroundingWebSearchQueries(firstCandidate);
+
         return new GeminiResponse
         {
             Success = true,
@@ -956,7 +965,8 @@ public class GeminiClient : IGeminiClient
             FunctionCalls = functionCalls,
             TokenUsage = tokenUsage,
             ServiceTier = serviceTier,
-            GroundingWebSearchQueries = ParseGroundingWebSearchQueries(firstCandidate)
+            GroundingWebSearchQueries = groundingWebSearchQueries,
+            GoogleSearchGroundingPromptCount = groundingWebSearchQueries.Count > 0 ? 1 : 0
         };
     }
 

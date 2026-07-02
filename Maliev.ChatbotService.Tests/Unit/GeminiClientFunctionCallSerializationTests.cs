@@ -870,6 +870,7 @@ public sealed class GeminiClientFunctionCallSerializationTests
         Assert.Equal(
             ["latest ISO 9001 requirements", "official ASTM D638 source"],
             response.GroundingWebSearchQueries);
+        Assert.Equal(1, response.GoogleSearchGroundingPromptCount);
     }
 
     [Fact]
