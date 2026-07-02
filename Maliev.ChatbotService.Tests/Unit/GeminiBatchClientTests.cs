@@ -249,7 +249,11 @@ public sealed class GeminiBatchClientTests
         Assert.Equal("/v1beta/models/gemini-2.5-flash-lite:countTokens", request.RequestUri!.AbsolutePath);
         Assert.DoesNotContain(handler.Requests, item =>
             item.RequestUri!.AbsolutePath.Contains("batchGenerateContent", StringComparison.Ordinal));
-        Assert.Contains("generateContentRequest", handler.RequestBodies[0], StringComparison.Ordinal);
+
+        using var body = JsonDocument.Parse(handler.RequestBodies[0]);
+        Assert.Equal(
+            "models/gemini-2.5-flash-lite",
+            body.RootElement.GetProperty("generateContentRequest").GetProperty("model").GetString());
     }
 
     [Fact]
@@ -286,6 +290,11 @@ public sealed class GeminiBatchClientTests
         Assert.Equal(2, handler.Requests.Count);
         Assert.Equal("/v1beta/models/gemini-2.5-flash-lite:countTokens", handler.Requests[0].RequestUri!.AbsolutePath);
         Assert.Equal("/v1beta/models/gemini-2.5-flash-lite:batchGenerateContent", handler.Requests[1].RequestUri!.AbsolutePath);
+
+        using var body = JsonDocument.Parse(handler.RequestBodies[0]);
+        Assert.Equal(
+            "models/gemini-2.5-flash-lite",
+            body.RootElement.GetProperty("generateContentRequest").GetProperty("model").GetString());
     }
 
     [Fact]

@@ -399,6 +399,7 @@ public sealed class OpenAICompatibleModelProviderClientTests
 
         using var payload = JsonDocument.Parse(handler.RequestBodies[0]);
         var generateRequest = payload.RootElement.GetProperty("generateContentRequest");
+        Assert.Equal("models/gemini-2.5-flash", generateRequest.GetProperty("model").GetString());
         Assert.Equal(
             "You are a manufacturing assistant.",
             generateRequest.GetProperty("systemInstruction").GetProperty("parts")[0].GetProperty("text").GetString());
@@ -475,6 +476,11 @@ public sealed class OpenAICompatibleModelProviderClientTests
         Assert.Equal(
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:countTokens",
             handler.RequestUris[0].ToString());
+
+        using var payload = JsonDocument.Parse(handler.RequestBodies[0]);
+        Assert.Equal(
+            "models/gemini-2.5-flash",
+            payload.RootElement.GetProperty("generateContentRequest").GetProperty("model").GetString());
     }
 
     [Fact]

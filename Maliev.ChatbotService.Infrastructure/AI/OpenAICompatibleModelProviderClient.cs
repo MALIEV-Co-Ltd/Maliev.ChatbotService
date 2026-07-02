@@ -329,17 +329,14 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
         string modelName,
         CancellationToken cancellationToken)
     {
-        var payload = new Dictionary<string, object?>
-        {
-            ["generateContentRequest"] = GeminiClient.BuildGeminiPayload(request, defaultSafetySettings: null, modelName)
-        };
-
         using var countRequest = new HttpRequestMessage(
             HttpMethod.Post,
             $"/v1beta/models/{NormalizeGeminiModelName(modelName)}:countTokens");
         countRequest.Headers.Add("x-goog-api-key", _apiKey);
         countRequest.Content = new StringContent(
-            JsonSerializer.Serialize(payload, GeminiJsonOptions),
+            JsonSerializer.Serialize(
+                GeminiClient.BuildGeminiCountTokensPayload(request, defaultSafetySettings: null, modelName),
+                GeminiJsonOptions),
             Encoding.UTF8,
             "application/json");
 

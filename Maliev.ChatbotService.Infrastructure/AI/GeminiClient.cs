@@ -684,6 +684,25 @@ public class GeminiClient : IGeminiClient
         return payload;
     }
 
+    internal static Dictionary<string, object?> BuildGeminiCountTokensPayload(
+        GeminiRequest request,
+        IReadOnlyList<GeminiSafetySetting>? defaultSafetySettings,
+        string modelName)
+    {
+        var generateContentRequest = BuildGeminiPayload(request, defaultSafetySettings, modelName);
+        generateContentRequest["model"] = ToGeminiModelResourceName(modelName);
+
+        return new Dictionary<string, object?>
+        {
+            ["generateContentRequest"] = generateContentRequest
+        };
+    }
+
+    internal static string ToGeminiModelResourceName(string modelName) =>
+        modelName.StartsWith("models/", StringComparison.OrdinalIgnoreCase)
+            ? modelName
+            : $"models/{modelName}";
+
     private string BuildGeminiPayloadJson(GeminiRequest request, string modelName) =>
         JsonSerializer.Serialize(BuildGeminiPayload(request, _defaultSafetySettings, modelName), JsonOptions);
 
@@ -728,12 +747,9 @@ public class GeminiClient : IGeminiClient
         string modelName,
         CancellationToken cancellationToken)
     {
-        var payload = new Dictionary<string, object?>
-        {
-            ["generateContentRequest"] = BuildGeminiPayload(request, _defaultSafetySettings, modelName)
-        };
-
-        var json = JsonSerializer.Serialize(payload, JsonOptions);
+        var json = JsonSerializer.Serialize(
+            BuildGeminiCountTokensPayload(request, _defaultSafetySettings, modelName),
+            JsonOptions);
         using var countRequest = new HttpRequestMessage(HttpMethod.Post, $"v1beta/models/{modelName}:countTokens");
         countRequest.Headers.Add("x-goog-api-key", _apiKey);
         countRequest.Content = new StringContent(json, Encoding.UTF8, "application/json");

@@ -773,6 +773,7 @@ public sealed class GeminiClientFunctionCallSerializationTests
 
         using var body = JsonDocument.Parse(handler.RequestBodies[0]);
         var generateContentRequest = body.RootElement.GetProperty("generateContentRequest");
+        Assert.Equal("models/gemini-test", generateContentRequest.GetProperty("model").GetString());
         Assert.Equal("flex", generateContentRequest.GetProperty("serviceTier").GetString());
         Assert.False(generateContentRequest.TryGetProperty("service_tier", out _));
         Assert.Equal("sys", generateContentRequest.GetProperty("systemInstruction").GetProperty("parts")[0].GetProperty("text").GetString());

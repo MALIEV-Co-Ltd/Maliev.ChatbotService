@@ -104,6 +104,12 @@ public sealed class GeminiModelContextCacheServiceTests
 
         using var countPayload = JsonDocument.Parse(handler.RequestBodies[0]);
         Assert.Equal(
+            "models/gemini-2.5-flash",
+            countPayload.RootElement
+                .GetProperty("generateContentRequest")
+                .GetProperty("model")
+                .GetString());
+        Assert.Equal(
             systemInstruction,
             countPayload.RootElement
                 .GetProperty("generateContentRequest")

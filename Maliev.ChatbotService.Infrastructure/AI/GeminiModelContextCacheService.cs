@@ -277,6 +277,7 @@ public sealed class GeminiModelContextCacheService : IModelContextCacheService
         {
             ["generateContentRequest"] = new Dictionary<string, object?>
             {
+                ["model"] = GeminiClient.ToGeminiModelResourceName(modelName),
                 ["contents"] = new[]
                 {
                     new

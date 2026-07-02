@@ -174,15 +174,12 @@ public sealed class GeminiBatchClient : IModelBatchClient
         string modelName,
         CancellationToken cancellationToken)
     {
-        var payload = new Dictionary<string, object?>
-        {
-            ["generateContentRequest"] = GeminiClient.BuildGeminiPayload(request, _defaultSafetySettings, modelName)
-        };
-
         using var countRequest = new HttpRequestMessage(HttpMethod.Post, $"v1beta/models/{modelName}:countTokens");
         countRequest.Headers.Add("x-goog-api-key", _apiKey);
         countRequest.Content = new StringContent(
-            JsonSerializer.Serialize(payload, JsonOptions),
+            JsonSerializer.Serialize(
+                GeminiClient.BuildGeminiCountTokensPayload(request, _defaultSafetySettings, modelName),
+                JsonOptions),
             Encoding.UTF8,
             "application/json");
 
