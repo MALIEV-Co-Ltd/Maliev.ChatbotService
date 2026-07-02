@@ -69,6 +69,14 @@ public sealed class SystemInstructionDefaultPromptTests
         Assert.Contains("Do not generate a 3D preview from an unlabeled sketch or photo with no scale reference", prompt, StringComparison.Ordinal);
         Assert.Contains("Do not ask for quantity, lead time, finish, tolerance", prompt, StringComparison.Ordinal);
         Assert.Contains("state the assumption and continue", prompt, StringComparison.Ordinal);
+        Assert.Contains("quote_focus_ui", prompt, StringComparison.Ordinal);
+        Assert.Contains("quote_ask_customer", prompt, StringComparison.Ordinal);
+        Assert.Contains("genuinely blocking ambiguity", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("2-4 discrete mutually exclusive options", prompt, StringComparison.Ordinal);
+        Assert.Contains("never say that you opened, displayed, loaded, or showed a viewer", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("one active quote workbench artifact", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("full revised cad_commands", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("say the preview is available in the quote workbench", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -137,6 +145,14 @@ public sealed class SystemInstructionDefaultPromptTests
         Assert.Contains("Do not generate a 3D preview from an unlabeled sketch or photo with no scale reference", prompt, StringComparison.Ordinal);
         Assert.Contains("Do not ask for quantity, lead time, finish, tolerance", prompt, StringComparison.Ordinal);
         Assert.Contains("state the assumption and continue", prompt, StringComparison.Ordinal);
+        Assert.Contains("quote_focus_ui", prompt, StringComparison.Ordinal);
+        Assert.Contains("quote_ask_customer", prompt, StringComparison.Ordinal);
+        Assert.Contains("genuinely blocking ambiguity", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("2-4 discrete mutually exclusive options", prompt, StringComparison.Ordinal);
+        Assert.Contains("never say that you opened, displayed, loaded, or showed a viewer", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("one active quote workbench artifact", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("full revised cad_commands", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("say the preview is available in the quote workbench", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("state which gate is blocking", prompt, StringComparison.OrdinalIgnoreCase);
     }
 }
