@@ -23,4 +23,14 @@ public interface IConversationSummaryBatchService
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
     Task ProcessOpenBatchesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Processes one provider batch job by its resource name and persists completed summary results.
+    /// </summary>
+    /// <param name="batchName">The provider batch resource name.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    Task ProcessBatchAsync(
+        string batchName,
+        CancellationToken cancellationToken = default);
 }

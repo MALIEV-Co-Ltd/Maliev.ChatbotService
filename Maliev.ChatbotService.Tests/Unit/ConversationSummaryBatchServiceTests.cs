@@ -510,6 +510,83 @@ public sealed class ConversationSummaryBatchServiceTests
         Assert.Equal(EmptySummaryJson, batchItem.StructuredSummary);
     }
 
+    [Fact]
+    public async Task ProcessBatchAsync_WithKnownBatchName_ProcessesOnlyNamedJob()
+    {
+        var session = CreateSession();
+        var batchItem = new ConversationSummaryBatchItem
+        {
+            Id = Guid.NewGuid(),
+            SessionId = session.Id,
+            UserProfileId = session.UserProfileId,
+            Status = ConversationSummaryBatchStatus.Submitted,
+            CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-30),
+            UpdatedAt = DateTimeOffset.UtcNow.AddMinutes(-30)
+        };
+        var batchJob = new ConversationSummaryBatchJob
+        {
+            Id = Guid.NewGuid(),
+            BatchName = "batches/summary-target",
+            Provider = "gemini",
+            ModelName = "gemini-2.5-flash-lite",
+            DisplayName = "expired-session-summaries-20260701",
+            Status = ConversationSummaryBatchStatus.Submitted,
+            CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-30),
+            UpdatedAt = DateTimeOffset.UtcNow.AddMinutes(-30),
+            Items = [batchItem]
+        };
+        var summaryRepository = new Mock<IConversationSummaryRepository>();
+        var sessionRepository = new Mock<IConversationSessionRepository>();
+        var messageRepository = new Mock<IMessageRepository>();
+        var batchClient = new Mock<IModelBatchClient>();
+        var batchJobRepository = new Mock<IConversationSummaryBatchJobRepository>();
+        ConversationSummaryBatchJob? updatedBatchJob = null;
+
+        batchJobRepository
+            .Setup(x => x.GetByBatchNameAsync("batches/summary-target", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(batchJob);
+        batchClient
+            .Setup(x => x.GetBatchAsync("batches/summary-target", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ModelBatchJob
+            {
+                Name = "batches/summary-target",
+                Done = true,
+                State = "BATCH_STATE_FAILED"
+            });
+        sessionRepository
+            .Setup(x => x.GetByIdAsync(session.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(session);
+        summaryRepository
+            .Setup(x => x.CreateAsync(It.IsAny<ConversationSummary>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ConversationSummary summary, CancellationToken _) => summary);
+        sessionRepository
+            .Setup(x => x.UpdateAsync(It.IsAny<ConversationSession>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        batchJobRepository
+            .Setup(x => x.UpdateAsync(It.IsAny<ConversationSummaryBatchJob>(), It.IsAny<CancellationToken>()))
+            .Callback<ConversationSummaryBatchJob, CancellationToken>((updated, _) => updatedBatchJob = updated)
+            .Returns(Task.CompletedTask);
+
+        var service = CreateService(
+            summaryRepository,
+            sessionRepository,
+            messageRepository,
+            batchClient,
+            batchJobRepository);
+
+        await service.ProcessBatchAsync("batches/summary-target");
+
+        batchJobRepository.Verify(
+            x => x.GetOpenJobsAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        batchClient.Verify(
+            x => x.GetBatchAsync("batches/summary-target", It.IsAny<CancellationToken>()),
+            Times.Once);
+        Assert.NotNull(updatedBatchJob);
+        Assert.Equal(ConversationSummaryBatchStatus.Failed, updatedBatchJob!.Status);
+        Assert.Equal(ConversationSummaryBatchStatus.Failed, batchItem.Status);
+    }
+
     private static ConversationSummaryBatchService CreateService(
         Mock<IConversationSummaryRepository> summaryRepository,
         Mock<IConversationSessionRepository> sessionRepository,

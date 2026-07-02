@@ -268,30 +268,7 @@ public class ConversationSummaryBatchService : IConversationSummaryBatchService
         {
             try
             {
-                var providerJob = await _batchClient.GetBatchAsync(job.BatchName, cancellationToken);
-                var now = DateTimeOffset.UtcNow;
-                job.Status = MapProviderStatus(providerJob);
-                job.UpdatedAt = now;
-
-                if (job.Status == ConversationSummaryBatchStatus.Succeeded)
-                {
-                    await ApplyInlineResponsesAsync(job, providerJob.InlineResponses, now, cancellationToken);
-                }
-                else if (IsTerminalStatus(job.Status))
-                {
-                    await MarkOpenItemsFailedAsync(
-                        job,
-                        providerJob.State ?? "Batch job reached a terminal failure state.",
-                        now,
-                        cancellationToken);
-                }
-
-                if (IsTerminalStatus(job.Status))
-                {
-                    job.CompletedAt ??= now;
-                }
-
-                await _batchJobRepository.UpdateAsync(job, cancellationToken);
+                await ProcessBatchJobAsync(job, cancellationToken);
             }
             catch (NotSupportedException ex)
             {
@@ -302,6 +279,56 @@ public class ConversationSummaryBatchService : IConversationSummaryBatchService
                 _logger.LogError(ex, "Failed to process Gemini batch summary job {BatchName}", job.BatchName);
             }
         }
+    }
+
+    /// <inheritdoc/>
+    public async Task ProcessBatchAsync(
+        string batchName,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(batchName))
+        {
+            throw new ArgumentException("Batch name is required.", nameof(batchName));
+        }
+
+        var job = await _batchJobRepository.GetByBatchNameAsync(batchName, cancellationToken);
+        if (job is null)
+        {
+            _logger.LogWarning("Gemini batch webhook referenced unknown batch {BatchName}", batchName);
+            return;
+        }
+
+        await ProcessBatchJobAsync(job, cancellationToken);
+    }
+
+    private async Task ProcessBatchJobAsync(
+        ConversationSummaryBatchJob job,
+        CancellationToken cancellationToken)
+    {
+        var providerJob = await _batchClient.GetBatchAsync(job.BatchName, cancellationToken);
+        var now = DateTimeOffset.UtcNow;
+        job.Status = MapProviderStatus(providerJob);
+        job.UpdatedAt = now;
+
+        if (job.Status == ConversationSummaryBatchStatus.Succeeded)
+        {
+            await ApplyInlineResponsesAsync(job, providerJob.InlineResponses, now, cancellationToken);
+        }
+        else if (IsTerminalStatus(job.Status))
+        {
+            await MarkOpenItemsFailedAsync(
+                job,
+                providerJob.State ?? "Batch job reached a terminal failure state.",
+                now,
+                cancellationToken);
+        }
+
+        if (IsTerminalStatus(job.Status))
+        {
+            job.CompletedAt ??= now;
+        }
+
+        await _batchJobRepository.UpdateAsync(job, cancellationToken);
     }
 
     private async Task ApplyInlineResponsesAsync(

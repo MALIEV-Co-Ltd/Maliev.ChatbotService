@@ -51,7 +51,14 @@ public class GeminiBatchWebhookProcessorBackgroundService : BackgroundService
             {
                 using var scope = _serviceProvider.CreateScope();
                 var batchService = scope.ServiceProvider.GetRequiredService<IConversationSummaryBatchService>();
-                await batchService.ProcessOpenBatchesAsync(stoppingToken);
+                if (string.IsNullOrWhiteSpace(notification.BatchName))
+                {
+                    await batchService.ProcessOpenBatchesAsync(stoppingToken);
+                }
+                else
+                {
+                    await batchService.ProcessBatchAsync(notification.BatchName, stoppingToken);
+                }
 
                 _logger.LogInformation(
                     "Processed Gemini batch webhook {WebhookId} ({EventType}) for {BatchName}",

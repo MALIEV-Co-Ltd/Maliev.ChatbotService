@@ -45,10 +45,17 @@ public sealed class GeminiWebhooksApiTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         _ = await TestHelpers.WaitForAsync(
             () => Task.FromResult(RecordingConversationSummaryBatchService.ProcessOpenBatchCallCount),
+            count => count == 0,
+            timeout: TimeSpan.FromSeconds(5),
+            interval: TimeSpan.FromMilliseconds(100),
+            message: "Gemini batch webhook unexpectedly used broad open-batch polling.");
+        _ = await TestHelpers.WaitForAsync(
+            () => Task.FromResult(RecordingConversationSummaryBatchService.ProcessBatchCallCount),
             count => count == 1,
             timeout: TimeSpan.FromSeconds(5),
             interval: TimeSpan.FromMilliseconds(100),
             message: "Gemini batch webhook was not processed.");
+        Assert.Equal("batches/test-batch", RecordingConversationSummaryBatchService.LastProcessedBatchName);
     }
 
     [Fact]
@@ -122,10 +129,14 @@ public sealed class GeminiWebhooksApiTests : IAsyncLifetime
     private sealed class RecordingConversationSummaryBatchService : IConversationSummaryBatchService
     {
         public static int ProcessOpenBatchCallCount;
+        public static int ProcessBatchCallCount;
+        public static string? LastProcessedBatchName;
 
         public static void Reset()
         {
             Interlocked.Exchange(ref ProcessOpenBatchCallCount, 0);
+            Interlocked.Exchange(ref ProcessBatchCallCount, 0);
+            LastProcessedBatchName = null;
         }
 
         public Task<HashSet<Guid>> SubmitExpiredSessionSummariesAsync(
@@ -136,6 +147,13 @@ public sealed class GeminiWebhooksApiTests : IAsyncLifetime
         public Task ProcessOpenBatchesAsync(CancellationToken cancellationToken = default)
         {
             Interlocked.Increment(ref ProcessOpenBatchCallCount);
+            return Task.CompletedTask;
+        }
+
+        public Task ProcessBatchAsync(string batchName, CancellationToken cancellationToken = default)
+        {
+            LastProcessedBatchName = batchName;
+            Interlocked.Increment(ref ProcessBatchCallCount);
             return Task.CompletedTask;
         }
     }
