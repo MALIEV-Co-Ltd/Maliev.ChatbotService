@@ -213,6 +213,80 @@ public sealed class GeminiBatchClientTests
     }
 
     [Fact]
+    public async Task CreateInlineGenerateContentBatchAsync_MaxPromptTokensExceeded_CountsTokensAndSkipsBatchSubmission()
+    {
+        var handler = new SequencedCapturingHandler(
+            new CapturedResponse(HttpStatusCode.OK, """{"totalTokens":101}"""));
+        var client = CreateClient(handler);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            client.CreateInlineGenerateContentBatchAsync(new ModelBatchRequest
+            {
+                DisplayName = "expired-session-summaries",
+                ModelName = "gemini-2.5-flash-lite",
+                Requests =
+                [
+                    new ModelBatchGenerateContentRequest
+                    {
+                        Request = new GeminiRequest
+                        {
+                            SystemInstruction = "Summarize the conversation.",
+                            Messages =
+                            [
+                                new GeminiMessage { Role = "user", Content = "User: very long conversation" }
+                            ],
+                            MaxTokens = 1024,
+                            MaxPromptTokens = 100
+                        }
+                    }
+                ]
+            }));
+
+        Assert.Equal("Gemini Batch API prompt token limit exceeded.", exception.Message);
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal("/v1beta/models/gemini-2.5-flash-lite:countTokens", request.RequestUri!.AbsolutePath);
+        Assert.DoesNotContain(handler.Requests, item =>
+            item.RequestUri!.AbsolutePath.Contains("batchGenerateContent", StringComparison.Ordinal));
+        Assert.Contains("generateContentRequest", handler.RequestBodies[0], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CreateInlineGenerateContentBatchAsync_MaxPromptTokensWithinLimit_CountsTokensBeforeBatchSubmission()
+    {
+        var handler = new SequencedCapturingHandler(
+            new CapturedResponse(HttpStatusCode.OK, """{"totalTokens":99}"""),
+            new CapturedResponse(HttpStatusCode.OK, """{"name":"batches/batch-123","metadata":{"state":"JOB_STATE_PENDING"}}"""));
+        var client = CreateClient(handler);
+
+        var result = await client.CreateInlineGenerateContentBatchAsync(new ModelBatchRequest
+        {
+            DisplayName = "expired-session-summaries",
+            ModelName = "gemini-2.5-flash-lite",
+            Requests =
+            [
+                new ModelBatchGenerateContentRequest
+                {
+                    Request = new GeminiRequest
+                    {
+                        SystemInstruction = "Summarize the conversation.",
+                        Messages =
+                        [
+                            new GeminiMessage { Role = "user", Content = "User: short conversation" }
+                        ],
+                        MaxTokens = 1024,
+                        MaxPromptTokens = 100
+                    }
+                }
+            ]
+        });
+
+        Assert.Equal("batches/batch-123", result.Name);
+        Assert.Equal(2, handler.Requests.Count);
+        Assert.Equal("/v1beta/models/gemini-2.5-flash-lite:countTokens", handler.Requests[0].RequestUri!.AbsolutePath);
+        Assert.Equal("/v1beta/models/gemini-2.5-flash-lite:batchGenerateContent", handler.Requests[1].RequestUri!.AbsolutePath);
+    }
+
+    [Fact]
     public async Task GetBatchAsync_ParsesOperationStateAndInlineResponses()
     {
         var handler = new CapturingHandler("""
@@ -412,7 +486,7 @@ public sealed class GeminiBatchClientTests
     }
 
     private static GeminiBatchClient CreateClient(
-        CapturingHandler handler,
+        HttpMessageHandler handler,
         Dictionary<string, string?>? extraConfiguration = null)
     {
         var configurationValues = new Dictionary<string, string?>
@@ -463,4 +537,34 @@ public sealed class GeminiBatchClientTests
             };
         }
     }
+
+    private sealed class SequencedCapturingHandler : HttpMessageHandler
+    {
+        private readonly Queue<CapturedResponse> _responses;
+
+        public SequencedCapturingHandler(params CapturedResponse[] responses)
+        {
+            _responses = new Queue<CapturedResponse>(responses);
+        }
+
+        public List<HttpRequestMessage> Requests { get; } = [];
+
+        public List<string> RequestBodies { get; } = [];
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Requests.Add(request);
+            RequestBodies.Add(request.Content is null
+                ? string.Empty
+                : await request.Content.ReadAsStringAsync(cancellationToken));
+
+            var response = _responses.Dequeue();
+            return new HttpResponseMessage(response.StatusCode)
+            {
+                Content = new StringContent(response.Body, Encoding.UTF8, "application/json")
+            };
+        }
+    }
+
+    private sealed record CapturedResponse(HttpStatusCode StatusCode, string Body);
 }

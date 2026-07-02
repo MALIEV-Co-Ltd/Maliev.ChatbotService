@@ -53,6 +53,8 @@ public sealed class GeminiBatchClient : IModelBatchClient
         }
 
         var modelName = NormalizeModelName(request.ModelName ?? _modelName);
+        await EnforcePromptTokenLimitsAsync(request.Requests, modelName, cancellationToken);
+
         var payload = BuildCreateBatchPayload(request, _defaultSafetySettings, modelName);
 
         using var httpRequest = new HttpRequestMessage(
@@ -137,6 +139,68 @@ public sealed class GeminiBatchClient : IModelBatchClient
         {
             ["batch"] = batch
         };
+    }
+
+    private async Task EnforcePromptTokenLimitsAsync(
+        IReadOnlyList<ModelBatchGenerateContentRequest> requests,
+        string modelName,
+        CancellationToken cancellationToken)
+    {
+        for (var index = 0; index < requests.Count; index++)
+        {
+            var geminiRequest = requests[index].Request;
+            if (geminiRequest.MaxPromptTokens is not > 0)
+            {
+                continue;
+            }
+
+            var totalTokens = await CountPromptTokensAsync(geminiRequest, modelName, cancellationToken);
+            if (totalTokens <= geminiRequest.MaxPromptTokens.Value)
+            {
+                continue;
+            }
+
+            _logger.LogWarning(
+                "Gemini Batch API request {RequestIndex} prompt token count {TotalTokens} exceeded configured limit {MaxPromptTokens}",
+                index,
+                totalTokens,
+                geminiRequest.MaxPromptTokens.Value);
+            throw new InvalidOperationException("Gemini Batch API prompt token limit exceeded.");
+        }
+    }
+
+    private async Task<int> CountPromptTokensAsync(
+        GeminiRequest request,
+        string modelName,
+        CancellationToken cancellationToken)
+    {
+        var payload = new Dictionary<string, object?>
+        {
+            ["generateContentRequest"] = GeminiClient.BuildGeminiPayload(request, _defaultSafetySettings, modelName)
+        };
+
+        using var countRequest = new HttpRequestMessage(HttpMethod.Post, $"v1beta/models/{modelName}:countTokens");
+        countRequest.Headers.Add("x-goog-api-key", _apiKey);
+        countRequest.Content = new StringContent(
+            JsonSerializer.Serialize(payload, JsonOptions),
+            Encoding.UTF8,
+            "application/json");
+
+        using var response = await _httpClient.SendAsync(countRequest, cancellationToken);
+        var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "Gemini Batch API countTokens returned {StatusCode}: {ErrorSummary}",
+                response.StatusCode,
+                ModelProviderErrorSanitizer.Summarize(response, responseContent));
+            throw new InvalidOperationException("Gemini Batch API countTokens failed.");
+        }
+
+        using var document = JsonDocument.Parse(responseContent);
+        return document.RootElement.TryGetProperty("totalTokens", out var totalTokens)
+            ? totalTokens.GetInt32()
+            : 0;
     }
 
     private static ModelBatchJob ParseBatchJob(JsonElement root)
