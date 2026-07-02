@@ -215,6 +215,25 @@ public class ExtractionApiTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// Tests that ExtractCustomer rejects storage paths that have not been resolved to file content.
+    /// </summary>
+    [Fact]
+    public async Task ExtractCustomer_StoragePathsOnly_Returns400()
+    {
+        var client = CreateAuthenticatedClient();
+        var request = new ExtractCustomerRequest
+        {
+            StoragePaths = ["uploads/customer-form.pdf"]
+        };
+
+        var response = await client.PostAsJsonAsync("/chatbot/v1/extraction/customer", request, _factory.JsonSerializerOptions);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("storage paths", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
     /// Tests that ExtractCustomer rejects unbounded file batches.
     /// </summary>
     [Fact]

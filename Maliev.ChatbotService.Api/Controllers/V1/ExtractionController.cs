@@ -265,6 +265,13 @@ public class ExtractionController : ControllerBase
             return $"RawText must be {MaxRawTextLength} characters or fewer.";
         }
 
+        if (request.StoragePaths.Count > 0 &&
+            string.IsNullOrWhiteSpace(request.RawText) &&
+            request.Files is not { Count: > 0 })
+        {
+            return "Storage paths must be resolved to file content before AI extraction.";
+        }
+
         if (request.StoragePaths.Count > MaxStoragePaths)
         {
             return $"No more than {MaxStoragePaths} storage paths can be extracted at once.";

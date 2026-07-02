@@ -114,6 +114,17 @@ public class ExtractCustomerCommandHandler
         ExtractCustomerCommand command,
         CancellationToken cancellationToken = default)
     {
+        var hasFiles = command.Files is { Count: > 0 };
+        var hasText = !string.IsNullOrWhiteSpace(command.RawText);
+        if (!hasFiles && !hasText && command.StoragePaths.Count > 0)
+        {
+            return new ExtractCustomerResult
+            {
+                Success = false,
+                ErrorMessage = "Storage paths must be resolved to file content before AI extraction."
+            };
+        }
+
         // Load the customer-extraction prompt from the database
         var topicInstructions = await _instructionRepository.GetActiveByTopicsAsync(
             new[] { "customer-extraction" }, cancellationToken);
@@ -162,11 +173,6 @@ public class ExtractCustomerCommandHandler
                 }
 
                 userMessageParts.Add($"Extract customer information from the {attachments.Count} attached file(s).");
-            }
-
-            if (command.StoragePaths.Count > 0 && attachments.Count == 0)
-            {
-                userMessageParts.Add($"Storage paths (for reference): {string.Join(", ", command.StoragePaths)}");
             }
 
             if (userMessageParts.Count == 0 && attachments.Count == 0)

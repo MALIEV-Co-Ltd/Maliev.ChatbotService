@@ -11,6 +11,51 @@ namespace Maliev.ChatbotService.Tests.Unit;
 public sealed class ExtractCustomerCommandHandlerTests
 {
     [Fact]
+    public async Task HandleAsync_WithStoragePathsOnly_DoesNotCallGemini()
+    {
+        var instructionRepository = new Mock<ISystemInstructionRepository>();
+        var geminiClient = new Mock<IGeminiClient>();
+        var modelContextCacheService = new Mock<IModelContextCacheService>();
+        var modelFileStagingService = new Mock<IModelFileStagingService>();
+
+        instructionRepository
+            .Setup(item => item.GetActiveByTopicsAsync(
+                It.IsAny<IEnumerable<string>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<SystemInstruction>());
+        modelContextCacheService
+            .Setup(item => item.GetOrCreateSystemInstructionCacheAsync(
+                It.IsAny<ModelContextCacheRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ModelContextCacheReference?)null);
+        geminiClient
+            .Setup(item => item.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GeminiResponse
+            {
+                Success = true,
+                Content = """{"first_name":"Jane","last_name":"Customer"}"""
+            });
+
+        var handler = new ExtractCustomerCommandHandler(
+            instructionRepository.Object,
+            geminiClient.Object,
+            modelContextCacheService.Object,
+            modelFileStagingService.Object,
+            NullLogger<ExtractCustomerCommandHandler>.Instance);
+
+        var result = await handler.HandleAsync(new ExtractCustomerCommand
+        {
+            StoragePaths = ["uploads/customer-form.pdf"]
+        });
+
+        Assert.False(result.Success);
+        Assert.Contains("storage paths", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        geminiClient.Verify(
+            item => item.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
     public async Task HandleAsync_WithFileAttachments_UsesMediumMediaResolution()
     {
         var instructionRepository = new Mock<ISystemInstructionRepository>();
