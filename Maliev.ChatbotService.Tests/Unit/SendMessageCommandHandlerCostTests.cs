@@ -640,6 +640,58 @@ public sealed class SendMessageCommandHandlerCostTests
     }
 
     [Fact]
+    public async Task HandleAsync_OpenAiCompatibleGeminiModelConfiguration_PersistsCostForConfiguredModel()
+    {
+        var result = await SendWebsiteMessageAsync(
+            tokenUsage: new GeminiTokenUsage
+            {
+                PromptTokens = 1000,
+                CachedPromptTokens = 400,
+                CompletionTokens = 80,
+                TotalTokens = 1080,
+                PromptTokenDetails =
+                [
+                    new GeminiModalityTokenCount { Modality = "TEXT", TokenCount = 1000 }
+                ],
+                CachedTokenDetails =
+                [
+                    new GeminiModalityTokenCount { Modality = "TEXT", TokenCount = 400 }
+                ],
+                CandidateTokenDetails =
+                [
+                    new GeminiModalityTokenCount { Modality = "TEXT", TokenCount = 80 }
+                ]
+            },
+            configurationOverrides: new Dictionary<string, string?>
+            {
+                ["Gemini:MainModelName"] = null,
+                ["Llm:OpenAICompatible:ModelName"] = "gemini-2.5-flash-lite"
+            });
+
+        var assistantMessage = Assert.Single(result.CreatedMessages, message => message.Role == MessageRole.Assistant);
+        Assert.NotNull(assistantMessage.MetadataJson);
+        using var metadata = JsonDocument.Parse(assistantMessage.MetadataJson!);
+        var costEstimate = metadata.RootElement.GetProperty("costEstimate");
+        Assert.Equal("gemini-2.5-flash-lite", costEstimate.GetProperty("modelName").GetString());
+        Assert.Equal("standard", costEstimate.GetProperty("serviceTier").GetString());
+        Assert.Equal(600, costEstimate.GetProperty("uncachedPromptTokens").GetInt32());
+        Assert.Equal(400, costEstimate.GetProperty("cachedPromptTokens").GetInt32());
+        Assert.Equal(80, costEstimate.GetProperty("outputTokens").GetInt32());
+        Assert.Equal(60, costEstimate.GetProperty("uncachedPromptMicroUsd").GetInt64());
+        Assert.Equal(4, costEstimate.GetProperty("cachedPromptMicroUsd").GetInt64());
+        Assert.Equal(32, costEstimate.GetProperty("outputMicroUsd").GetInt64());
+        Assert.Equal(96, costEstimate.GetProperty("totalMicroUsd").GetInt64());
+        result.UsageBudgetService.Verify(
+            item => item.RecordModelUsageAsync(
+                It.IsAny<Guid>(),
+                It.Is<UsageBudgetCharge>(charge =>
+                    charge.Tokens == 1080 &&
+                    charge.CostMicroUsd == 96),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
     public async Task HandleAsync_DynamicContext_DoesNotMutateSystemInstructionForGeminiCaching()
     {
         var result = await SendWebsiteMessageAsync(
@@ -785,7 +837,8 @@ public sealed class SendMessageCommandHandlerCostTests
         string? chatPdfMediaResolution = null,
         string? chatVideoMediaResolution = null,
         bool urlContextEnabled = false,
-        IReadOnlyList<string>? groundingWebSearchQueries = null)
+        IReadOnlyList<string>? groundingWebSearchQueries = null,
+        Dictionary<string, string?>? configurationOverrides = null)
     {
         var sessionId = Guid.NewGuid();
         var userProfileId = Guid.NewGuid();
@@ -928,16 +981,14 @@ public sealed class SendMessageCommandHandlerCostTests
             .Setup(item => item.GetToolDeclarations(It.IsAny<string>()))
             .Returns(toolDeclarations ?? new List<GeminiToolDeclaration>());
         var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Features:WebSearchEnabled"] = globalWebSearchEnabled.ToString(),
-                ["Gemini:FileApiInlineThresholdBytes"] = fileApiInlineThresholdBytes?.ToString(),
-                ["Gemini:Chat:ImageMediaResolution"] = chatImageMediaResolution,
-                ["Gemini:Chat:PdfMediaResolution"] = chatPdfMediaResolution,
-                ["Gemini:Chat:VideoMediaResolution"] = chatVideoMediaResolution,
-                ["Gemini:UrlContext:Enabled"] = urlContextEnabled.ToString(),
-                ["Gemini:MainModelName"] = "gemini-2.5-flash"
-            })
+            .AddInMemoryCollection(BuildConfigurationValues(
+                globalWebSearchEnabled,
+                fileApiInlineThresholdBytes,
+                chatImageMediaResolution,
+                chatPdfMediaResolution,
+                chatVideoMediaResolution,
+                urlContextEnabled,
+                configurationOverrides))
             .Build();
         var database = new Mock<IDatabase>();
         database
@@ -1007,6 +1058,37 @@ public sealed class SendMessageCommandHandlerCostTests
             intentClassificationService,
             modelContextCacheService,
             usageBudgetService);
+    }
+
+    private static Dictionary<string, string?> BuildConfigurationValues(
+        bool globalWebSearchEnabled,
+        long? fileApiInlineThresholdBytes,
+        string? chatImageMediaResolution,
+        string? chatPdfMediaResolution,
+        string? chatVideoMediaResolution,
+        bool urlContextEnabled,
+        Dictionary<string, string?>? overrides)
+    {
+        var values = new Dictionary<string, string?>
+        {
+            ["Features:WebSearchEnabled"] = globalWebSearchEnabled.ToString(),
+            ["Gemini:FileApiInlineThresholdBytes"] = fileApiInlineThresholdBytes?.ToString(),
+            ["Gemini:Chat:ImageMediaResolution"] = chatImageMediaResolution,
+            ["Gemini:Chat:PdfMediaResolution"] = chatPdfMediaResolution,
+            ["Gemini:Chat:VideoMediaResolution"] = chatVideoMediaResolution,
+            ["Gemini:UrlContext:Enabled"] = urlContextEnabled.ToString(),
+            ["Gemini:MainModelName"] = "gemini-2.5-flash"
+        };
+
+        if (overrides is not null)
+        {
+            foreach (var item in overrides)
+            {
+                values[item.Key] = item.Value;
+            }
+        }
+
+        return values;
     }
 
     private sealed record HandlerResult(

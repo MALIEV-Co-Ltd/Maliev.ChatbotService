@@ -177,7 +177,7 @@ public class SendMessageCommandHandler
         _maxPdfSizeBytes = ResolveMaxFileSizeBytes(configuration, "FileUploadLimits:MaxPdfSizeMB", DefaultMaxPdfSizeMb);
         _maxVideoSizeBytes = ResolveMaxFileSizeBytes(configuration, "FileUploadLimits:MaxVideoSizeMB", DefaultMaxVideoSizeMb);
         _maxAudioSizeBytes = ResolveMaxFileSizeBytes(configuration, "FileUploadLimits:MaxAudioSizeMB", DefaultMaxAudioSizeMb);
-        _defaultChatModelName = configuration?["Gemini:MainModelName"] ?? "gemini-2.5-flash";
+        _defaultChatModelName = ResolveDefaultChatModelName(configuration);
         _chatImageMediaResolution = ResolveConfiguredMediaResolution(
             configuration?["Gemini:Chat:ImageMediaResolution"],
             "Gemini:Chat:ImageMediaResolution",
@@ -1313,6 +1313,26 @@ public class SendMessageCommandHandler
 
         var normalizedModelName = requestedModelName.Trim();
         return AllowedChatModelOverrides.Contains(normalizedModelName) ? normalizedModelName : null;
+    }
+
+    private static string ResolveDefaultChatModelName(IConfiguration? configuration) =>
+        FirstNonEmpty(
+            configuration?["Gemini:MainModelName"],
+            configuration?["Llm:OpenAICompatible:ModelName"],
+            configuration?["OpenAICompatible:ModelName"])
+        ?? "gemini-2.5-flash";
+
+    private static string? FirstNonEmpty(params string?[] values)
+    {
+        foreach (var value in values)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value;
+            }
+        }
+
+        return null;
     }
 
     private static (string? ResponseMimeType, object? ResponseSchema) ResolveStructuredOutput(
