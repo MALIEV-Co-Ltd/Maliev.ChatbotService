@@ -171,10 +171,19 @@ public sealed class GeminiBatchClient : IModelBatchClient
         }
 
         if (root.TryGetProperty("response", out var response) &&
-            response.ValueKind == JsonValueKind.Object &&
-            response.TryGetProperty("state", out var responseState))
+            response.ValueKind == JsonValueKind.Object)
         {
-            return responseState.GetString();
+            if (response.TryGetProperty("state", out var responseState))
+            {
+                return responseState.GetString();
+            }
+
+            if (response.TryGetProperty("batch", out var batch) &&
+                batch.ValueKind == JsonValueKind.Object &&
+                batch.TryGetProperty("state", out var batchState))
+            {
+                return batchState.GetString();
+            }
         }
 
         return null;
@@ -247,6 +256,21 @@ public sealed class GeminiBatchClient : IModelBatchClient
             TryGetInlineResponseArray(output, out responseItems))
         {
             return true;
+        }
+
+        if (response.TryGetProperty("batch", out var batch) &&
+            batch.ValueKind == JsonValueKind.Object)
+        {
+            if (TryGetInlineResponseArray(batch, out responseItems))
+            {
+                return true;
+            }
+
+            if (batch.TryGetProperty("output", out var batchOutput) &&
+                TryGetInlineResponseArray(batchOutput, out responseItems))
+            {
+                return true;
+            }
         }
 
         responseItems = default;

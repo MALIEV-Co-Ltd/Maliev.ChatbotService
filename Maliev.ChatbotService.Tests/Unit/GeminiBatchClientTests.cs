@@ -293,6 +293,48 @@ public sealed class GeminiBatchClientTests
         Assert.Equal("Request failed", failedResponse.ErrorMessage);
     }
 
+    [Fact]
+    public async Task GetBatchAsync_WithDocumentedResponseBatchShape_ParsesBatchStateAndInlineResponses()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "name":"operations/batch-999",
+              "done":true,
+              "response":{
+                "batch":{
+                  "name":"batches/batch-999",
+                  "state":"BATCH_STATE_SUCCEEDED",
+                  "output":{
+                    "inlinedResponses":[
+                      {
+                        "metadata":{"sessionId":"session-1","userProfileId":"user-1"},
+                        "response":{
+                          "candidates":[{"content":{"parts":[{"text":"{\"topics\":[\"batch\"]}"}]}}],
+                          "usageMetadata":{"promptTokenCount":14,"candidatesTokenCount":7,"totalTokenCount":21}
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+            """);
+        var client = CreateClient(handler);
+
+        var result = await client.GetBatchAsync("batches/batch-999");
+
+        Assert.Equal("operations/batch-999", result.Name);
+        Assert.True(result.Done);
+        Assert.Equal("BATCH_STATE_SUCCEEDED", result.State);
+        var response = Assert.Single(result.InlineResponses);
+        Assert.Equal("session-1", response.Metadata["sessionId"]?.ToString());
+        Assert.NotNull(response.Response);
+        Assert.Equal("{\"topics\":[\"batch\"]}", response.Response!.Content);
+        Assert.Equal(14, response.Response.TokenUsage!.PromptTokens);
+        Assert.Equal(7, response.Response.TokenUsage.CompletionTokens);
+        Assert.Equal(21, response.Response.TokenUsage.TotalTokens);
+    }
+
     private static GeminiBatchClient CreateClient(
         CapturingHandler handler,
         Dictionary<string, string?>? extraConfiguration = null)

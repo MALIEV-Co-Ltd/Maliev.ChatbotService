@@ -470,10 +470,10 @@ public class ConversationSummaryBatchService : IConversationSummaryBatchService
     {
         return providerJob.State switch
         {
-            "JOB_STATE_SUCCEEDED" => ConversationSummaryBatchStatus.Succeeded,
-            "JOB_STATE_FAILED" => ConversationSummaryBatchStatus.Failed,
-            "JOB_STATE_CANCELLED" => ConversationSummaryBatchStatus.Cancelled,
-            "JOB_STATE_EXPIRED" => ConversationSummaryBatchStatus.Expired,
+            "JOB_STATE_SUCCEEDED" or "BATCH_STATE_SUCCEEDED" => ConversationSummaryBatchStatus.Succeeded,
+            "JOB_STATE_FAILED" or "BATCH_STATE_FAILED" => ConversationSummaryBatchStatus.Failed,
+            "JOB_STATE_CANCELLED" or "BATCH_STATE_CANCELLED" => ConversationSummaryBatchStatus.Cancelled,
+            "JOB_STATE_EXPIRED" or "BATCH_STATE_EXPIRED" => ConversationSummaryBatchStatus.Expired,
             _ when providerJob.Done && providerJob.InlineResponses.Count > 0 => ConversationSummaryBatchStatus.Succeeded,
             _ => ConversationSummaryBatchStatus.Submitted
         };
