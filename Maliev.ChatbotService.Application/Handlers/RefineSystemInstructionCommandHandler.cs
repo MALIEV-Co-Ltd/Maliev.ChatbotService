@@ -116,7 +116,10 @@ public class RefineSystemInstructionCommandHandler
         }
         catch (JsonException ex)
         {
-            _logger.LogWarning(ex, "Failed to parse system instruction refinement response: {Content}", response.Content);
+            _logger.LogWarning(
+                ex,
+                "Failed to parse system instruction refinement response. Model output length: {ContentLength}",
+                response.Content.Length);
             throw new InvalidOperationException("AI instruction refinement returned an invalid response.", ex);
         }
     }

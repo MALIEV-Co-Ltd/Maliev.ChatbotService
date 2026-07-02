@@ -95,7 +95,9 @@ public class ExtractCustomerIntentCommandHandler
 
             if (result == null)
             {
-                _logger.LogWarning("Failed to deserialize customer intent result: {Content}", response.Content);
+                _logger.LogWarning(
+                    "Failed to deserialize customer intent result. Model output length: {ContentLength}",
+                    response.Content.Length);
                 return new ExtractCustomerIntentResult { Success = false, ErrorMessage = "Failed to parse AI response" };
             }
 

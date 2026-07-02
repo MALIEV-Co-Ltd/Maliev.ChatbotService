@@ -54,7 +54,7 @@ public class IntentClassificationService : IIntentClassificationService
     /// <inheritdoc/>
     public async Task<IntentClassificationResult> ClassifyIntentAsync(string message, CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Classifying intent for message: {Message}", message);
+        _logger.LogInformation("Classifying intent for message with length {MessageLength}", message.Length);
 
         var instructions = await _repository.GetActiveByTopicsAsync(["intent-classification"], cancellationToken);
         var systemInstruction = instructions.FirstOrDefault()?.PersonaDefinition
@@ -98,7 +98,9 @@ public class IntentClassificationService : IIntentClassificationService
 
             if (result == null)
             {
-                _logger.LogWarning("Failed to deserialize intent classification result. Raw content: {Content}", response.Content);
+                _logger.LogWarning(
+                    "Failed to deserialize intent classification result. Model output length: {ContentLength}",
+                    response.Content.Length);
                 return new IntentClassificationResult { Intent = "General", Confidence = 0.0 };
             }
 
