@@ -205,7 +205,7 @@ public class SessionsApiTests : IAsyncLifetime
     {
         var userId = Guid.NewGuid();
         var client = _factory.CreateAuthenticatedClient(new[] { "chatbot.users.link" }, userId.ToString());
-        
+
         using var scope = _factory.Services.CreateScope();
         var userRepo = scope.ServiceProvider.GetRequiredService<IUserProfileRepository>();
         var userProfile = new UserProfile
@@ -216,7 +216,7 @@ public class SessionsApiTests : IAsyncLifetime
             LastActiveAt = DateTimeOffset.UtcNow
         };
         await userRepo.CreateAsync(userProfile);
-        
+
         var request = new LinkIdentityRequest
         {
             PlatformName = "line",

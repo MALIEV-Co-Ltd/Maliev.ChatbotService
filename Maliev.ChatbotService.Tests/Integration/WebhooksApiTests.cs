@@ -77,9 +77,9 @@ public class WebhooksApiTests : IAsyncLifetime
     public async Task HandleMetaWebhookVerification_WithValidToken_ReturnsForbiddenWhenNoTokenConfigured()
     {
         var client = _factory.CreateClient();
-        
+
         var response = await client.GetAsync("/chatbot/v1/webhooks/meta?hub.mode=subscribe&hub.verify_token=test-verify-token&hub.challenge=test-challenge");
-        
+
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
@@ -87,9 +87,9 @@ public class WebhooksApiTests : IAsyncLifetime
     public async Task HandleMetaWebhookVerification_WithInvalidToken_ReturnsForbidden()
     {
         var client = _factory.CreateClient();
-        
+
         var response = await client.GetAsync("/chatbot/v1/webhooks/meta?hub.mode=subscribe&hub.verify_token=wrong-token&hub.challenge=test-challenge");
-        
+
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 

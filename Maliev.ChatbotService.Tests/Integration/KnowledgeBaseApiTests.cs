@@ -47,7 +47,7 @@ public class KnowledgeBaseApiTests : IAsyncLifetime
     {
         // Deny the knowledge.read permission in the mock
         MockIAMServiceClient.DenyPermission("chatbot.knowledge.read");
-        
+
         var client = CreateAuthenticatedClient(new[] { "chatbot.preferences.read" });
 
         var response = await client.GetAsync("/chatbot/v1/admin/knowledge-base");
@@ -79,7 +79,7 @@ public class KnowledgeBaseApiTests : IAsyncLifetime
     public async Task GetEntry_WithValidId_ReturnsEntry()
     {
         var client = CreateAuthenticatedClient(new[] { "chatbot.knowledge.write" });
-        
+
         var createRequest = new CreateKnowledgeBaseRequest
         {
             TopicKey = "FDM",
@@ -88,7 +88,7 @@ public class KnowledgeBaseApiTests : IAsyncLifetime
         };
         var createResponse = await client.PostAsJsonAsync("/chatbot/v1/admin/knowledge-base", createRequest, _factory.JsonSerializerOptions);
         var created = await createResponse.Content.ReadFromJsonAsync<KnowledgeBaseDto>(_factory.JsonSerializerOptions);
-        
+
         var getClient = CreateAuthenticatedClient(new[] { "chatbot.knowledge.read" });
         var getResponse = await getClient.GetAsync($"/chatbot/v1/admin/knowledge-base/{created!.Id}");
 
@@ -129,7 +129,7 @@ public class KnowledgeBaseApiTests : IAsyncLifetime
     {
         // Deny the knowledge.write permission in the mock
         MockIAMServiceClient.DenyPermission("chatbot.knowledge.write");
-        
+
         var client = CreateAuthenticatedClient(new[] { "chatbot.knowledge.read" });
         var request = new CreateKnowledgeBaseRequest
         {
@@ -147,7 +147,7 @@ public class KnowledgeBaseApiTests : IAsyncLifetime
     public async Task UpdateEntry_WithValidData_ReturnsUpdated()
     {
         var client = CreateAuthenticatedClient(new[] { "chatbot.knowledge.write" });
-        
+
         var createRequest = new CreateKnowledgeBaseRequest
         {
             TopicKey = "FDM",
@@ -161,7 +161,7 @@ public class KnowledgeBaseApiTests : IAsyncLifetime
         {
             Content = "Updated content"
         };
-        
+
         var updateResponse = await client.PutAsJsonAsync($"/chatbot/v1/admin/knowledge-base/{created!.Id}", updateRequest, _factory.JsonSerializerOptions);
 
         Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
@@ -188,7 +188,7 @@ public class KnowledgeBaseApiTests : IAsyncLifetime
     public async Task DeleteEntry_WithValidId_ReturnsNoContent()
     {
         var client = CreateAuthenticatedClient(new[] { "chatbot.knowledge.write" });
-        
+
         var createRequest = new CreateKnowledgeBaseRequest
         {
             TopicKey = "FDM",

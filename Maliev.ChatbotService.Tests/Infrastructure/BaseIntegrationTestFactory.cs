@@ -79,7 +79,7 @@ public class BaseIntegrationTestFactory<TProgram, TDbContext> : WebApplicationFa
         {
             if (!_containersStarted)
             {
-                _postgresContainer = 
+                _postgresContainer =
 #pragma warning disable CS0618
         new PostgreSqlBuilder().WithImage("postgres:18-alpine")
                     .WithCommand("-c", "max_connections=1000")
@@ -225,16 +225,16 @@ public class BaseIntegrationTestFactory<TProgram, TDbContext> : WebApplicationFa
             // Add startup filter to inject test IP address middleware
             services.AddSingleton<IStartupFilter>(new TestIpAddressStartupFilter());
 
-                // Mock chatbot's own IAM service client
-                services.AddScoped<IIAMServiceClient, MockIAMServiceClient>();
+            // Mock chatbot's own IAM service client
+            services.AddScoped<IIAMServiceClient, MockIAMServiceClient>();
 
-                // Mock ServiceDefaults IIamServiceClient so PermissionAuthorizationHandler
-                // falls back to JWT claims (returns false → handler uses claims check)
-                var mockIamClient = new Moq.Mock<Maliev.Aspire.ServiceDefaults.IAM.IIamServiceClient>();
-                mockIamClient
-                    .Setup(x => x.CheckPermissionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-                    .ReturnsAsync(false);
-                services.AddScoped(_ => mockIamClient.Object);
+            // Mock ServiceDefaults IIamServiceClient so PermissionAuthorizationHandler
+            // falls back to JWT claims (returns false → handler uses claims check)
+            var mockIamClient = new Moq.Mock<Maliev.Aspire.ServiceDefaults.IAM.IIamServiceClient>();
+            mockIamClient
+                .Setup(x => x.CheckPermissionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(false);
+            services.AddScoped(_ => mockIamClient.Object);
 
             // Mock Gemini client to avoid external API calls
             services.AddScoped<IGeminiClient, MockGeminiClient>();
@@ -326,12 +326,12 @@ public class BaseIntegrationTestFactory<TProgram, TDbContext> : WebApplicationFa
         var connectionString = _postgresContainer!.GetConnectionString();
         var optionsBuilder = new DbContextOptionsBuilder<TDbContext>();
         optionsBuilder.UseNpgsql(connectionString);
-        
+
         // Suppress pending model changes warning during tests
         // This warning is thrown when the model in code differs from the migration history,
         // which can happen in test scenarios where we're testing against a fresh database
         optionsBuilder.ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
-        
+
         return (TDbContext)Activator.CreateInstance(typeof(TDbContext), optionsBuilder.Options)!;
     }
 
