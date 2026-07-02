@@ -692,6 +692,52 @@ public sealed class SendMessageCommandHandlerCostTests
     }
 
     [Fact]
+    public async Task HandleAsync_OpenAiCompatibleProviderWithNativeDefaultConfigured_PersistsCostForCompatibleModel()
+    {
+        var result = await SendWebsiteMessageAsync(
+            tokenUsage: new GeminiTokenUsage
+            {
+                PromptTokens = 1000,
+                CachedPromptTokens = 400,
+                CompletionTokens = 80,
+                TotalTokens = 1080,
+                PromptTokenDetails =
+                [
+                    new GeminiModalityTokenCount { Modality = "TEXT", TokenCount = 1000 }
+                ],
+                CachedTokenDetails =
+                [
+                    new GeminiModalityTokenCount { Modality = "TEXT", TokenCount = 400 }
+                ],
+                CandidateTokenDetails =
+                [
+                    new GeminiModalityTokenCount { Modality = "TEXT", TokenCount = 80 }
+                ]
+            },
+            configurationOverrides: new Dictionary<string, string?>
+            {
+                ["Llm:Provider"] = "openai-compatible",
+                ["Gemini:MainModelName"] = "gemini-2.5-flash",
+                ["Llm:OpenAICompatible:ModelName"] = "gemini-2.5-flash-lite"
+            });
+
+        var assistantMessage = Assert.Single(result.CreatedMessages, message => message.Role == MessageRole.Assistant);
+        Assert.NotNull(assistantMessage.MetadataJson);
+        using var metadata = JsonDocument.Parse(assistantMessage.MetadataJson!);
+        var costEstimate = metadata.RootElement.GetProperty("costEstimate");
+        Assert.Equal("gemini-2.5-flash-lite", costEstimate.GetProperty("modelName").GetString());
+        Assert.Equal(96, costEstimate.GetProperty("totalMicroUsd").GetInt64());
+        result.UsageBudgetService.Verify(
+            item => item.RecordModelUsageAsync(
+                It.IsAny<Guid>(),
+                It.Is<UsageBudgetCharge>(charge =>
+                    charge.Tokens == 1080 &&
+                    charge.CostMicroUsd == 96),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
     public async Task HandleAsync_DynamicContext_DoesNotMutateSystemInstructionForGeminiCaching()
     {
         var result = await SendWebsiteMessageAsync(
