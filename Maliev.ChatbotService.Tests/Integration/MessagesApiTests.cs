@@ -266,6 +266,49 @@ public class MessagesApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task SendMessage_MarkdownDocumentAttachment_InferMimeTypeAndMapsAsText()
+    {
+        var gemini = new CapturingGeminiClient();
+        var client = _factory
+            .WithWebHostBuilder(builder =>
+            {
+                builder.ConfigureTestServices(services =>
+                {
+                    services.RemoveAll<IGeminiClient>();
+                    services.AddSingleton(gemini);
+                    services.AddSingleton<IGeminiClient>(provider => provider.GetRequiredService<CapturingGeminiClient>());
+                });
+            })
+            .CreateClient();
+        var sessionId = await CreateSessionAsync(client);
+        const string documentUrl = "https://files.example.test/customer-requirements.md";
+
+        var request = new SendMessageRequest
+        {
+            SessionId = sessionId,
+            Content = "Summarize this customer requirement document.",
+            Attachments =
+            [
+                new Attachment
+                {
+                    Type = "document",
+                    Url = documentUrl,
+                    SizeBytes = 2048
+                }
+            ]
+        };
+
+        var response = await client.PostAsJsonAsync("/chatbot/v1/messages", request, _factory.JsonSerializerOptions);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.NotNull(gemini.LastRequest);
+        var attachment = Assert.Single(gemini.LastRequest!.Messages[^1].Attachments!);
+        Assert.Equal("Text", attachment.ContentType);
+        Assert.Equal("text/markdown", attachment.MimeType);
+        Assert.Equal(documentUrl, attachment.Data);
+    }
+
+    [Fact]
     public async Task SendMessage_WithThaiMessage_ReturnsThaiResponse()
     {
         var client = _factory.CreateClient();

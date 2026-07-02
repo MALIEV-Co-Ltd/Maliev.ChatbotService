@@ -291,6 +291,8 @@ public class MessagesController : ControllerBase
             [".xml"] = "text/xml",
             [".csv"] = "text/csv",
             [".rtf"] = "text/rtf",
+            [".md"] = "text/markdown",
+            [".markdown"] = "text/markdown",
             [".js"] = "text/javascript",
             [".json"] = "application/json",
             [".pdf"] = "application/pdf",

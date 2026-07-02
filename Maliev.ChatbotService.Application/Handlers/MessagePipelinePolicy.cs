@@ -24,6 +24,7 @@ public static class MessagePipelinePolicy
         "text/xml",
         "text/csv",
         "text/rtf",
+        "text/markdown",
         "text/javascript",
         "application/json",
         "application/pdf",
