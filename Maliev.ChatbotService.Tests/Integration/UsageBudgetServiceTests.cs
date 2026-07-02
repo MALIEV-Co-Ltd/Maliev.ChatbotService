@@ -90,6 +90,50 @@ public class UsageBudgetServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task RecordModelUsage_GoogleSearchGroundingUsesSharedDailyFreeAllowance()
+    {
+        await _factory.ClearRedisAsync();
+        using var configuredFactory = _factory.WithWebHostBuilder(builder =>
+        {
+            builder.UseSetting("UsageBudget:DailyTokenBudget", "1000000");
+            builder.UseSetting("UsageBudget:DailyCostBudgetMicroUsd", "5000000");
+            builder.UseSetting("UsageBudget:GoogleSearchGroundingFreeDailyPromptAllowance", "2");
+        });
+        using var scope = configuredFactory.Services.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<IUsageBudgetService>();
+        var firstUserId = Guid.NewGuid();
+        var secondUserId = Guid.NewGuid();
+
+        var first = await service.RecordModelUsageAsync(
+            firstUserId,
+            new UsageBudgetCharge
+            {
+                Tokens = 10,
+                CostMicroUsd = 100,
+                GoogleSearchGroundingPromptCount = 2,
+                GoogleSearchGroundingMicroUsd = 70000
+            });
+        var second = await service.RecordModelUsageAsync(
+            secondUserId,
+            new UsageBudgetCharge
+            {
+                Tokens = 10,
+                CostMicroUsd = 100,
+                GoogleSearchGroundingPromptCount = 1,
+                GoogleSearchGroundingMicroUsd = 35000
+            });
+
+        Assert.Equal(100, first.UsedCostMicroUsd);
+        Assert.Equal(2, first.FreeGoogleSearchGroundingPromptCount);
+        Assert.Equal(0, first.BillableGoogleSearchGroundingPromptCount);
+        Assert.Equal(0, first.ChargedGoogleSearchGroundingMicroUsd);
+        Assert.Equal(35100, second.UsedCostMicroUsd);
+        Assert.Equal(0, second.FreeGoogleSearchGroundingPromptCount);
+        Assert.Equal(1, second.BillableGoogleSearchGroundingPromptCount);
+        Assert.Equal(35000, second.ChargedGoogleSearchGroundingMicroUsd);
+    }
+
+    [Fact]
     public async Task RecordModelUsage_BeyondCostBudget_MarksExceeded()
     {
         using var configuredFactory = _factory.WithWebHostBuilder(builder =>

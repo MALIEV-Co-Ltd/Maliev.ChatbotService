@@ -17,9 +17,11 @@ public class RedisUsageBudgetService : IUsageBudgetService
     private readonly ILogger<RedisUsageBudgetService> _logger;
     private readonly long _dailyTokenBudget;
     private readonly long _dailyCostBudgetMicroUsd;
+    private readonly long _googleSearchGroundingFreeDailyPromptAllowance;
 
     private const string TokenKeyPrefix = "chatbot:tokenbudget:";
     private const string CostKeyPrefix = "chatbot:costbudget:";
+    private const string GoogleSearchGroundingPromptKeyPrefix = "chatbot:gemini:google-search-grounding:flash-shared:";
 
     // Default daily budget per user. Deliberately a high code default (not in appsettings.json) so the
     // integration suite — which records only ~100 mock tokens per message — never trips it without
@@ -27,8 +29,10 @@ public class RedisUsageBudgetService : IUsageBudgetService
     // configured value to 0 to disable the budget entirely.
     private const long DefaultDailyTokenBudget = 2_000_000L;
     private const long DefaultDailyCostBudgetMicroUsd = 5_000_000L;
+    private const long DefaultGoogleSearchGroundingFreeDailyPromptAllowance = 1_500L;
 
     private static readonly long WindowMilliseconds = (long)TimeSpan.FromHours(24).TotalMilliseconds;
+    private static readonly long DailyAllowanceKeyMilliseconds = (long)TimeSpan.FromDays(2).TotalMilliseconds;
 
     // Atomic increment-by-N that sets the rolling-window TTL only when the key is newly created. A
     // non-positive amount never mutates the key (so a zero-token turn cannot reset the TTL); it just
@@ -45,11 +49,23 @@ public class RedisUsageBudgetService : IUsageBudgetService
         end
         return total";
 
+    private const string IncrementWithPreviousAndExpiryScript = @"
+        local amount = tonumber(ARGV[1])
+        if amount <= 0 then
+            local current = redis.call('GET', KEYS[1])
+            if current then return {tonumber(current), tonumber(current)} else return {0, 0} end
+        end
+        local total = redis.call('INCRBY', KEYS[1], amount)
+        if total == amount then
+            redis.call('PEXPIRE', KEYS[1], ARGV[2])
+        end
+        return {total - amount, total}";
+
     /// <summary>
     /// Initializes a new instance of the <see cref="RedisUsageBudgetService"/> class.
     /// </summary>
     /// <param name="redis">The Redis connection multiplexer.</param>
-    /// <param name="configuration">Application configuration (reads <c>UsageBudget:DailyTokenBudget</c> and <c>UsageBudget:DailyCostBudgetMicroUsd</c>).</param>
+    /// <param name="configuration">Application configuration for token, cost, and grounding allowance budgets.</param>
     /// <param name="logger">The logger.</param>
     public RedisUsageBudgetService(
         IConnectionMultiplexer redis,
@@ -60,6 +76,10 @@ public class RedisUsageBudgetService : IUsageBudgetService
         _logger = logger;
         _dailyTokenBudget = configuration.GetValue<long?>("UsageBudget:DailyTokenBudget") ?? DefaultDailyTokenBudget;
         _dailyCostBudgetMicroUsd = configuration.GetValue<long?>("UsageBudget:DailyCostBudgetMicroUsd") ?? DefaultDailyCostBudgetMicroUsd;
+        _googleSearchGroundingFreeDailyPromptAllowance = Math.Max(
+            0,
+            configuration.GetValue<long?>("UsageBudget:GoogleSearchGroundingFreeDailyPromptAllowance") ??
+                DefaultGoogleSearchGroundingFreeDailyPromptAllowance);
     }
 
     /// <inheritdoc/>
@@ -98,8 +118,12 @@ public class RedisUsageBudgetService : IUsageBudgetService
         var tokenTotal = _dailyTokenBudget > 0
             ? await IncrementUsageAsync(GetTokenKey(userProfileId), usage.Tokens)
             : 0;
+        var groundingCharge = _dailyCostBudgetMicroUsd > 0
+            ? await CalculateGoogleSearchGroundingChargeAsync(usage)
+            : GoogleSearchGroundingCharge.Empty;
+        var costChargeMicroUsd = AddMicroUsd(usage.CostMicroUsd, groundingCharge.ChargedMicroUsd);
         var costTotal = _dailyCostBudgetMicroUsd > 0
-            ? await IncrementUsageAsync(GetCostKey(userProfileId), usage.CostMicroUsd)
+            ? await IncrementUsageAsync(GetCostKey(userProfileId), costChargeMicroUsd)
             : 0;
 
         if (_dailyTokenBudget > 0 && tokenTotal >= _dailyTokenBudget)
@@ -123,7 +147,10 @@ public class RedisUsageBudgetService : IUsageBudgetService
         return new UsageBudgetRecordResult
         {
             UsedTokens = tokenTotal,
-            UsedCostMicroUsd = costTotal
+            UsedCostMicroUsd = costTotal,
+            FreeGoogleSearchGroundingPromptCount = groundingCharge.FreePromptCount,
+            BillableGoogleSearchGroundingPromptCount = groundingCharge.BillablePromptCount,
+            ChargedGoogleSearchGroundingMicroUsd = groundingCharge.ChargedMicroUsd
         };
     }
 
@@ -172,6 +199,45 @@ public class RedisUsageBudgetService : IUsageBudgetService
         return (long)result;
     }
 
+    private async Task<GoogleSearchGroundingCharge> CalculateGoogleSearchGroundingChargeAsync(UsageBudgetCharge usage)
+    {
+        var promptCount = Math.Max(0, usage.GoogleSearchGroundingPromptCount);
+        var groundingMicroUsd = Math.Max(0, usage.GoogleSearchGroundingMicroUsd);
+        if (promptCount == 0 || groundingMicroUsd == 0)
+        {
+            return GoogleSearchGroundingCharge.Empty;
+        }
+
+        if (_googleSearchGroundingFreeDailyPromptAllowance <= 0)
+        {
+            return new GoogleSearchGroundingCharge(0, promptCount, groundingMicroUsd);
+        }
+
+        var promptUsage = await IncrementGoogleSearchGroundingPromptUsageAsync(promptCount);
+        var freeBefore = Math.Min(_googleSearchGroundingFreeDailyPromptAllowance, promptUsage.PreviousPromptCount);
+        var freeAfter = Math.Min(_googleSearchGroundingFreeDailyPromptAllowance, promptUsage.TotalPromptCount);
+        var freePromptCount = (int)Math.Max(0, freeAfter - freeBefore);
+        var billablePromptCount = Math.Max(0, promptCount - freePromptCount);
+        var chargedMicroUsd = billablePromptCount == 0
+            ? 0
+            : (long)Math.Round(
+                groundingMicroUsd * ((decimal)billablePromptCount / promptCount),
+                MidpointRounding.AwayFromZero);
+
+        return new GoogleSearchGroundingCharge(freePromptCount, billablePromptCount, chargedMicroUsd);
+    }
+
+    private async Task<GoogleSearchGroundingPromptUsage> IncrementGoogleSearchGroundingPromptUsageAsync(int promptCount)
+    {
+        var db = _redis.GetDatabase();
+        var result = await db.ScriptEvaluateAsync(
+            IncrementWithPreviousAndExpiryScript,
+            [GetGoogleSearchGroundingPromptKey(DateTimeOffset.UtcNow)],
+            [promptCount, DailyAllowanceKeyMilliseconds]);
+        var values = (RedisResult[])result!;
+        return new GoogleSearchGroundingPromptUsage((long)values[0], (long)values[1]);
+    }
+
     private async Task<long> GetUsageAsync(RedisKey key)
     {
         var db = _redis.GetDatabase();
@@ -182,4 +248,26 @@ public class RedisUsageBudgetService : IUsageBudgetService
     private static RedisKey GetTokenKey(Guid userProfileId) => $"{TokenKeyPrefix}{userProfileId}";
 
     private static RedisKey GetCostKey(Guid userProfileId) => $"{CostKeyPrefix}{userProfileId}";
+
+    private static RedisKey GetGoogleSearchGroundingPromptKey(DateTimeOffset timestamp) =>
+        $"{GoogleSearchGroundingPromptKeyPrefix}{timestamp.UtcDateTime:yyyyMMdd}";
+
+    private static long AddMicroUsd(long baseMicroUsd, long additionalMicroUsd)
+    {
+        var boundedBase = Math.Max(0, baseMicroUsd);
+        var boundedAdditional = Math.Max(0, additionalMicroUsd);
+        return long.MaxValue - boundedBase < boundedAdditional
+            ? long.MaxValue
+            : boundedBase + boundedAdditional;
+    }
+
+    private readonly record struct GoogleSearchGroundingPromptUsage(long PreviousPromptCount, long TotalPromptCount);
+
+    private readonly record struct GoogleSearchGroundingCharge(
+        int FreePromptCount,
+        int BillablePromptCount,
+        long ChargedMicroUsd)
+    {
+        public static GoogleSearchGroundingCharge Empty { get; } = new(0, 0, 0);
+    }
 }

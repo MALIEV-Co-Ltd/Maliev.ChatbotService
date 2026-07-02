@@ -62,8 +62,14 @@ public sealed class UsageBudgetCharge
     /// <summary>Gets or sets the model tokens consumed by the call.</summary>
     public long Tokens { get; set; }
 
-    /// <summary>Gets or sets the estimated model cost in micro-USD.</summary>
+    /// <summary>Gets or sets the estimated model cost in micro-USD, excluding separately tracked Google Search grounding cost.</summary>
     public long CostMicroUsd { get; set; }
+
+    /// <summary>Gets or sets the number of Gemini Google Search grounded prompts consumed by the call.</summary>
+    public int GoogleSearchGroundingPromptCount { get; set; }
+
+    /// <summary>Gets or sets the estimated Google Search grounding cost in micro-USD before daily free allowance.</summary>
+    public long GoogleSearchGroundingMicroUsd { get; set; }
 }
 
 /// <summary>
@@ -76,6 +82,15 @@ public sealed class UsageBudgetRecordResult
 
     /// <summary>Gets or sets the estimated cost used in the current rolling window, in micro-USD.</summary>
     public long UsedCostMicroUsd { get; set; }
+
+    /// <summary>Gets or sets the Google Search grounded prompts covered by the shared daily free allowance.</summary>
+    public int FreeGoogleSearchGroundingPromptCount { get; set; }
+
+    /// <summary>Gets or sets the Google Search grounded prompts charged after the shared daily free allowance.</summary>
+    public int BillableGoogleSearchGroundingPromptCount { get; set; }
+
+    /// <summary>Gets or sets the Google Search grounding cost charged after the shared daily free allowance.</summary>
+    public long ChargedGoogleSearchGroundingMicroUsd { get; set; }
 }
 
 /// <summary>

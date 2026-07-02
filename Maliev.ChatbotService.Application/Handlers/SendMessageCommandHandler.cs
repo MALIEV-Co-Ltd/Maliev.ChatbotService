@@ -774,7 +774,9 @@ public class SendMessageCommandHandler
                     new UsageBudgetCharge
                     {
                         Tokens = geminiResponse.TokenUsage?.TotalTokens ?? 0,
-                        CostMicroUsd = costEstimate?.TotalMicroUsd ?? 0
+                        CostMicroUsd = GetNonGroundingCostMicroUsd(costEstimate),
+                        GoogleSearchGroundingPromptCount = costEstimate?.GoogleSearchGroundingPromptCount ?? 0,
+                        GoogleSearchGroundingMicroUsd = costEstimate?.GoogleSearchGroundingMicroUsd ?? 0
                     },
                     cancellationToken);
                 usageSnapshot = await _usageBudgetService.GetDailyTokenUsageSnapshotAsync(session.UserProfileId, cancellationToken);
@@ -1490,6 +1492,13 @@ public class SendMessageCommandHandler
                 outputMicroUsd = estimate.OutputMicroUsd,
                 totalMicroUsd = estimate.TotalMicroUsd
             };
+    }
+
+    private static long GetNonGroundingCostMicroUsd(GeminiCostEstimate? estimate)
+    {
+        return estimate is null
+            ? 0
+            : Math.Max(0, estimate.TotalMicroUsd - estimate.GoogleSearchGroundingMicroUsd);
     }
 
     private static int GetGoogleSearchGroundingPromptCount(GeminiResponse response) =>

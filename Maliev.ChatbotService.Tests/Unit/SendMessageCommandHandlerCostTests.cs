@@ -740,7 +740,9 @@ public sealed class SendMessageCommandHandlerCostTests
                 It.IsAny<Guid>(),
                 It.Is<UsageBudgetCharge>(charge =>
                     charge.Tokens == 1092 &&
-                    charge.CostMicroUsd == 35204),
+                    charge.CostMicroUsd == 204 &&
+                    charge.GoogleSearchGroundingPromptCount == 1 &&
+                    charge.GoogleSearchGroundingMicroUsd == 35000),
                 It.IsAny<CancellationToken>()),
             Times.Once);
     }
@@ -778,7 +780,9 @@ public sealed class SendMessageCommandHandlerCostTests
                 It.IsAny<Guid>(),
                 It.Is<UsageBudgetCharge>(charge =>
                     charge.Tokens == 150 &&
-                    charge.CostMicroUsd == 70155),
+                    charge.CostMicroUsd == 155 &&
+                    charge.GoogleSearchGroundingPromptCount == 2 &&
+                    charge.GoogleSearchGroundingMicroUsd == 70000),
                 It.IsAny<CancellationToken>()),
             Times.Once);
     }
