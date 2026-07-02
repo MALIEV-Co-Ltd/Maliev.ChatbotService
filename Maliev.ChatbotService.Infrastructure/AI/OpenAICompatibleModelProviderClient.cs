@@ -68,15 +68,21 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
         try
         {
             var modelName = request.ModelName ?? _modelName;
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(TimeSpan.FromSeconds(request.TimeoutSeconds));
+
+            var promptLimitResponse = await TryEnforcePromptTokenLimitAsync(request, modelName, cts.Token);
+            if (promptLimitResponse is not null)
+            {
+                return promptLimitResponse;
+            }
+
             var payload = BuildPayload(request, modelName, stream: false);
             var json = JsonSerializer.Serialize(payload, JsonOptions);
 
             using var httpRequest = new HttpRequestMessage(HttpMethod.Post, _chatCompletionsPath);
             httpRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _apiKey);
             httpRequest.Content = new StringContent(json, Encoding.UTF8, "application/json");
-
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            cts.CancelAfter(TimeSpan.FromSeconds(request.TimeoutSeconds));
 
             using var response = await _httpClient.SendAsync(httpRequest, cts.Token);
             var responseContent = await response.Content.ReadAsStringAsync(cts.Token);
@@ -156,6 +162,17 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
         cts.CancelAfter(TimeSpan.FromSeconds(request.TimeoutSeconds));
 
         var modelName = request.ModelName ?? _modelName;
+        var promptLimitResponse = await TryEnforcePromptTokenLimitAsync(request, modelName, cts.Token);
+        if (promptLimitResponse is not null)
+        {
+            yield return new GeminiStreamEvent
+            {
+                Type = "final",
+                Response = promptLimitResponse
+            };
+            yield break;
+        }
+
         var payload = BuildPayload(request, modelName, stream: true);
         var json = JsonSerializer.Serialize(payload, JsonOptions);
 
@@ -242,10 +259,106 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
     };
 
+    private static JsonSerializerOptions GeminiJsonOptions { get; } = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+
     private static string? GetResponseServiceTier(HttpResponseMessage response) =>
         response.Headers.TryGetValues("x-gemini-service-tier", out var values)
             ? values.FirstOrDefault()
             : null;
+
+    private async Task<GeminiResponse?> TryEnforcePromptTokenLimitAsync(
+        GeminiRequest request,
+        string modelName,
+        CancellationToken cancellationToken)
+    {
+        if (request.MaxPromptTokens is not > 0 ||
+            !SupportsGeminiNativeTokenCounting(modelName))
+        {
+            return null;
+        }
+
+        int totalTokens;
+        try
+        {
+            totalTokens = await CountPromptTokensAsync(request, modelName, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Gemini OpenAI-compatible prompt token preflight failed for model {ModelName}; skipping generation.",
+                modelName);
+            return GetFallbackResponse("ModelProviderError");
+        }
+
+        if (totalTokens <= request.MaxPromptTokens.Value)
+        {
+            return null;
+        }
+
+        _logger.LogWarning(
+            "Gemini OpenAI-compatible request prompt token count {TotalTokens} exceeded configured limit {MaxPromptTokens}",
+            totalTokens,
+            request.MaxPromptTokens.Value);
+        return GetFallbackResponse("GeminiInputTokenLimit");
+    }
+
+    private async Task<int> CountPromptTokensAsync(
+        GeminiRequest request,
+        string modelName,
+        CancellationToken cancellationToken)
+    {
+        var payload = new Dictionary<string, object?>
+        {
+            ["generateContentRequest"] = GeminiClient.BuildGeminiPayload(request, defaultSafetySettings: null, modelName)
+        };
+
+        using var countRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/v1beta/models/{NormalizeGeminiModelName(modelName)}:countTokens");
+        countRequest.Headers.Add("x-goog-api-key", _apiKey);
+        countRequest.Content = new StringContent(
+            JsonSerializer.Serialize(payload, GeminiJsonOptions),
+            Encoding.UTF8,
+            "application/json");
+
+        using var response = await _httpClient.SendAsync(countRequest, cancellationToken);
+        var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "Gemini OpenAI-compatible countTokens returned error: {StatusCode} - {Content}",
+                response.StatusCode,
+                responseContent);
+            throw new InvalidOperationException("Gemini countTokens failed.");
+        }
+
+        using var document = JsonDocument.Parse(responseContent);
+        return document.RootElement.TryGetProperty("totalTokens", out var totalTokens)
+            ? totalTokens.GetInt32()
+            : 0;
+    }
+
+    private bool SupportsGeminiNativeTokenCounting(string modelName) =>
+        IsGeminiModel(modelName) &&
+        _httpClient.BaseAddress?.Host.Equals(
+            "generativelanguage.googleapis.com",
+            StringComparison.OrdinalIgnoreCase) == true;
+
+    private static string NormalizeGeminiModelName(string modelName)
+    {
+        var normalizedModelName = modelName.Trim();
+        return normalizedModelName.StartsWith("models/", StringComparison.OrdinalIgnoreCase)
+            ? normalizedModelName["models/".Length..]
+            : normalizedModelName;
+    }
 
     private static object BuildPayload(GeminiRequest request, string modelName, bool stream)
     {
@@ -500,12 +613,7 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
             return false;
         }
 
-        var normalizedModelName = modelName.Trim();
-        if (normalizedModelName.StartsWith("models/", StringComparison.OrdinalIgnoreCase))
-        {
-            normalizedModelName = normalizedModelName["models/".Length..];
-        }
-
+        var normalizedModelName = NormalizeGeminiModelName(modelName);
         return normalizedModelName.StartsWith("gemini-", StringComparison.OrdinalIgnoreCase);
     }
 
@@ -516,12 +624,7 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
             return false;
         }
 
-        var normalizedModelName = modelName.Trim();
-        if (normalizedModelName.StartsWith("models/", StringComparison.OrdinalIgnoreCase))
-        {
-            normalizedModelName = normalizedModelName["models/".Length..];
-        }
-
+        var normalizedModelName = NormalizeGeminiModelName(modelName);
         return normalizedModelName.StartsWith("gemini-2.5-flash", StringComparison.OrdinalIgnoreCase);
     }
 
@@ -894,6 +997,7 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
             "ModelProviderTimeout" => "I apologize, but I'm experiencing delays in processing your request. Please try again in a few moments.",
             "ModelProviderError" => "I apologize, but I'm temporarily unable to process your request. Please try again in a few moments.",
             "ModelProviderUnsupportedAttachment" => "This AI provider cannot process one or more uploaded files. Please retry without that attachment or use the Gemini provider.",
+            "GeminiInputTokenLimit" => "The uploaded content is too large for cost-effective AI processing. Please upload fewer pages, split the document into smaller files, or enter the key details manually.",
             _ => "I apologize for the inconvenience. Something unexpected occurred. Please try again."
         };
 

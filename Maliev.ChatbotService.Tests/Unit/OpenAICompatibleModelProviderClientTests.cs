@@ -263,6 +263,130 @@ public sealed class OpenAICompatibleModelProviderClientTests
     }
 
     [Fact]
+    public async Task SendMessageAsync_GeminiOpenAiCompatibleMaxPromptTokensExceeded_CountsTokensAndSkipsGeneration()
+    {
+        var handler = new SequencedCapturingHandler(
+        [
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""{"totalTokens":20001}""", Encoding.UTF8, "application/json")
+            },
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""
+                    {
+                      "choices": [
+                        {
+                          "message": {
+                            "content": "should not be called"
+                          }
+                        }
+                      ]
+                    }
+                    """, Encoding.UTF8, "application/json")
+            }
+        ]);
+        var client = CreateClient(
+            handler,
+            new Uri("https://generativelanguage.googleapis.com/v1beta/openai/"),
+            "gemini-2.5-flash");
+
+        var response = await client.SendMessageAsync(new GeminiRequest
+        {
+            SystemInstruction = "You are a manufacturing assistant.",
+            MaxPromptTokens = 20000,
+            Messages = [new GeminiMessage { Role = "user", Content = "Summarize this large document." }]
+        });
+
+        Assert.False(response.Success);
+        Assert.True(response.IsFallback);
+        Assert.Equal("GeminiInputTokenLimit", response.ErrorType);
+        Assert.Single(handler.RequestUris);
+        Assert.Equal(
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:countTokens",
+            handler.RequestUris[0].ToString());
+
+        using var payload = JsonDocument.Parse(handler.RequestBodies[0]);
+        var generateRequest = payload.RootElement.GetProperty("generateContentRequest");
+        Assert.Equal(
+            "You are a manufacturing assistant.",
+            generateRequest.GetProperty("systemInstruction").GetProperty("parts")[0].GetProperty("text").GetString());
+        Assert.Equal(
+            "Summarize this large document.",
+            generateRequest.GetProperty("contents")[0].GetProperty("parts")[0].GetProperty("text").GetString());
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_NonGoogleCompatibleMaxPromptTokens_DoesNotCallGeminiCountTokens()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "choices": [
+                {
+                  "message": {
+                    "content": "ok"
+                  }
+                }
+              ]
+            }
+            """, "application/json");
+        var client = CreateClient(
+            handler,
+            new Uri("https://example.test/openai/"),
+            "gemini-2.5-flash");
+
+        var response = await client.SendMessageAsync(new GeminiRequest
+        {
+            MaxPromptTokens = 1,
+            Messages = [new GeminiMessage { Role = "user", Content = "Hello" }]
+        });
+
+        Assert.True(response.Success);
+        Assert.Equal(1, handler.RequestCount);
+        Assert.DoesNotContain(":countTokens", handler.RequestUri?.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StreamMessageAsync_GeminiOpenAiCompatibleMaxPromptTokensExceeded_CountsTokensAndSkipsGeneration()
+    {
+        var handler = new SequencedCapturingHandler(
+        [
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""{"totalTokens":20001}""", Encoding.UTF8, "application/json")
+            },
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("data: {\"choices\":[{\"delta\":{\"content\":\"should not stream\"}}]}\n\ndata: [DONE]", Encoding.UTF8, "text/event-stream")
+            }
+        ]);
+        var client = CreateClient(
+            handler,
+            new Uri("https://generativelanguage.googleapis.com/v1beta/openai/"),
+            "gemini-2.5-flash");
+
+        var events = new List<GeminiStreamEvent>();
+        await foreach (var streamEvent in client.StreamMessageAsync(new GeminiRequest
+        {
+            MaxPromptTokens = 20000,
+            Messages = [new GeminiMessage { Role = "user", Content = "Summarize this large document." }]
+        }))
+        {
+            events.Add(streamEvent);
+        }
+
+        Assert.Equal("started", events[0].Type);
+        var final = Assert.Single(events, item => item.Type.Equals("final", StringComparison.OrdinalIgnoreCase));
+        Assert.NotNull(final.Response);
+        Assert.False(final.Response!.Success);
+        Assert.Equal("GeminiInputTokenLimit", final.Response.ErrorType);
+        Assert.Single(handler.RequestUris);
+        Assert.Equal(
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:countTokens",
+            handler.RequestUris[0].ToString());
+    }
+
+    [Fact]
     public async Task SendMessageAsync_RootOpenAiCompatibleBaseAddress_UsesV1ChatCompletionsPath()
     {
         var handler = new CapturingHandler("""
@@ -693,7 +817,7 @@ public sealed class OpenAICompatibleModelProviderClientTests
     }
 
     private static OpenAICompatibleModelProviderClient CreateClient(
-        CapturingHandler handler,
+        HttpMessageHandler handler,
         Uri? baseAddress = null,
         string modelName = "qwen-vl-test")
     {
@@ -745,6 +869,29 @@ public sealed class OpenAICompatibleModelProviderClientTests
                 response.Headers.Add(name, value);
             }
 
+            return response;
+        }
+    }
+
+    private sealed class SequencedCapturingHandler(IReadOnlyList<HttpResponseMessage> responses) : HttpMessageHandler
+    {
+        private int _index;
+
+        public List<Uri> RequestUris { get; } = [];
+
+        public List<string> RequestBodies { get; } = [];
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            RequestUris.Add(request.RequestUri!);
+            RequestBodies.Add(request.Content is null
+                ? string.Empty
+                : await request.Content.ReadAsStringAsync(cancellationToken));
+
+            var response = responses[Math.Min(_index, responses.Count - 1)];
+            _index++;
             return response;
         }
     }
