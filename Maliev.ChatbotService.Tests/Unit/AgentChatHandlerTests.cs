@@ -2,6 +2,7 @@ using System.Text.Json;
 using Maliev.ChatbotService.Application.Handlers;
 using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Application.Models;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
 
@@ -100,6 +101,130 @@ public class AgentChatHandlerTests
         Assert.Single(lastMessage.Attachments!);
         Assert.Equal("application/pdf", lastMessage.Attachments![0].MimeType);
         Assert.Equal(pdfData, lastMessage.Attachments![0].Data);
+    }
+
+    /// <summary>
+    /// Verifies that large tool-returned file payloads are staged before the next model call.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_ToolFileAboveInlineThreshold_StagesFileForNextRequestAndCleansUp()
+    {
+        var modelFileStagingService = new Mock<IModelFileStagingService>();
+        ModelFileStagingRequest? capturedStagingRequest = null;
+        modelFileStagingService
+            .Setup(item => item.StageFileAsync(It.IsAny<ModelFileStagingRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<ModelFileStagingRequest, CancellationToken>((request, _) => capturedStagingRequest = request)
+            .ReturnsAsync(new ModelFileReference
+            {
+                Name = "files/tool-document",
+                FileUri = "https://generativelanguage.googleapis.com/v1beta/files/tool-document",
+                MimeType = "application/pdf"
+            });
+        modelFileStagingService
+            .Setup(item => item.DeleteFileAsync("files/tool-document", It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Gemini:FileApiInlineThresholdBytes"] = "8"
+            })
+            .Build();
+        var handler = new AgentChatHandler(
+            _geminiClientMock.Object,
+            _toolExecutorMock.Object,
+            _loggerMock.Object,
+            modelFileStagingService.Object,
+            configuration);
+
+        var fileBytes = Enumerable.Range(0, 16).Select(item => (byte)item).ToArray();
+        var fileBase64 = Convert.ToBase64String(fileBytes);
+        var toolResult = JsonSerializer.Serialize(new
+        {
+            _metadata = new
+            {
+                is_file = true,
+                mime_type = "application/pdf",
+                data = fileBase64
+            },
+            status = "Success",
+            message = "Document content has been loaded"
+        });
+
+        var capturedRequests = new List<GeminiRequest>();
+        _geminiClientMock
+            .Setup(x => x.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<GeminiRequest, CancellationToken>((request, _) =>
+            {
+                capturedRequests.Add(new GeminiRequest
+                {
+                    Messages = request.Messages.Select(message => new GeminiMessage
+                    {
+                        Role = message.Role,
+                        Content = message.Content,
+                        FunctionCalls = message.FunctionCalls,
+                        FunctionResponses = message.FunctionResponses,
+                        Attachments = message.Attachments?.Select(attachment => new GeminiAttachment
+                        {
+                            ContentType = attachment.ContentType,
+                            MimeType = attachment.MimeType,
+                            Data = attachment.Data
+                        }).ToList()
+                    }).ToList()
+                });
+            })
+            .ReturnsAsync((GeminiRequest _, CancellationToken _) =>
+            {
+                if (capturedRequests.Count == 1)
+                {
+                    return new GeminiResponse
+                    {
+                        Success = true,
+                        FunctionCalls = new List<GeminiFunctionCall>
+                        {
+                            new()
+                            {
+                                Name = "get_document_content",
+                                Args = new Dictionary<string, object> { ["document_id"] = "doc123" }
+                            }
+                        }
+                    };
+                }
+
+                return new GeminiResponse
+                {
+                    Success = true,
+                    Content = "I have read the document."
+                };
+            });
+        _toolExecutorMock
+            .Setup(x => x.ExecuteAsync(
+                "get_document_content",
+                It.IsAny<Dictionary<string, object>>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(toolResult);
+
+        var result = await handler.ExecuteAsync(new GeminiRequest
+        {
+            Messages = new List<GeminiMessage>
+            {
+                new() { Role = "user", Content = "Read this document" }
+            }
+        });
+
+        Assert.True(result.Success);
+        Assert.NotNull(capturedStagingRequest);
+        Assert.Equal("tool-result-get_document_content.pdf", capturedStagingRequest!.FileName);
+        Assert.Equal("application/pdf", capturedStagingRequest.MimeType);
+        Assert.Equal(fileBytes, capturedStagingRequest.Content);
+        Assert.Equal(2, capturedRequests.Count);
+        var toolResultAttachment = Assert.Single(capturedRequests[1].Messages[2].Attachments!);
+        Assert.Equal("https://generativelanguage.googleapis.com/v1beta/files/tool-document", toolResultAttachment.Data);
+        Assert.Equal("application/pdf", toolResultAttachment.MimeType);
+        modelFileStagingService.Verify(
+            item => item.DeleteFileAsync("files/tool-document", It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     /// <summary>
