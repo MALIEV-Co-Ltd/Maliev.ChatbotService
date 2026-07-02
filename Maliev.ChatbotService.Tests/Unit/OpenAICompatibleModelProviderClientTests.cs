@@ -191,6 +191,91 @@ public sealed class OpenAICompatibleModelProviderClientTests
     }
 
     [Fact]
+    public async Task SendMessageAsync_WithUnsupportedPdfAttachment_ReturnsFallbackWithoutProviderCall()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "choices": [
+                {
+                  "message": {
+                    "content": "ok"
+                  }
+                }
+              ]
+            }
+            """, "application/json");
+        var client = CreateClient(handler);
+
+        var response = await client.SendMessageAsync(new GeminiRequest
+        {
+            Messages =
+            [
+                new GeminiMessage
+                {
+                    Role = "user",
+                    Content = "Summarize this drawing.",
+                    Attachments =
+                    [
+                        new GeminiAttachment
+                        {
+                            MimeType = "application/pdf",
+                            Data = "data:application/pdf;base64,JVBERi0xLjQ="
+                        }
+                    ]
+                }
+            ]
+        });
+
+        Assert.False(response.Success);
+        Assert.True(response.IsFallback);
+        Assert.Equal("ModelProviderUnsupportedAttachment", response.ErrorType);
+        Assert.Equal(0, handler.RequestCount);
+        Assert.Equal(string.Empty, handler.RequestBody);
+    }
+
+    [Fact]
+    public async Task StreamMessageAsync_WithUnsupportedPdfAttachment_ReturnsFallbackWithoutProviderCall()
+    {
+        var handler = new CapturingHandler(
+            "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]",
+            "text/event-stream");
+        var client = CreateClient(handler);
+
+        GeminiResponse? finalResponse = null;
+        await foreach (var streamEvent in client.StreamMessageAsync(new GeminiRequest
+        {
+            Messages =
+            [
+                new GeminiMessage
+                {
+                    Role = "user",
+                    Content = "Summarize this drawing.",
+                    Attachments =
+                    [
+                        new GeminiAttachment
+                        {
+                            MimeType = "application/pdf",
+                            Data = "data:application/pdf;base64,JVBERi0xLjQ="
+                        }
+                    ]
+                }
+            ]
+        }))
+        {
+            if (streamEvent.Type.Equals("final", StringComparison.OrdinalIgnoreCase))
+            {
+                finalResponse = streamEvent.Response;
+            }
+        }
+
+        Assert.NotNull(finalResponse);
+        Assert.False(finalResponse!.Success);
+        Assert.True(finalResponse.IsFallback);
+        Assert.Equal("ModelProviderUnsupportedAttachment", finalResponse.ErrorType);
+        Assert.Equal(0, handler.RequestCount);
+    }
+
+    [Fact]
     public async Task SendMessageAsync_GeminiCostControls_SerializesServiceTierAndExtraBody()
     {
         var handler = new CapturingHandler("""
@@ -552,10 +637,13 @@ public sealed class OpenAICompatibleModelProviderClientTests
 
         public string? Authorization { get; private set; }
 
+        public int RequestCount { get; private set; }
+
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
+            RequestCount++;
             Authorization = request.Headers.Authorization?.ToString();
             RequestBody = request.Content is null
                 ? string.Empty

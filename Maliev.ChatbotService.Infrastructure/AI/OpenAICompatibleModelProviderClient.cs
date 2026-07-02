@@ -52,6 +52,14 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
                 "OpenAI-compatible API key is not configured. Set 'Llm:OpenAICompatible:ApiKey'.");
         }
 
+        if (TryGetUnsupportedAttachmentMimeType(request, out var unsupportedMimeType))
+        {
+            _logger.LogWarning(
+                "OpenAI-compatible provider request contains unsupported attachment MIME type {MimeType}",
+                unsupportedMimeType);
+            return GetFallbackResponse("ModelProviderUnsupportedAttachment");
+        }
+
         try
         {
             var modelName = request.ModelName ?? _modelName;
@@ -120,6 +128,19 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
             {
                 Type = "final",
                 Response = GetFallbackResponse("ModelProviderMissingApiKey")
+            };
+            yield break;
+        }
+
+        if (TryGetUnsupportedAttachmentMimeType(request, out var unsupportedMimeType))
+        {
+            _logger.LogWarning(
+                "OpenAI-compatible provider streaming request contains unsupported attachment MIME type {MimeType}",
+                unsupportedMimeType);
+            yield return new GeminiStreamEvent
+            {
+                Type = "final",
+                Response = GetFallbackResponse("ModelProviderUnsupportedAttachment")
             };
             yield break;
         }
@@ -510,6 +531,46 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
         return $"data:{attachment.MimeType};base64,{attachment.Data}";
     }
 
+    private static bool TryGetUnsupportedAttachmentMimeType(GeminiRequest request, out string unsupportedMimeType)
+    {
+        foreach (var attachment in EnumerateAttachments(request))
+        {
+            if (!IsSerializableAttachment(attachment))
+            {
+                unsupportedMimeType = string.IsNullOrWhiteSpace(attachment.MimeType)
+                    ? "(missing)"
+                    : attachment.MimeType;
+                return true;
+            }
+        }
+
+        unsupportedMimeType = string.Empty;
+        return false;
+    }
+
+    private static IEnumerable<GeminiAttachment> EnumerateAttachments(GeminiRequest request)
+    {
+        if (request.Attachments is not null)
+        {
+            foreach (var attachment in request.Attachments)
+            {
+                yield return attachment;
+            }
+        }
+
+        var messages = request.Messages.Count > 0
+            ? request.Messages
+            : BuildPromptMessages(request.Prompt);
+        foreach (var attachment in messages.SelectMany(message => message.Attachments ?? []))
+        {
+            yield return attachment;
+        }
+    }
+
+    private static bool IsSerializableAttachment(GeminiAttachment attachment) =>
+        attachment.MimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) ||
+        TryBuildInputAudioPart(attachment, out _);
+
     private static bool TryBuildInputAudioPart(GeminiAttachment attachment, out object audioPart)
     {
         audioPart = new { };
@@ -743,6 +804,7 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
             "ModelProviderRateLimit" => "We have exceeded the AI processing limit for now. Please try again in a few minutes.",
             "ModelProviderTimeout" => "I apologize, but I'm experiencing delays in processing your request. Please try again in a few moments.",
             "ModelProviderError" => "I apologize, but I'm temporarily unable to process your request. Please try again in a few moments.",
+            "ModelProviderUnsupportedAttachment" => "This AI provider cannot process one or more uploaded files. Please retry without that attachment or use the Gemini provider.",
             _ => "I apologize for the inconvenience. Something unexpected occurred. Please try again."
         };
 
