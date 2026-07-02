@@ -1,8 +1,10 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /
+ENV GITHUB_ACTIONS=true
 
 # Copy nuget.config for GitHub Packages authentication
 COPY nuget.config ./
+COPY Directory.Build.props ./
 
 # Copy project files for restore
 COPY ["Maliev.ChatbotService.Api/Maliev.ChatbotService.Api.csproj", "Maliev.ChatbotService.Api/"]
