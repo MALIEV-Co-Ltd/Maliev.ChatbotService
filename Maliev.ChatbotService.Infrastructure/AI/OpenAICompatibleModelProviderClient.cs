@@ -16,6 +16,7 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
     private readonly ILogger<OpenAICompatibleModelProviderClient> _logger;
     private readonly string _apiKey;
     private readonly string _modelName;
+    private readonly string _chatCompletionsPath;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="OpenAICompatibleModelProviderClient"/> class.
@@ -36,6 +37,10 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
         _modelName = configuration["Llm:OpenAICompatible:ModelName"]
             ?? configuration["OpenAICompatible:ModelName"]
             ?? "openai-compatible-model";
+        _chatCompletionsPath = ResolveChatCompletionsPath(
+            configuration["Llm:OpenAICompatible:ChatCompletionsPath"] ??
+            configuration["OpenAICompatible:ChatCompletionsPath"],
+            httpClient.BaseAddress);
     }
 
     /// <inheritdoc/>
@@ -66,7 +71,7 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
             var payload = BuildPayload(request, modelName, stream: false);
             var json = JsonSerializer.Serialize(payload, JsonOptions);
 
-            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "v1/chat/completions");
+            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, _chatCompletionsPath);
             httpRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _apiKey);
             httpRequest.Content = new StringContent(json, Encoding.UTF8, "application/json");
 
@@ -154,7 +159,7 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
         var payload = BuildPayload(request, modelName, stream: true);
         var json = JsonSerializer.Serialize(payload, JsonOptions);
 
-        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "v1/chat/completions");
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, _chatCompletionsPath);
         httpRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _apiKey);
         httpRequest.Content = new StringContent(json, Encoding.UTF8, "application/json");
 
@@ -465,6 +470,31 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
         string.IsNullOrWhiteSpace(prompt)
             ? new List<GeminiMessage>()
             : new List<GeminiMessage> { new() { Role = "user", Content = prompt } };
+
+    private static string ResolveDefaultChatCompletionsPath(Uri? baseAddress)
+    {
+        if (baseAddress is null)
+        {
+            return "v1/chat/completions";
+        }
+
+        var basePath = baseAddress.AbsolutePath.TrimEnd('/');
+        if (baseAddress.Host.Equals("generativelanguage.googleapis.com", StringComparison.OrdinalIgnoreCase))
+        {
+            return basePath.EndsWith("/openai", StringComparison.OrdinalIgnoreCase)
+                ? "chat/completions"
+                : "v1beta/openai/chat/completions";
+        }
+
+        return basePath.EndsWith("/v1", StringComparison.OrdinalIgnoreCase)
+            ? "chat/completions"
+            : "v1/chat/completions";
+    }
+
+    private static string ResolveChatCompletionsPath(string? configuredPath, Uri? baseAddress) =>
+        string.IsNullOrWhiteSpace(configuredPath)
+            ? ResolveDefaultChatCompletionsPath(baseAddress)
+            : configuredPath.Trim().TrimStart('/');
 
     private static object BuildMessageContent(GeminiMessage message)
     {

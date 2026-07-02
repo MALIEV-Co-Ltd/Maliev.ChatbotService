@@ -234,6 +234,61 @@ public sealed class OpenAICompatibleModelProviderClientTests
     }
 
     [Fact]
+    public async Task SendMessageAsync_GeminiOpenAiCompatibleBaseAddress_UsesDocumentedChatCompletionsPath()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "choices": [
+                {
+                  "message": {
+                    "content": "ok"
+                  }
+                }
+              ]
+            }
+            """, "application/json");
+        var client = CreateClient(
+            handler,
+            new Uri("https://generativelanguage.googleapis.com/v1beta/openai/"),
+            "gemini-2.5-flash");
+
+        await client.SendMessageAsync(new GeminiRequest
+        {
+            Messages = [new GeminiMessage { Role = "user", Content = "Hello" }]
+        });
+
+        Assert.Equal(
+            "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+            handler.RequestUri?.ToString());
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_RootOpenAiCompatibleBaseAddress_UsesV1ChatCompletionsPath()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "choices": [
+                {
+                  "message": {
+                    "content": "ok"
+                  }
+                }
+              ]
+            }
+            """, "application/json");
+        var client = CreateClient(handler, new Uri("https://api.openai.com/"));
+
+        await client.SendMessageAsync(new GeminiRequest
+        {
+            Messages = [new GeminiMessage { Role = "user", Content = "Hello" }]
+        });
+
+        Assert.Equal(
+            "https://api.openai.com/v1/chat/completions",
+            handler.RequestUri?.ToString());
+    }
+
+    [Fact]
     public async Task StreamMessageAsync_WithUnsupportedPdfAttachment_ReturnsFallbackWithoutProviderCall()
     {
         var handler = new CapturingHandler(
@@ -612,18 +667,21 @@ public sealed class OpenAICompatibleModelProviderClientTests
         Assert.Equal("flex", finalResponse!.ServiceTier);
     }
 
-    private static OpenAICompatibleModelProviderClient CreateClient(CapturingHandler handler)
+    private static OpenAICompatibleModelProviderClient CreateClient(
+        CapturingHandler handler,
+        Uri? baseAddress = null,
+        string modelName = "qwen-vl-test")
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["Llm:OpenAICompatible:ApiKey"] = "test-key",
-                ["Llm:OpenAICompatible:ModelName"] = "qwen-vl-test"
+                ["Llm:OpenAICompatible:ModelName"] = modelName
             })
             .Build();
 
         return new OpenAICompatibleModelProviderClient(
-            new HttpClient(handler) { BaseAddress = new Uri("https://example.test/") },
+            new HttpClient(handler) { BaseAddress = baseAddress ?? new Uri("https://example.test/") },
             configuration,
             NullLogger<OpenAICompatibleModelProviderClient>.Instance);
     }
@@ -635,6 +693,8 @@ public sealed class OpenAICompatibleModelProviderClientTests
     {
         public string RequestBody { get; private set; } = string.Empty;
 
+        public Uri? RequestUri { get; private set; }
+
         public string? Authorization { get; private set; }
 
         public int RequestCount { get; private set; }
@@ -644,6 +704,7 @@ public sealed class OpenAICompatibleModelProviderClientTests
             CancellationToken cancellationToken)
         {
             RequestCount++;
+            RequestUri = request.RequestUri;
             Authorization = request.Headers.Authorization?.ToString();
             RequestBody = request.Content is null
                 ? string.Empty
