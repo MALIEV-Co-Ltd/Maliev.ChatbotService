@@ -122,6 +122,59 @@ public sealed class ExtractCustomerCommandHandlerTests
     }
 
     [Fact]
+    public async Task HandleAsync_WithConfiguredUtilityServiceTier_UsesConfiguredTierAndTimeout()
+    {
+        var instructionRepository = new Mock<ISystemInstructionRepository>();
+        var geminiClient = new Mock<IGeminiClient>();
+        var modelContextCacheService = new Mock<IModelContextCacheService>();
+        var modelFileStagingService = new Mock<IModelFileStagingService>();
+        GeminiRequest? capturedRequest = null;
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Gemini:UtilityRequests:ServiceTier"] = "priority"
+            })
+            .Build();
+
+        instructionRepository
+            .Setup(item => item.GetActiveByTopicsAsync(
+                It.IsAny<IEnumerable<string>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<SystemInstruction>());
+        modelContextCacheService
+            .Setup(item => item.GetOrCreateSystemInstructionCacheAsync(
+                It.IsAny<ModelContextCacheRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ModelContextCacheReference?)null);
+        geminiClient
+            .Setup(item => item.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<GeminiRequest, CancellationToken>((request, _) => capturedRequest = request)
+            .ReturnsAsync(new GeminiResponse
+            {
+                Success = true,
+                Content = """{"first_name":"Jane","last_name":"Customer"}"""
+            });
+
+        var handler = new ExtractCustomerCommandHandler(
+            instructionRepository.Object,
+            geminiClient.Object,
+            modelContextCacheService.Object,
+            modelFileStagingService.Object,
+            NullLogger<ExtractCustomerCommandHandler>.Instance,
+            configuration);
+
+        var result = await handler.HandleAsync(new ExtractCustomerCommand
+        {
+            RawText = "Jane Customer, jane@example.com"
+        });
+
+        Assert.True(result.Success);
+        Assert.NotNull(capturedRequest);
+        Assert.Equal("priority", capturedRequest!.ServiceTier);
+        Assert.Equal(5, capturedRequest.TimeoutSeconds);
+    }
+
+    [Fact]
     public async Task HandleAsync_SuccessfulExtraction_DoesNotLogRawCustomerData()
     {
         var instructionRepository = new Mock<ISystemInstructionRepository>();

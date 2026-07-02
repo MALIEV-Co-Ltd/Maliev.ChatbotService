@@ -1,4 +1,5 @@
 using Maliev.ChatbotService.Application.Commands;
+using Maliev.ChatbotService.Application.Configuration;
 using Maliev.ChatbotService.Application.Costing;
 using Maliev.ChatbotService.Application.Interfaces;
 using Microsoft.Extensions.Configuration;
@@ -28,6 +29,7 @@ public class ExtractCustomerCommandHandler
     private readonly string _modelName;
     private readonly long _fileApiInlineThresholdBytes;
     private readonly string _extractionMediaResolution;
+    private readonly GeminiUtilityRequestOptions _requestOptions;
 
     private static readonly object CustomerExtractionSchema = new
     {
@@ -102,6 +104,7 @@ public class ExtractCustomerCommandHandler
                 DefaultFileApiInlineThresholdBytes);
         _extractionMediaResolution = ResolveMediaResolution(
             configuration?["Gemini:Extraction:MediaResolution"]);
+        _requestOptions = GeminiUtilityRequestOptions.FromConfiguration(configuration);
     }
 
     /// <summary>
@@ -216,8 +219,8 @@ public class ExtractCustomerCommandHandler
                 MaxTokens = MaxExtractionOutputTokens,
                 MaxPromptTokens = MaxExtractionPromptTokens,
                 MediaResolution = attachments.Count > 0 ? _extractionMediaResolution : null,
-                ServiceTier = "flex",
-                TimeoutSeconds = GeminiRequest.FlexInferenceTimeoutSeconds,
+                ServiceTier = ResolveServiceTier(),
+                TimeoutSeconds = ResolveTimeoutSeconds(),
                 Store = false
             };
 
@@ -326,6 +329,12 @@ public class ExtractCustomerCommandHandler
             },
             null);
     }
+
+    private string? ResolveServiceTier() => _requestOptions.ServiceTier ?? "flex";
+
+    private int ResolveTimeoutSeconds() => _requestOptions.ServiceTier is null
+        ? GeminiRequest.FlexInferenceTimeoutSeconds
+        : _requestOptions.TimeoutSeconds;
 
     private async Task<ModelFileReference?> TryStageFileAsync(
         ExtractionFileData file,
