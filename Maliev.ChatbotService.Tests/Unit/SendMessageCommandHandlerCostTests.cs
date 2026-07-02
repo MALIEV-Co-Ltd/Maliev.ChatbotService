@@ -250,6 +250,7 @@ public sealed class SendMessageCommandHandlerCostTests
     {
         var result = await SendWebsiteMessageAsync(
             channel: Channel.Intranet,
+            messageContent: "Lookup customer ACME before answering.",
             toolDeclarations:
             [
                 new GeminiToolDeclaration
@@ -284,6 +285,7 @@ public sealed class SendMessageCommandHandlerCostTests
     {
         var result = await SendWebsiteMessageAsync(
             channel: Channel.Intranet,
+            messageContent: "Lookup customer ACME before answering.",
             toolDeclarations:
             [
                 new GeminiToolDeclaration
@@ -314,6 +316,41 @@ public sealed class SendMessageCommandHandlerCostTests
         Assert.True(result.CapturedRequest!.IncludeThoughts);
         Assert.Equal(256, result.CapturedRequest.ThinkingBudget);
         Assert.NotNull(result.CapturedRequest.Tools);
+    }
+
+    [Fact]
+    public async Task HandleAsync_IntranetGeneralMessage_DoesNotAttachAgentTools()
+    {
+        var result = await SendWebsiteMessageAsync(
+            channel: Channel.Intranet,
+            messageContent: "Hello, can you explain what MALIEV does?",
+            toolDeclarations:
+            [
+                new GeminiToolDeclaration
+                {
+                    FunctionDeclarations =
+                    [
+                        new GeminiFunctionDeclaration
+                        {
+                            Name = "lookup_customer",
+                            Description = "Looks up a customer record.",
+                            Parameters = new
+                            {
+                                type = "object",
+                                properties = new { customer_id = new { type = "string" } },
+                                required = new[] { "customer_id" }
+                            }
+                        }
+                    ]
+                }
+            ]);
+
+        Assert.NotNull(result.CapturedRequest);
+        Assert.Null(result.CapturedRequest!.Tools);
+        Assert.Null(result.CapturedRequest.ToolConfig);
+        result.ToolExecutor.Verify(
+            item => item.GetToolDeclarations(It.IsAny<string>()),
+            Times.Never);
     }
 
     [Fact]

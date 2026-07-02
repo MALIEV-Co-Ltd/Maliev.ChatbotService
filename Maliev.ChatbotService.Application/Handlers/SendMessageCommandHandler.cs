@@ -78,6 +78,19 @@ public class SendMessageCommandHandler
     private const string DefaultChatPdfMediaResolution = "MEDIA_RESOLUTION_MEDIUM";
     private const string DefaultChatVideoMediaResolution = "MEDIA_RESOLUTION_LOW";
     private const string JsonResponseMimeType = "application/json";
+    private static readonly string[] AgentToolKeywords =
+    [
+        "lookup", "look up", "find", "search", "show", "list", "get ",
+        "check", "create", "update", "delete", "save", "send", "generate",
+        "revise", "convert", "download", "upload", "attach", "open",
+        "quote", "quotation", "rfq", "estimate", "pricing", "price this",
+        "order", "invoice", "payment", "receipt", "customer", "supplier",
+        "project", "status", "history", "audit", "activity", "reminder",
+        "connector", "handoff", "google drive", "drive file", "authenticate",
+        "cad", "3d", "preview", "drawing", "stl", "step", "dxf", "mesh",
+        "inventory", "availability", "stock"
+    ];
+
     private static readonly HashSet<string> AllowedChatModelOverrides = new(StringComparer.OrdinalIgnoreCase)
     {
         "gemini-2.5-flash",
@@ -575,7 +588,7 @@ public class SendMessageCommandHandler
             }
 
             var structuredOutput = ResolveStructuredOutput(command.ResponseMimeType, command.ResponseSchema);
-            var isAgentToolCandidate = IsAgentToolChannel(session.Channel) &&
+            var isAgentToolCandidate = ShouldAttachAgentTools(session.Channel, command.Content, command.Attachments) &&
                 string.IsNullOrEmpty(structuredOutput.ResponseMimeType);
             List<GeminiToolDeclaration> tools = isAgentToolCandidate
                 ? _toolExecutor.GetToolDeclarations(GetToolProfile(session.Channel))
@@ -1203,6 +1216,30 @@ public class SendMessageCommandHandler
     private static bool IsAgentToolChannel(Channel channel)
     {
         return channel is Channel.Intranet or Channel.QuoteEngine;
+    }
+
+    private static bool ShouldAttachAgentTools(
+        Channel channel,
+        string message,
+        IReadOnlyCollection<AttachmentDto>? attachments)
+    {
+        if (!IsAgentToolChannel(channel))
+        {
+            return false;
+        }
+
+        if (attachments is { Count: > 0 })
+        {
+            return true;
+        }
+
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return false;
+        }
+
+        var messageLower = message.ToLowerInvariant();
+        return ContainsAny(messageLower, AgentToolKeywords);
     }
 
     private static string GetToolProfile(Channel channel)
