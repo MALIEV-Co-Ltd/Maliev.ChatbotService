@@ -180,9 +180,49 @@ public sealed class GeminiUtilityOutputBoundTests
         Assert.NotNull(capturedRequest);
         Assert.Equal(4096, capturedRequest!.MaxTokens);
         Assert.Equal(16000, capturedRequest.MaxPromptTokens);
-        Assert.Equal("flex", capturedRequest.ServiceTier);
-        Assert.Equal(600, capturedRequest.TimeoutSeconds);
+        Assert.Null(capturedRequest.ServiceTier);
+        Assert.Equal(5, capturedRequest.TimeoutSeconds);
         Assert.False(capturedRequest.Store.GetValueOrDefault(true));
+    }
+
+    [Fact]
+    public async Task RefineSystemInstructionCommandHandler_WhenUtilityPriorityConfigured_UsesPriorityServiceTier()
+    {
+        GeminiRequest? capturedRequest = null;
+        var geminiClient = new Mock<IGeminiClient>();
+        geminiClient
+            .Setup(item => item.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<GeminiRequest, CancellationToken>((request, _) => capturedRequest = request)
+            .ReturnsAsync(new GeminiResponse
+            {
+                Success = true,
+                Content = "{\"persona_definition\":\"Refined persona\",\"business_constraints\":\"Refined constraints\",\"summary\":\"Improved clarity.\"}"
+            });
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Gemini:UtilityRequests:ServiceTier"] = "priority"
+            })
+            .Build();
+        var handler = new RefineSystemInstructionCommandHandler(
+            geminiClient.Object,
+            NullLogger<RefineSystemInstructionCommandHandler>.Instance,
+            configuration);
+
+        var result = await handler.HandleAsync(new RefineSystemInstructionCommand
+        {
+            Name = "Customer Website Assistant",
+            Category = SystemInstructionCategory.Core,
+            TopicKey = "website",
+            PersonaDefinition = "Answer website questions.",
+            BusinessConstraints = "Keep customer data safe."
+        });
+
+        Assert.Equal("Refined persona", result.PersonaDefinition);
+        Assert.NotNull(capturedRequest);
+        Assert.Equal("priority", capturedRequest!.ServiceTier);
+        Assert.Equal(5, capturedRequest.TimeoutSeconds);
     }
 
     private static IConfiguration CreateUtilityFlexConfiguration()

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Maliev.ChatbotService.Application.Commands;
+using Maliev.ChatbotService.Application.Configuration;
 using Maliev.ChatbotService.Application.Costing;
 using Maliev.ChatbotService.Application.Interfaces;
 using Microsoft.Extensions.Configuration;
@@ -18,6 +19,7 @@ public class RefineSystemInstructionCommandHandler
     private readonly IGeminiClient _geminiClient;
     private readonly ILogger<RefineSystemInstructionCommandHandler> _logger;
     private readonly string _modelName;
+    private readonly GeminiUtilityRequestOptions _requestOptions;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -51,6 +53,7 @@ public class RefineSystemInstructionCommandHandler
         _geminiClient = geminiClient;
         _logger = logger;
         _modelName = configuration?["Gemini:IntentModelName"] ?? "gemini-2.5-flash-lite";
+        _requestOptions = GeminiUtilityRequestOptions.FromConfiguration(configuration);
     }
 
     /// <summary>
@@ -81,8 +84,8 @@ public class RefineSystemInstructionCommandHandler
             ThinkingBudget = 0,
             MaxTokens = MaxRefinementOutputTokens,
             MaxPromptTokens = MaxRefinementPromptTokens,
-            ServiceTier = "flex",
-            TimeoutSeconds = GeminiRequest.FlexInferenceTimeoutSeconds,
+            ServiceTier = _requestOptions.ServiceTier,
+            TimeoutSeconds = _requestOptions.TimeoutSeconds,
             Store = false
         };
 
