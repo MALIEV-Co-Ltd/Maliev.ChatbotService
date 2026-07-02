@@ -195,6 +195,7 @@ public class MessagesController : ControllerBase
                     "pdf" => ContentType.PDF,
                     "video" => ContentType.Video,
                     "audio" => ContentType.Audio,
+                    "document" or "text" or "file" => ContentType.Text,
                     _ => ContentType.Image
                 },
                 Data = a.Url,

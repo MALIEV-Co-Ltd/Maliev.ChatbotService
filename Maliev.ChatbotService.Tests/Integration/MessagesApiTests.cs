@@ -10,8 +10,10 @@ using Maliev.ChatbotService.Domain.Enums;
 using Maliev.ChatbotService.Infrastructure.Data;
 using Maliev.ChatbotService.Tests.Infrastructure;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Maliev.ChatbotService.Tests.Integration;
 
@@ -220,6 +222,50 @@ public class MessagesApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task SendMessage_DocumentAttachment_MapsDocumentTypeToGeminiTextAttachment()
+    {
+        var gemini = new CapturingGeminiClient();
+        var client = _factory
+            .WithWebHostBuilder(builder =>
+            {
+                builder.ConfigureTestServices(services =>
+                {
+                    services.RemoveAll<IGeminiClient>();
+                    services.AddSingleton(gemini);
+                    services.AddSingleton<IGeminiClient>(provider => provider.GetRequiredService<CapturingGeminiClient>());
+                });
+            })
+            .CreateClient();
+        var sessionId = await CreateSessionAsync(client);
+        const string documentUrl = "https://files.example.test/customer-requirements.txt";
+
+        var request = new SendMessageRequest
+        {
+            SessionId = sessionId,
+            Content = "Summarize this customer requirement document.",
+            Attachments =
+            [
+                new Attachment
+                {
+                    Type = "document",
+                    Url = documentUrl,
+                    MimeType = "text/plain",
+                    SizeBytes = 2048
+                }
+            ]
+        };
+
+        var response = await client.PostAsJsonAsync("/chatbot/v1/messages", request, _factory.JsonSerializerOptions);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.NotNull(gemini.LastRequest);
+        var attachment = Assert.Single(gemini.LastRequest!.Messages[^1].Attachments!);
+        Assert.Equal("Text", attachment.ContentType);
+        Assert.Equal("text/plain", attachment.MimeType);
+        Assert.Equal(documentUrl, attachment.Data);
+    }
+
+    [Fact]
     public async Task SendMessage_WithThaiMessage_ReturnsThaiResponse()
     {
         var client = _factory.CreateClient();
@@ -237,6 +283,41 @@ public class MessagesApiTests : IAsyncLifetime
         var result = await response.Content.ReadFromJsonAsync<MessageResponse>(_factory.JsonSerializerOptions);
         Assert.NotNull(result);
         Assert.Equal("th", result.Language);
+    }
+
+    private sealed class CapturingGeminiClient : IGeminiClient
+    {
+        public GeminiRequest? LastRequest { get; private set; }
+
+        public Task<GeminiResponse> SendMessageAsync(GeminiRequest request, CancellationToken cancellationToken = default)
+        {
+            LastRequest = request;
+            return Task.FromResult(new GeminiResponse
+            {
+                Success = true,
+                Content = "Captured Gemini request.",
+                TokenUsage = new GeminiTokenUsage { TotalTokens = 100 }
+            });
+        }
+
+        public async IAsyncEnumerable<GeminiStreamEvent> StreamMessageAsync(
+            GeminiRequest request,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.CompletedTask;
+            LastRequest = request;
+            yield return new GeminiStreamEvent { Type = "started" };
+            yield return new GeminiStreamEvent
+            {
+                Type = "final",
+                Response = new GeminiResponse
+                {
+                    Success = true,
+                    Content = "Captured Gemini request.",
+                    TokenUsage = new GeminiTokenUsage { TotalTokens = 100 }
+                }
+            };
+        }
     }
 
     [Fact]
