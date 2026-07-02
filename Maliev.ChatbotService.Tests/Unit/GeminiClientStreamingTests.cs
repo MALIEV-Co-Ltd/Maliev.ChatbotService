@@ -237,8 +237,8 @@ public sealed class GeminiClientStreamingTests
         foreach (var body in handler.RequestBodies)
         {
             using var doc = JsonDocument.Parse(body);
-            Assert.Equal("flex", doc.RootElement.GetProperty("service_tier").GetString());
-            Assert.False(doc.RootElement.TryGetProperty("serviceTier", out _));
+            Assert.Equal("flex", doc.RootElement.GetProperty("serviceTier").GetString());
+            Assert.False(doc.RootElement.TryGetProperty("service_tier", out _));
         }
 
         Assert.All(

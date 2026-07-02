@@ -616,7 +616,7 @@ public class GeminiClient : IGeminiClient
 
         if (!string.IsNullOrWhiteSpace(request.ServiceTier))
         {
-            payload["service_tier"] = request.ServiceTier;
+            payload["serviceTier"] = request.ServiceTier;
         }
 
         if (!string.IsNullOrWhiteSpace(request.CachedContentName))

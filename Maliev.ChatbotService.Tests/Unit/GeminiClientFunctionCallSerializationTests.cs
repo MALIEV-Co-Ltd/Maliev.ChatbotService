@@ -592,11 +592,11 @@ public sealed class GeminiClientFunctionCallSerializationTests
         });
 
         using var doc = JsonDocument.Parse(handler.RequestBody!);
-        Assert.Equal("flex", doc.RootElement.GetProperty("service_tier").GetString());
-        Assert.False(doc.RootElement.TryGetProperty("serviceTier", out _));
+        Assert.Equal("flex", doc.RootElement.GetProperty("serviceTier").GetString());
+        Assert.False(doc.RootElement.TryGetProperty("service_tier", out _));
         Assert.False(
             doc.RootElement.TryGetProperty("generationConfig", out var generationConfig) &&
-            generationConfig.TryGetProperty("service_tier", out _));
+            generationConfig.TryGetProperty("serviceTier", out _));
 
         Assert.NotNull(handler.RequestHeaders);
         Assert.True(handler.RequestHeaders!.TryGetValue("X-Server-Timeout", out var serverTimeout));
@@ -679,8 +679,8 @@ public sealed class GeminiClientFunctionCallSerializationTests
         foreach (var body in handler.RequestBodies)
         {
             using var doc = JsonDocument.Parse(body);
-            Assert.Equal("flex", doc.RootElement.GetProperty("service_tier").GetString());
-            Assert.False(doc.RootElement.TryGetProperty("serviceTier", out _));
+            Assert.Equal("flex", doc.RootElement.GetProperty("serviceTier").GetString());
+            Assert.False(doc.RootElement.TryGetProperty("service_tier", out _));
         }
     }
 
@@ -769,8 +769,8 @@ public sealed class GeminiClientFunctionCallSerializationTests
 
         using var body = JsonDocument.Parse(handler.RequestBodies[0]);
         var generateContentRequest = body.RootElement.GetProperty("generateContentRequest");
-        Assert.Equal("flex", generateContentRequest.GetProperty("service_tier").GetString());
-        Assert.False(generateContentRequest.TryGetProperty("serviceTier", out _));
+        Assert.Equal("flex", generateContentRequest.GetProperty("serviceTier").GetString());
+        Assert.False(generateContentRequest.TryGetProperty("service_tier", out _));
         Assert.Equal("sys", generateContentRequest.GetProperty("systemInstruction").GetProperty("parts")[0].GetProperty("text").GetString());
         Assert.Equal("large customer document", generateContentRequest.GetProperty("contents")[0].GetProperty("parts")[0].GetProperty("text").GetString());
     }
