@@ -566,7 +566,12 @@ public class SendMessageCommandHandler
             }
 
             var structuredOutput = ResolveStructuredOutput(command.ResponseMimeType, command.ResponseSchema);
-            var allowModelThoughts = IsAgentToolChannel(session.Channel) && string.IsNullOrEmpty(structuredOutput.ResponseMimeType);
+            var isAgentToolCandidate = IsAgentToolChannel(session.Channel) &&
+                string.IsNullOrEmpty(structuredOutput.ResponseMimeType);
+            List<GeminiToolDeclaration> tools = isAgentToolCandidate
+                ? _toolExecutor.GetToolDeclarations(GetToolProfile(session.Channel))
+                : [];
+            var allowModelThoughts = tools.Count > 0;
             var enableGeminiUrlContext = ShouldEnableUrlContext(
                 command.Content,
                 _urlContextEnabled,
@@ -614,42 +619,30 @@ public class SendMessageCommandHandler
 
             if (allowModelThoughts)
             {
-                var tools = _toolExecutor.GetToolDeclarations(GetToolProfile(session.Channel));
-                if (tools.Count > 0)
-                {
-                    geminiRequest.Tools = tools;
-                    geminiRequest.ToolConfig = new GeminiFunctionCallingConfig { Mode = "AUTO" };
-                    geminiRequest.TimeoutSeconds = 30;
+                geminiRequest.Tools = tools;
+                geminiRequest.ToolConfig = new GeminiFunctionCallingConfig { Mode = "AUTO" };
+                geminiRequest.TimeoutSeconds = 30;
 
-                    var agentResult = await _agentChatHandler.ExecuteAsync(
-                        geminiRequest,
-                        command.ThinkingStepCallback,
-                        command.UserToken,
-                        command.QuoteAgentContextToken,
-                        command.TextDeltaCallback,
-                        command.ThoughtDeltaCallback,
-                        cancellationToken);
+                var agentResult = await _agentChatHandler.ExecuteAsync(
+                    geminiRequest,
+                    command.ThinkingStepCallback,
+                    command.UserToken,
+                    command.QuoteAgentContextToken,
+                    command.TextDeltaCallback,
+                    command.ThoughtDeltaCallback,
+                    cancellationToken);
 
-                    thinkingSteps = agentResult.ThinkingSteps;
-                    geminiResponse = new GeminiResponse
-                    {
-                        Success = agentResult.Success,
-                        Content = agentResult.Content,
-                        ErrorMessage = agentResult.ErrorMessage,
-                        IsFallback = agentResult.IsFallback,
-                        TokenUsage = agentResult.TokenUsage,
-                        ServiceTier = agentResult.ServiceTier,
-                        GroundingWebSearchQueries = agentResult.GroundingWebSearchQueries
-                    };
-                }
-                else
+                thinkingSteps = agentResult.ThinkingSteps;
+                geminiResponse = new GeminiResponse
                 {
-                    geminiResponse = await SendGeminiMaybeStreamingAsync(
-                        geminiRequest,
-                        command.TextDeltaCallback,
-                        command.ThoughtDeltaCallback,
-                        cancellationToken);
-                }
+                    Success = agentResult.Success,
+                    Content = agentResult.Content,
+                    ErrorMessage = agentResult.ErrorMessage,
+                    IsFallback = agentResult.IsFallback,
+                    TokenUsage = agentResult.TokenUsage,
+                    ServiceTier = agentResult.ServiceTier,
+                    GroundingWebSearchQueries = agentResult.GroundingWebSearchQueries
+                };
             }
             else
             {

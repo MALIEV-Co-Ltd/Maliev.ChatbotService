@@ -277,6 +277,17 @@ public sealed class SendMessageCommandHandlerCostTests
     }
 
     [Fact]
+    public async Task HandleAsync_IntranetMessageWithoutToolDeclarations_DisablesThinking()
+    {
+        var result = await SendWebsiteMessageAsync(channel: Channel.Intranet);
+
+        Assert.NotNull(result.CapturedRequest);
+        Assert.False(result.CapturedRequest!.IncludeThoughts);
+        Assert.Equal(0, result.CapturedRequest.ThinkingBudget);
+        Assert.Null(result.CapturedRequest.Tools);
+    }
+
+    [Fact]
     public async Task HandleAsync_WebsiteMediaAttachment_UsesMediumMediaResolution()
     {
         var result = await SendWebsiteMessageAsync([
