@@ -528,20 +528,22 @@ public class SendMessageCommandHandler
             // Get system instruction for business constraint validation (Core only for now)
             var coreInstruction = await _systemInstructionService.GetActiveInstructionAsync(coreInstructionTopicKey, cancellationToken);
 
+            var customerAuthoredContent = ExtractCustomerAuthoredContent(command.Content);
+
             // Check if Gemini built-in search should be triggered
             bool enableGeminiSearch = false;
             if (coreInstruction != null &&
                 _webSearchGloballyEnabled &&
                 coreInstruction.EnableWebSearch &&
-                ShouldTriggerWebSearch(command.Content))
+                ShouldTriggerWebSearch(customerAuthoredContent))
             {
                 var competitorKeywords = new[] { "competitor", "pricing", "cost comparison", "price comparison" };
-                var isCompetitorQuery = competitorKeywords.Any(k => command.Content.ToLowerInvariant().Contains(k));
+                var isCompetitorQuery = competitorKeywords.Any(k => customerAuthoredContent.ToLowerInvariant().Contains(k));
 
                 if (!isCompetitorQuery)
                 {
                     enableGeminiSearch = true;
-                    _logger.LogInformation("Gemini built-in search enabled for query: {Query}", command.Content);
+                    _logger.LogInformation("Gemini built-in search enabled for query: {Query}", customerAuthoredContent);
                 }
             }
 
@@ -588,7 +590,7 @@ public class SendMessageCommandHandler
             }
 
             var structuredOutput = ResolveStructuredOutput(command.ResponseMimeType, command.ResponseSchema);
-            var isAgentToolCandidate = ShouldAttachAgentTools(session.Channel, command.Content, command.Attachments) &&
+            var isAgentToolCandidate = ShouldAttachAgentTools(session.Channel, customerAuthoredContent, command.Attachments) &&
                 string.IsNullOrEmpty(structuredOutput.ResponseMimeType);
             List<GeminiToolDeclaration> tools = isAgentToolCandidate
                 ? _toolExecutor.GetToolDeclarations(GetToolProfile(session.Channel))
@@ -596,7 +598,7 @@ public class SendMessageCommandHandler
             var hasAgentTools = tools.Count > 0;
             var includeAgentThoughts = hasAgentTools && _agentIncludeThoughts;
             var enableGeminiUrlContext = ShouldEnableUrlContext(
-                command.Content,
+                customerAuthoredContent,
                 _urlContextEnabled,
                 _urlContextMaxUrls,
                 hasAgentTools);
@@ -1248,6 +1250,23 @@ public class SendMessageCommandHandler
 
         var messageLower = message.ToLowerInvariant();
         return ContainsAny(messageLower, AgentToolKeywords);
+    }
+
+    private static string ExtractCustomerAuthoredContent(string content)
+    {
+        const string customerMessageMarker = "Customer message:";
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return string.Empty;
+        }
+
+        var markerIndex = content.LastIndexOf(customerMessageMarker, StringComparison.OrdinalIgnoreCase);
+        if (markerIndex < 0)
+        {
+            return content;
+        }
+
+        return content[(markerIndex + customerMessageMarker.Length)..].Trim();
     }
 
     private static string GetToolProfile(Channel channel)
