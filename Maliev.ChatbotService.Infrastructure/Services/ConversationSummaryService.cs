@@ -1,3 +1,4 @@
+using Maliev.ChatbotService.Application.Configuration;
 using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Domain.Entities;
 using Maliev.ChatbotService.Domain.Enums;
@@ -17,6 +18,7 @@ public class ConversationSummaryService : IConversationSummaryService
     private readonly IGeminiClient _geminiClient;
     private readonly ILogger<ConversationSummaryService> _logger;
     private readonly string _modelName;
+    private readonly GeminiUtilityRequestOptions _requestOptions;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ConversationSummaryService"/> class.
@@ -41,6 +43,7 @@ public class ConversationSummaryService : IConversationSummaryService
         _geminiClient = geminiClient;
         _logger = logger;
         _modelName = configuration?["Gemini:IntentModelName"] ?? "gemini-2.5-flash-lite";
+        _requestOptions = GeminiUtilityRequestOptions.FromConfiguration(configuration);
     }
 
     /// <summary>
@@ -73,8 +76,10 @@ public class ConversationSummaryService : IConversationSummaryService
         // Build conversation text for summarization
         var conversationText = ConversationSummaryGeminiRequestFactory.BuildConversationText(messageList);
         var geminiRequest = ConversationSummaryGeminiRequestFactory.CreateRequest(conversationText, _modelName);
-        geminiRequest.ServiceTier = "flex";
-        geminiRequest.TimeoutSeconds = GeminiRequest.FlexInferenceTimeoutSeconds;
+        geminiRequest.ServiceTier = _requestOptions.ServiceTier ?? "flex";
+        geminiRequest.TimeoutSeconds = _requestOptions.ServiceTier is null
+            ? GeminiRequest.FlexInferenceTimeoutSeconds
+            : _requestOptions.TimeoutSeconds;
 
         var response = await _geminiClient.SendMessageAsync(geminiRequest, cancellationToken);
 

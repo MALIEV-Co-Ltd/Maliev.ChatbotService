@@ -2,6 +2,7 @@ using Maliev.ChatbotService.Application.Interfaces;
 using Maliev.ChatbotService.Domain.Entities;
 using Maliev.ChatbotService.Domain.Enums;
 using Maliev.ChatbotService.Infrastructure.Services;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -306,6 +307,83 @@ public class ConversationSummaryServiceTests
         Assert.Equal(1024, capturedRequest.MaxTokens);
         Assert.Equal(30000, capturedRequest.MaxPromptTokens);
         mockSessionRepo.Verify(r => r.UpdateAsync(It.IsAny<ConversationSession>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GenerateSummaryAsync_WhenUtilityServiceTierConfigured_UsesConfiguredTier()
+    {
+        var sessionId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        GeminiRequest? capturedRequest = null;
+
+        var mockSummaryRepo = new Mock<IConversationSummaryRepository>();
+        var mockSessionRepo = new Mock<IConversationSessionRepository>();
+        var mockMessageRepo = new Mock<IMessageRepository>();
+        var mockGeminiClient = new Mock<IGeminiClient>();
+        var mockLogger = new Mock<ILogger<ConversationSummaryService>>();
+
+        var session = new ConversationSession
+        {
+            Id = sessionId,
+            UserProfileId = userId,
+            Channel = Channel.Website,
+            Status = SessionStatus.Active,
+            Language = Language.English,
+            StartTime = DateTimeOffset.UtcNow,
+            LastActivityAt = DateTimeOffset.UtcNow,
+            ExpiresAt = DateTimeOffset.UtcNow.AddHours(24)
+        };
+
+        mockSessionRepo
+            .Setup(r => r.GetByIdAsync(sessionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(session);
+        mockMessageRepo
+            .Setup(r => r.GetRecentBySessionIdAsync(sessionId, 1000, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Message>
+            {
+                new()
+                {
+                    Id = Guid.NewGuid(),
+                    SessionId = sessionId,
+                    Role = MessageRole.User,
+                    Content = "Please summarize this conversation.",
+                    CreatedAt = DateTimeOffset.UtcNow
+                }
+            });
+        mockGeminiClient
+            .Setup(c => c.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<GeminiRequest, CancellationToken>((request, _) => capturedRequest = request)
+            .ReturnsAsync(new GeminiResponse
+            {
+                Success = true,
+                Content = """{"topics":["summary"],"decisions":[],"preferences":[],"entities":[],"intentCategories":[],"unresolvedQuestions":[]}"""
+            });
+        mockSummaryRepo
+            .Setup(r => r.CreateAsync(It.IsAny<ConversationSummary>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ConversationSummary s, CancellationToken _) => s);
+        mockSessionRepo
+            .Setup(r => r.UpdateAsync(It.IsAny<ConversationSession>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Gemini:UtilityRequests:ServiceTier"] = "priority"
+            })
+            .Build();
+        var service = new ConversationSummaryService(
+            mockSummaryRepo.Object,
+            mockSessionRepo.Object,
+            mockMessageRepo.Object,
+            mockGeminiClient.Object,
+            mockLogger.Object,
+            configuration);
+
+        await service.GenerateSummaryAsync(sessionId);
+
+        Assert.NotNull(capturedRequest);
+        Assert.Equal("priority", capturedRequest!.ServiceTier);
+        Assert.Equal(5, capturedRequest.TimeoutSeconds);
     }
 
     [Fact]
