@@ -50,6 +50,35 @@ public sealed class ModelProviderConfigurationTests
     }
 
     [Fact]
+    public void Program_GeminiBackedOpenAiCompatibleProvider_KeepsNativeGeminiCostFeatureClients()
+    {
+        var program = File.ReadAllText(Path.Combine(
+            GetRepositoryRoot(),
+            "Maliev.ChatbotService.Api",
+            "Program.cs"));
+
+        var featureClientGate = ExtractSourceBlock(
+            program,
+            "var usesGeminiApiFeatures",
+            "builder.Services.AddHttpClient<GeminiModelProviderClient>");
+
+        Assert.Contains("UsesGeminiApiFeatureProvider(", featureClientGate, StringComparison.Ordinal);
+        Assert.Contains("externalClientsConfig.OpenAICompatible.BaseAddress", featureClientGate, StringComparison.Ordinal);
+        Assert.Contains("IModelContextCacheService, GeminiModelContextCacheService", featureClientGate, StringComparison.Ordinal);
+        Assert.Contains("IModelBatchClient, GeminiBatchClient", featureClientGate, StringComparison.Ordinal);
+        Assert.Contains("IModelFileStagingService, GeminiModelFileStagingService", featureClientGate, StringComparison.Ordinal);
+
+        var helperBlock = ExtractSourceBlock(
+            program,
+            "private static bool UsesGeminiApiFeatureProvider",
+            "private static ValueTask<bool> ShouldRetryModelProviderFailure");
+
+        Assert.Contains("UsesNativeGeminiProvider(providerName)", helperBlock, StringComparison.Ordinal);
+        Assert.Contains("openai-compatible", helperBlock, StringComparison.Ordinal);
+        Assert.Contains("generativelanguage.googleapis.com", helperBlock, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AppSettings_DefinesConfigurableLlmProviderAndOpenAiCompatibleEndpoint()
     {
         var appsettings = File.ReadAllText(Path.Combine(

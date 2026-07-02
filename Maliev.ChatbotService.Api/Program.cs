@@ -225,7 +225,10 @@ try
         builder.Services.AddScoped<IModelProviderClientFactory, ModelProviderClientFactory>();
         builder.Services.AddScoped<IGeminiClient, ProviderRoutingGeminiClient>();
 
-        if (Program.UsesNativeGeminiProvider(builder.Configuration["Llm:Provider"]))
+        var usesGeminiApiFeatures = Program.UsesGeminiApiFeatureProvider(
+            builder.Configuration["Llm:Provider"],
+            externalClientsConfig.OpenAICompatible.BaseAddress);
+        if (usesGeminiApiFeatures)
         {
             builder.Services.AddHttpClient<IModelContextCacheService, GeminiModelContextCacheService>(client =>
             {
@@ -392,6 +395,22 @@ public partial class Program
             "google-gemini" => true,
             _ => false
         };
+    }
+
+    private static bool UsesGeminiApiFeatureProvider(string? providerName, string? openAiCompatibleBaseAddress)
+    {
+        if (UsesNativeGeminiProvider(providerName))
+        {
+            return true;
+        }
+
+        if (!string.Equals(providerName?.Trim(), "openai-compatible", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return Uri.TryCreate(openAiCompatibleBaseAddress, UriKind.Absolute, out var uri) &&
+            uri.Host.Equals("generativelanguage.googleapis.com", StringComparison.OrdinalIgnoreCase);
     }
 
     private static ValueTask<bool> ShouldRetryModelProviderFailure(HttpResponseMessage? response, Exception? exception)
