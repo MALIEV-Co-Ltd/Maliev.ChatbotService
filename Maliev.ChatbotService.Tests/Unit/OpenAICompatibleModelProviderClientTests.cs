@@ -583,6 +583,38 @@ public sealed class OpenAICompatibleModelProviderClientTests
     }
 
     [Fact]
+    public async Task SendMessageAsync_FlexServiceTier_UsesFlexInferenceTimeoutWindow()
+    {
+        var handler = new DelayedCapturingHandler(
+            TimeSpan.FromMilliseconds(1250),
+            """
+            {
+              "choices": [
+                {
+                  "message": {
+                    "content": "ok"
+                  }
+                }
+              ]
+            }
+            """,
+            "application/json");
+        var client = CreateClient(handler);
+
+        var response = await client.SendMessageAsync(new GeminiRequest
+        {
+            Messages = [new GeminiMessage { Role = "user", Content = "Summarize this queueable utility task." }],
+            ServiceTier = "flex",
+            TimeoutSeconds = 1
+        });
+
+        Assert.True(response.Success);
+        Assert.False(response.IsFallback);
+        Assert.Equal("ok", response.Content);
+        Assert.Equal(1, handler.RequestCount);
+    }
+
+    [Fact]
     public async Task SendMessageAsync_Gemini25FlashWithoutThinkingBudget_DisablesThinkingByDefault()
     {
         var handler = new CapturingHandler("""
@@ -971,6 +1003,27 @@ public sealed class OpenAICompatibleModelProviderClientTests
             }
 
             return response;
+        }
+    }
+
+    private sealed class DelayedCapturingHandler(
+        TimeSpan responseDelay,
+        string responseBody,
+        string mediaType) : HttpMessageHandler
+    {
+        public int RequestCount { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            RequestCount++;
+            await Task.Delay(responseDelay, cancellationToken);
+
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(responseBody, Encoding.UTF8, mediaType)
+            };
         }
     }
 

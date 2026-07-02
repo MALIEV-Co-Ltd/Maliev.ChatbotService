@@ -64,8 +64,9 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
         try
         {
             var modelName = request.ModelName ?? _modelName;
+            var effectiveTimeoutSeconds = ResolveEffectiveTimeoutSeconds(request);
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            cts.CancelAfter(TimeSpan.FromSeconds(request.TimeoutSeconds));
+            cts.CancelAfter(TimeSpan.FromSeconds(effectiveTimeoutSeconds));
 
             var promptLimitResponse = await TryEnforcePromptTokenLimitAsync(request, modelName, cts.Token);
             if (promptLimitResponse is not null)
@@ -100,7 +101,9 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
         }
         catch (OperationCanceledException)
         {
-            _logger.LogWarning("OpenAI-compatible provider request timed out after {Timeout} seconds", request.TimeoutSeconds);
+            _logger.LogWarning(
+                "OpenAI-compatible provider request timed out after {Timeout} seconds",
+                ResolveEffectiveTimeoutSeconds(request));
             return GetFallbackResponse("ModelProviderTimeout");
         }
         catch (Exception ex)
@@ -154,8 +157,9 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
 
         var accumulatedText = new StringBuilder();
         GeminiTokenUsage? tokenUsage = null;
+        var effectiveTimeoutSeconds = ResolveEffectiveTimeoutSeconds(request);
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        cts.CancelAfter(TimeSpan.FromSeconds(request.TimeoutSeconds));
+        cts.CancelAfter(TimeSpan.FromSeconds(effectiveTimeoutSeconds));
 
         var modelName = request.ModelName ?? _modelName;
         var promptLimitResponse = await TryEnforcePromptTokenLimitAsync(request, modelName, cts.Token);
@@ -264,6 +268,20 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
         response.Headers.TryGetValues("x-gemini-service-tier", out var values)
             ? values.FirstOrDefault()
             : null;
+
+    private static int ResolveEffectiveTimeoutSeconds(GeminiRequest request)
+    {
+        var timeoutSeconds = request.TimeoutSeconds > 0
+            ? request.TimeoutSeconds
+            : 10;
+
+        return IsFlexTier(request)
+            ? Math.Max(timeoutSeconds, GeminiRequest.FlexInferenceTimeoutSeconds)
+            : timeoutSeconds;
+    }
+
+    private static bool IsFlexTier(GeminiRequest request) =>
+        string.Equals(request.ServiceTier, "flex", StringComparison.OrdinalIgnoreCase);
 
     private async Task<GeminiResponse?> TryEnforcePromptTokenLimitAsync(
         GeminiRequest request,
