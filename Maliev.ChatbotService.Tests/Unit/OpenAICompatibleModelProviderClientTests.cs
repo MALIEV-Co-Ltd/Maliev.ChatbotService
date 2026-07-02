@@ -391,11 +391,8 @@ public sealed class OpenAICompatibleModelProviderClientTests
 
         using var payload = JsonDocument.Parse(handler.RequestBody);
         Assert.Equal("gemini-2.5-flash", payload.RootElement.GetProperty("model").GetString());
-
-        var google = payload.RootElement.GetProperty("extra_body").GetProperty("google");
-        var thinkingConfig = google.GetProperty("thinking_config");
-        Assert.Equal(0, thinkingConfig.GetProperty("thinking_budget").GetInt32());
-        Assert.False(thinkingConfig.TryGetProperty("include_thoughts", out _));
+        Assert.Equal("none", payload.RootElement.GetProperty("reasoning_effort").GetString());
+        Assert.False(payload.RootElement.TryGetProperty("extra_body", out _));
     }
 
     [Fact]
@@ -422,6 +419,34 @@ public sealed class OpenAICompatibleModelProviderClientTests
 
         using var payload = JsonDocument.Parse(handler.RequestBody);
         Assert.Equal("gemini-2.5-pro", payload.RootElement.GetProperty("model").GetString());
+        Assert.False(payload.RootElement.TryGetProperty("extra_body", out _));
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_NonGeminiModelWithZeroThinkingBudget_DoesNotSerializeGeminiThinkingConfig()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "choices": [
+                {
+                  "message": {
+                    "content": "ok"
+                  }
+                }
+              ]
+            }
+            """, "application/json");
+        var client = CreateClient(handler, modelName: "qwen-vl-test");
+
+        await client.SendMessageAsync(new GeminiRequest
+        {
+            Messages = [new GeminiMessage { Role = "user", Content = "Classify this support message." }],
+            ThinkingBudget = 0
+        });
+
+        using var payload = JsonDocument.Parse(handler.RequestBody);
+        Assert.Equal("qwen-vl-test", payload.RootElement.GetProperty("model").GetString());
+        Assert.False(payload.RootElement.TryGetProperty("reasoning_effort", out _));
         Assert.False(payload.RootElement.TryGetProperty("extra_body", out _));
     }
 

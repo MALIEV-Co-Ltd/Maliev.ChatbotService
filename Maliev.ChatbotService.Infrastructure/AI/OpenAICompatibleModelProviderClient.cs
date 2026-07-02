@@ -357,6 +357,12 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
             payload["store"] = request.Store.Value;
         }
 
+        var reasoningEffort = ResolveReasoningEffort(request, modelName);
+        if (!string.IsNullOrWhiteSpace(reasoningEffort))
+        {
+            payload["reasoning_effort"] = reasoningEffort;
+        }
+
         if (!string.IsNullOrWhiteSpace(request.ServiceTier))
         {
             payload["service_tier"] = request.ServiceTier;
@@ -434,8 +440,21 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
     private static Dictionary<string, object?> BuildGoogleThinkingConfig(GeminiRequest request, string modelName)
     {
         var thinkingConfig = new Dictionary<string, object?>();
-        var thinkingBudget = request.ThinkingBudget ??
-            (ShouldDefaultDisableThinking(modelName) ? 0 : null);
+        var thinkingBudget = request.ThinkingBudget;
+
+        if (thinkingBudget == 0 &&
+            !request.IncludeThoughts &&
+            ShouldUseReasoningEffortNone(modelName))
+        {
+            thinkingBudget = null;
+        }
+
+        if (thinkingBudget == 0 &&
+            !request.IncludeThoughts &&
+            !IsGeminiModel(modelName))
+        {
+            thinkingBudget = null;
+        }
 
         if (thinkingBudget is not null)
         {
@@ -450,7 +469,47 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
         return thinkingConfig;
     }
 
-    private static bool ShouldDefaultDisableThinking(string? modelName)
+    private static string? ResolveReasoningEffort(GeminiRequest request, string modelName)
+    {
+        if (!ShouldUseReasoningEffortNone(modelName))
+        {
+            return null;
+        }
+
+        if (request.IncludeThoughts)
+        {
+            return null;
+        }
+
+        if (request.ThinkingBudget is null ||
+            request.ThinkingBudget == 0)
+        {
+            return "none";
+        }
+
+        return null;
+    }
+
+    private static bool ShouldUseReasoningEffortNone(string? modelName) =>
+        IsGemini25FlashModel(modelName);
+
+    private static bool IsGeminiModel(string? modelName)
+    {
+        if (string.IsNullOrWhiteSpace(modelName))
+        {
+            return false;
+        }
+
+        var normalizedModelName = modelName.Trim();
+        if (normalizedModelName.StartsWith("models/", StringComparison.OrdinalIgnoreCase))
+        {
+            normalizedModelName = normalizedModelName["models/".Length..];
+        }
+
+        return normalizedModelName.StartsWith("gemini-", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsGemini25FlashModel(string? modelName)
     {
         if (string.IsNullOrWhiteSpace(modelName))
         {
