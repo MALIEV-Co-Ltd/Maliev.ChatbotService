@@ -116,8 +116,8 @@ public sealed class GeminiBatchClient : IModelBatchClient
     {
         var batch = new Dictionary<string, object?>
         {
-            ["display_name"] = request.DisplayName,
-            ["input_config"] = new Dictionary<string, object?>
+            ["displayName"] = request.DisplayName,
+            ["inputConfig"] = new Dictionary<string, object?>
             {
                 ["requests"] = new Dictionary<string, object?>
                 {

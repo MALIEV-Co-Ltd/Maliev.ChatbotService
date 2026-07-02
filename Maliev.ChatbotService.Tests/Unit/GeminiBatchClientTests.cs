@@ -59,11 +59,13 @@ public sealed class GeminiBatchClientTests
 
         using var payload = JsonDocument.Parse(handler.RequestBody!);
         var batch = payload.RootElement.GetProperty("batch");
-        Assert.Equal("expired-session-summaries", batch.GetProperty("display_name").GetString());
+        Assert.Equal("expired-session-summaries", batch.GetProperty("displayName").GetString());
         Assert.Equal("-10", batch.GetProperty("priority").GetString());
+        Assert.False(batch.TryGetProperty("display_name", out _));
+        Assert.False(batch.TryGetProperty("input_config", out _));
 
         var inlineRequest = batch
-            .GetProperty("input_config")
+            .GetProperty("inputConfig")
             .GetProperty("requests")
             .GetProperty("requests")[0];
 
@@ -122,7 +124,7 @@ public sealed class GeminiBatchClientTests
         using var payload = JsonDocument.Parse(handler.RequestBody!);
         var generateRequest = payload.RootElement
             .GetProperty("batch")
-            .GetProperty("input_config")
+            .GetProperty("inputConfig")
             .GetProperty("requests")
             .GetProperty("requests")[0]
             .GetProperty("request");
@@ -166,7 +168,7 @@ public sealed class GeminiBatchClientTests
         using var payload = JsonDocument.Parse(handler.RequestBody!);
         var thinkingConfig = payload.RootElement
             .GetProperty("batch")
-            .GetProperty("input_config")
+            .GetProperty("inputConfig")
             .GetProperty("requests")
             .GetProperty("requests")[0]
             .GetProperty("request")
