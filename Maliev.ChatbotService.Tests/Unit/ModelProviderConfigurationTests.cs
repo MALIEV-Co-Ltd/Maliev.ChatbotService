@@ -147,6 +147,10 @@ public sealed class ModelProviderConfigurationTests
         Assert.Equal(18 * 1024 * 1024, gemini.GetProperty("BatchSummaryMaxInlineBytes").GetInt32());
         Assert.Equal(100, gemini.GetProperty("Webhooks").GetProperty("QueueCapacity").GetInt32());
 
+        var agent = gemini.GetProperty("Agent");
+        Assert.False(agent.GetProperty("IncludeThoughts").GetBoolean());
+        Assert.Equal(1024, agent.GetProperty("ThinkingBudgetTokens").GetInt32());
+
         var chat = gemini.GetProperty("Chat");
         Assert.Equal("medium", chat.GetProperty("ImageMediaResolution").GetString());
         Assert.Equal("medium", chat.GetProperty("PdfMediaResolution").GetString());

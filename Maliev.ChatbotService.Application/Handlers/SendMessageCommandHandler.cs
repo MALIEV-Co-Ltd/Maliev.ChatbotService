@@ -56,6 +56,8 @@ public class SendMessageCommandHandler
     private readonly string _chatImageMediaResolution;
     private readonly string _chatPdfMediaResolution;
     private readonly string _chatVideoMediaResolution;
+    private readonly bool _agentIncludeThoughts;
+    private readonly int _agentThinkingBudgetTokens;
 
     // Must exceed the worst-case agent loop so the per-session lock cannot expire mid-turn and let a
     // concurrent message interleave (C2). AgentChatHandler runs up to MaxIterations (10) iterations,
@@ -63,7 +65,8 @@ public class SendMessageCommandHandler
     private const int SessionLockSeconds = 330;
     private const int ChatMaxOutputTokens = 2048;
     private const int ChatMaxPromptTokens = 30000;
-    private const int AgentThinkingBudgetTokens = 1024;
+    private const int DefaultAgentThinkingBudgetTokens = 1024;
+    private const int MaxAgentThinkingBudgetTokens = 4096;
     private const int MaxStructuredOutputSchemaJsonCharacters = 16_384;
     private const long DefaultFileApiInlineThresholdBytes = 5L * 1024 * 1024;
     private const int DefaultMaxImageSizeMb = 10;
@@ -190,6 +193,12 @@ public class SendMessageCommandHandler
             configuration?["Gemini:Chat:VideoMediaResolution"],
             "Gemini:Chat:VideoMediaResolution",
             DefaultChatVideoMediaResolution);
+        _agentIncludeThoughts = configuration?.GetValue<bool?>("Gemini:Agent:IncludeThoughts") ?? false;
+        _agentThinkingBudgetTokens = Math.Clamp(
+            configuration?.GetValue<int?>("Gemini:Agent:ThinkingBudgetTokens") ??
+                DefaultAgentThinkingBudgetTokens,
+            0,
+            MaxAgentThinkingBudgetTokens);
     }
 
     /// <summary>
@@ -571,12 +580,13 @@ public class SendMessageCommandHandler
             List<GeminiToolDeclaration> tools = isAgentToolCandidate
                 ? _toolExecutor.GetToolDeclarations(GetToolProfile(session.Channel))
                 : [];
-            var allowModelThoughts = tools.Count > 0;
+            var hasAgentTools = tools.Count > 0;
+            var includeAgentThoughts = hasAgentTools && _agentIncludeThoughts;
             var enableGeminiUrlContext = ShouldEnableUrlContext(
                 command.Content,
                 _urlContextEnabled,
                 _urlContextMaxUrls,
-                allowModelThoughts);
+                hasAgentTools);
             if (enableGeminiUrlContext)
             {
                 enableGeminiSearch = false;
@@ -594,8 +604,8 @@ public class SendMessageCommandHandler
                 MaxPromptTokens = ChatMaxPromptTokens,
                 EnableWebSearch = enableGeminiSearch,
                 EnableUrlContext = enableGeminiUrlContext,
-                IncludeThoughts = allowModelThoughts,
-                ThinkingBudget = allowModelThoughts ? AgentThinkingBudgetTokens : 0,
+                IncludeThoughts = includeAgentThoughts,
+                ThinkingBudget = includeAgentThoughts ? _agentThinkingBudgetTokens : 0,
                 MediaResolution = ResolveMediaResolution(geminiMessages),
                 Store = false
             };
@@ -617,7 +627,7 @@ public class SendMessageCommandHandler
             GeminiResponse geminiResponse;
             var thinkingSteps = new List<Models.ThinkingStep>();
 
-            if (allowModelThoughts)
+            if (hasAgentTools)
             {
                 geminiRequest.Tools = tools;
                 geminiRequest.ToolConfig = new GeminiFunctionCallingConfig { Mode = "AUTO" };

@@ -246,7 +246,7 @@ public sealed class SendMessageCommandHandlerCostTests
     }
 
     [Fact]
-    public async Task HandleAsync_IntranetToolMessage_BoundsThinkingBudgetWhileIncludingThoughts()
+    public async Task HandleAsync_IntranetToolMessage_DisablesAgentThoughtsByDefaultWhileKeepingTools()
     {
         var result = await SendWebsiteMessageAsync(
             channel: Channel.Intranet,
@@ -272,8 +272,48 @@ public sealed class SendMessageCommandHandlerCostTests
             ]);
 
         Assert.NotNull(result.CapturedRequest);
+        Assert.False(result.CapturedRequest!.IncludeThoughts);
+        Assert.Equal(0, result.CapturedRequest.ThinkingBudget);
+        Assert.NotNull(result.CapturedRequest.Tools);
+        Assert.NotNull(result.CapturedRequest.ToolConfig);
+        Assert.Equal("AUTO", result.CapturedRequest.ToolConfig.Mode);
+    }
+
+    [Fact]
+    public async Task HandleAsync_IntranetToolMessage_ConfiguredAgentThoughts_UsesConfiguredBudget()
+    {
+        var result = await SendWebsiteMessageAsync(
+            channel: Channel.Intranet,
+            toolDeclarations:
+            [
+                new GeminiToolDeclaration
+                {
+                    FunctionDeclarations =
+                    [
+                        new GeminiFunctionDeclaration
+                        {
+                            Name = "lookup_customer",
+                            Description = "Looks up a customer record.",
+                            Parameters = new
+                            {
+                                type = "object",
+                                properties = new { customer_id = new { type = "string" } },
+                                required = new[] { "customer_id" }
+                            }
+                        }
+                    ]
+                }
+            ],
+            configurationOverrides: new Dictionary<string, string?>
+            {
+                ["Gemini:Agent:IncludeThoughts"] = "true",
+                ["Gemini:Agent:ThinkingBudgetTokens"] = "256"
+            });
+
+        Assert.NotNull(result.CapturedRequest);
         Assert.True(result.CapturedRequest!.IncludeThoughts);
-        Assert.Equal(1024, result.CapturedRequest.ThinkingBudget);
+        Assert.Equal(256, result.CapturedRequest.ThinkingBudget);
+        Assert.NotNull(result.CapturedRequest.Tools);
     }
 
     [Fact]
