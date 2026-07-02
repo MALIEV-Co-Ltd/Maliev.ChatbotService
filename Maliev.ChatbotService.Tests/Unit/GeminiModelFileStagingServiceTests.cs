@@ -184,6 +184,42 @@ public sealed class GeminiModelFileStagingServiceTests
     }
 
     [Fact]
+    public async Task StageFileAsync_WhenResponseOmitsFileName_ThrowsBeforeReturningUndeletableReference()
+    {
+        var handler = new CapturingHandler(
+            new CapturedResponse(
+                HttpStatusCode.OK,
+                string.Empty,
+                new Dictionary<string, string>
+                {
+                    ["X-Goog-Upload-URL"] = "https://generativelanguage.googleapis.com/upload-session"
+                }),
+            new CapturedResponse(
+                HttpStatusCode.OK,
+                """
+                {
+                  "file": {
+                    "uri": "https://generativelanguage.googleapis.com/v1beta/files/customer-form",
+                    "mimeType": "application/pdf",
+                    "state": "ACTIVE"
+                  }
+                }
+                """));
+        var service = CreateService(handler);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.StageFileAsync(new ModelFileStagingRequest
+            {
+                FileName = "customer-form.pdf",
+                MimeType = "application/pdf",
+                Content = "pdf bytes"u8.ToArray()
+            }));
+
+        Assert.Contains("file.name", exception.Message);
+        Assert.Equal(2, handler.Requests.Count);
+    }
+
+    [Fact]
     public async Task StageFileAsync_OpenAiCompatibleGeminiConfiguration_UsesCompatibleKey()
     {
         var handler = new CapturingHandler(

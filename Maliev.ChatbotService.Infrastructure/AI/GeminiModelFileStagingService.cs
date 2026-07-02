@@ -251,8 +251,14 @@ public sealed class GeminiModelFileStagingService : IModelFileStagingService
             throw new InvalidOperationException("Gemini Files API response did not include file.uri.");
         }
 
+        var fileName = TryGetString(file, "name");
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            throw new InvalidOperationException("Gemini Files API response did not include file.name.");
+        }
+
         return new GeminiFileMetadata(
-            TryGetString(file, "name"),
+            fileName,
             fileUri,
             TryGetString(file, "mimeType") ?? TryGetString(file, "mime_type") ?? fallbackMimeType,
             TryGetString(file, "state"),
