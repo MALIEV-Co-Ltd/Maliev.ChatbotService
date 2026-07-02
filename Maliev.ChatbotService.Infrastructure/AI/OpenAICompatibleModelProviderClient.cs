@@ -31,12 +31,8 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
     {
         _httpClient = httpClient;
         _logger = logger;
-        _apiKey = configuration["Llm:OpenAICompatible:ApiKey"]
-            ?? configuration["OpenAICompatible:ApiKey"]
-            ?? string.Empty;
-        _modelName = configuration["Llm:OpenAICompatible:ModelName"]
-            ?? configuration["OpenAICompatible:ModelName"]
-            ?? "openai-compatible-model";
+        _apiKey = ResolveApiKey(configuration, httpClient.BaseAddress);
+        _modelName = ResolveModelName(configuration, httpClient.BaseAddress);
         _chatCompletionsPath = ResolveChatCompletionsPath(
             configuration["Llm:OpenAICompatible:ChatCompletionsPath"] ??
             configuration["OpenAICompatible:ChatCompletionsPath"],
@@ -626,6 +622,40 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
 
         var normalizedModelName = NormalizeGeminiModelName(modelName);
         return normalizedModelName.StartsWith("gemini-2.5-flash", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ResolveApiKey(IConfiguration configuration, Uri? baseAddress) =>
+        FirstNonEmpty(
+            configuration["Llm:OpenAICompatible:ApiKey"],
+            configuration["OpenAICompatible:ApiKey"])
+        ?? (IsGoogleGeminiBaseAddress(baseAddress)
+            ? FirstNonEmpty(configuration["Gemini:ApiKey"])
+            : null)
+        ?? string.Empty;
+
+    private static string ResolveModelName(IConfiguration configuration, Uri? baseAddress) =>
+        FirstNonEmpty(
+            configuration["Llm:OpenAICompatible:ModelName"],
+            configuration["OpenAICompatible:ModelName"])
+        ?? (IsGoogleGeminiBaseAddress(baseAddress)
+            ? FirstNonEmpty(configuration["Gemini:MainModelName"]) ?? "gemini-2.5-flash"
+            : null)
+        ?? "openai-compatible-model";
+
+    private static bool IsGoogleGeminiBaseAddress(Uri? baseAddress) =>
+        baseAddress?.Host.Equals("generativelanguage.googleapis.com", StringComparison.OrdinalIgnoreCase) == true;
+
+    private static string? FirstNonEmpty(params string?[] values)
+    {
+        foreach (var value in values)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value;
+            }
+        }
+
+        return null;
     }
 
     private static List<GeminiMessage> BuildPromptMessages(string? prompt) =>

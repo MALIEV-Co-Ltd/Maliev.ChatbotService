@@ -41,6 +41,42 @@ public sealed class OpenAICompatibleModelProviderClientTests
     }
 
     [Fact]
+    public async Task SendMessageAsync_BlankCompatibleGeminiConfig_FallsBackToGeminiKeyAndModel()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "choices": [
+                {
+                  "message": {
+                    "content": "ok"
+                  }
+                }
+              ]
+            }
+            """, "application/json");
+        var client = CreateClient(
+            handler,
+            baseAddress: new Uri("https://generativelanguage.googleapis.com/v1beta/openai/"),
+            configurationOverrides: new Dictionary<string, string?>
+            {
+                ["Llm:OpenAICompatible:ApiKey"] = "",
+                ["Llm:OpenAICompatible:ModelName"] = "",
+                ["Gemini:ApiKey"] = "gemini-key",
+                ["Gemini:MainModelName"] = "gemini-2.5-flash"
+            });
+
+        var response = await client.SendMessageAsync(new GeminiRequest
+        {
+            Messages = [new GeminiMessage { Role = "user", Content = "Summarize this ticket." }]
+        });
+
+        Assert.True(response.Success);
+        Assert.Equal("Bearer gemini-key", handler.Authorization);
+        using var payload = JsonDocument.Parse(handler.RequestBody);
+        Assert.Equal("gemini-2.5-flash", payload.RootElement.GetProperty("model").GetString());
+    }
+
+    [Fact]
     public async Task SendMessageAsync_WithImageAndTools_UsesOpenAiCompatiblePayloadAndParsesToolCalls()
     {
         var handler = new CapturingHandler("""
@@ -874,14 +910,24 @@ public sealed class OpenAICompatibleModelProviderClientTests
     private static OpenAICompatibleModelProviderClient CreateClient(
         HttpMessageHandler handler,
         Uri? baseAddress = null,
-        string modelName = "qwen-vl-test")
+        string modelName = "qwen-vl-test",
+        Dictionary<string, string?>? configurationOverrides = null)
     {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
+        var configurationValues = new Dictionary<string, string?>
+        {
+            ["Llm:OpenAICompatible:ApiKey"] = "test-key",
+            ["Llm:OpenAICompatible:ModelName"] = modelName
+        };
+        if (configurationOverrides is not null)
+        {
+            foreach (var item in configurationOverrides)
             {
-                ["Llm:OpenAICompatible:ApiKey"] = "test-key",
-                ["Llm:OpenAICompatible:ModelName"] = modelName
-            })
+                configurationValues[item.Key] = item.Value;
+            }
+        }
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(configurationValues)
             .Build();
 
         return new OpenAICompatibleModelProviderClient(
