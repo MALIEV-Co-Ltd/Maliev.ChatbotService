@@ -228,6 +228,64 @@ public sealed class OpenAICompatibleModelProviderClientTests
     }
 
     [Fact]
+    public async Task SendMessageAsync_Gemini25FlashWithoutThinkingBudget_DisablesThinkingByDefault()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "choices": [
+                {
+                  "message": {
+                    "content": "ok"
+                  }
+                }
+              ]
+            }
+            """, "application/json");
+        var client = CreateClient(handler);
+
+        await client.SendMessageAsync(new GeminiRequest
+        {
+            ModelName = "gemini-2.5-flash",
+            Messages = [new GeminiMessage { Role = "user", Content = "Classify this support message." }]
+        });
+
+        using var payload = JsonDocument.Parse(handler.RequestBody);
+        Assert.Equal("gemini-2.5-flash", payload.RootElement.GetProperty("model").GetString());
+
+        var google = payload.RootElement.GetProperty("extra_body").GetProperty("google");
+        var thinkingConfig = google.GetProperty("thinking_config");
+        Assert.Equal(0, thinkingConfig.GetProperty("thinking_budget").GetInt32());
+        Assert.False(thinkingConfig.TryGetProperty("include_thoughts", out _));
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_Gemini25ProWithoutThinkingBudget_DoesNotDisableRequiredThinking()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "choices": [
+                {
+                  "message": {
+                    "content": "ok"
+                  }
+                }
+              ]
+            }
+            """, "application/json");
+        var client = CreateClient(handler);
+
+        await client.SendMessageAsync(new GeminiRequest
+        {
+            ModelName = "gemini-2.5-pro",
+            Messages = [new GeminiMessage { Role = "user", Content = "Analyze this complex issue." }]
+        });
+
+        using var payload = JsonDocument.Parse(handler.RequestBody);
+        Assert.Equal("gemini-2.5-pro", payload.RootElement.GetProperty("model").GetString());
+        Assert.False(payload.RootElement.TryGetProperty("extra_body", out _));
+    }
+
+    [Fact]
     public async Task SendMessageAsync_StoreFalse_SerializesStoreFlag()
     {
         var handler = new CapturingHandler("""

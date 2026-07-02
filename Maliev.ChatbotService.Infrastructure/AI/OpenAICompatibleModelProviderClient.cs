@@ -336,7 +336,7 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
             payload["service_tier"] = request.ServiceTier;
         }
 
-        var googleExtraBody = BuildGoogleExtraBody(request);
+        var googleExtraBody = BuildGoogleExtraBody(request, modelName);
         if (googleExtraBody.Count > 0)
         {
             payload["extra_body"] = new Dictionary<string, object?>
@@ -387,7 +387,7 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
         return payload;
     }
 
-    private static Dictionary<string, object?> BuildGoogleExtraBody(GeminiRequest request)
+    private static Dictionary<string, object?> BuildGoogleExtraBody(GeminiRequest request, string modelName)
     {
         var google = new Dictionary<string, object?>();
 
@@ -396,7 +396,7 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
             google["cached_content"] = request.CachedContentName;
         }
 
-        var thinkingConfig = BuildGoogleThinkingConfig(request);
+        var thinkingConfig = BuildGoogleThinkingConfig(request, modelName);
         if (thinkingConfig.Count > 0)
         {
             google["thinking_config"] = thinkingConfig;
@@ -405,13 +405,15 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
         return google;
     }
 
-    private static Dictionary<string, object?> BuildGoogleThinkingConfig(GeminiRequest request)
+    private static Dictionary<string, object?> BuildGoogleThinkingConfig(GeminiRequest request, string modelName)
     {
         var thinkingConfig = new Dictionary<string, object?>();
+        var thinkingBudget = request.ThinkingBudget ??
+            (ShouldDefaultDisableThinking(modelName) ? 0 : null);
 
-        if (request.ThinkingBudget is not null)
+        if (thinkingBudget is not null)
         {
-            thinkingConfig["thinking_budget"] = request.ThinkingBudget.Value;
+            thinkingConfig["thinking_budget"] = thinkingBudget.Value;
         }
 
         if (request.IncludeThoughts)
@@ -420,6 +422,22 @@ public sealed class OpenAICompatibleModelProviderClient : IModelProviderClient
         }
 
         return thinkingConfig;
+    }
+
+    private static bool ShouldDefaultDisableThinking(string? modelName)
+    {
+        if (string.IsNullOrWhiteSpace(modelName))
+        {
+            return false;
+        }
+
+        var normalizedModelName = modelName.Trim();
+        if (normalizedModelName.StartsWith("models/", StringComparison.OrdinalIgnoreCase))
+        {
+            normalizedModelName = normalizedModelName["models/".Length..];
+        }
+
+        return normalizedModelName.StartsWith("gemini-2.5-flash", StringComparison.OrdinalIgnoreCase);
     }
 
     private static List<GeminiMessage> BuildPromptMessages(string? prompt) =>
