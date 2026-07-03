@@ -321,4 +321,28 @@ public class ToolRegistryTests
         Assert.True(properties.TryGetProperty("checkout_attempt_id", out var checkoutAttemptId));
         Assert.Equal("STRING", checkoutAttemptId.GetProperty("type").GetString());
     }
+
+    [Fact]
+    public void GetToolDeclarationsForProfile_QuoteToolDescriptionsCarryUsageGuidance()
+    {
+        var tools = ToolRegistry.GetToolDeclarationsForProfile("quote-engine")[0]
+            .FunctionDeclarations!
+            .ToDictionary(declaration => declaration.Name, declaration => declaration.Description ?? string.Empty);
+
+        // Read tools state when to use them and what they return.
+        Assert.Contains("prefer quote_get_project_summary", tools["quote_get_state"], StringComparison.Ordinal);
+        Assert.Contains("order status", tools["quote_get_project_summary"], StringComparison.OrdinalIgnoreCase);
+
+        // Descriptions tell the agent where required args come from (data flow).
+        Assert.Contains("quote_get_account_context", tools["quote_update_checkout_details"], StringComparison.Ordinal);
+        Assert.Contains("quote_update_checkout_details", tools["quote_get_account_context"], StringComparison.Ordinal);
+        Assert.Contains("quote_search_customer_data", tools["quote_resume_project"], StringComparison.Ordinal);
+        Assert.Contains("quote_get_project_summary", tools["quote_acknowledge_dfm"], StringComparison.Ordinal);
+        Assert.Contains("order_number", tools["quote_start_payment"], StringComparison.Ordinal);
+        Assert.Contains("quote_get_reference_data", tools["quote_update_part_configuration"], StringComparison.Ordinal);
+
+        // Estimate tool explains its blocker behavior; finalization sequence is spelled out.
+        Assert.Contains("blocker", tools["quote_calculate_estimate"], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("finalization sequence", tools["quote_prepare_formal_quote"], StringComparison.OrdinalIgnoreCase);
+    }
 }

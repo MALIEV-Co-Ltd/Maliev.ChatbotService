@@ -228,17 +228,17 @@ public static class ToolRegistry
     {
         return
         [
-            Fn("quote_get_state", "Get the current QuoteEngine session state, gates, artifacts, attachments, and proposed actions.", new
+            Fn("quote_get_state", "Read the full current session state: every workflow gate, the parts and their configuration, artifacts, attachments, the current estimate, and any pending confirmation actions. Read-only and safe to call anytime. Use when you need the detailed internal data (which gate blocks, exact part IDs); for anything you will summarize to the customer, prefer quote_get_project_summary.", new
             {
                 type = "OBJECT",
                 properties = new { }
             }),
-            Fn("quote_get_project_summary", "Get a compact customer-safe summary of current project progress, estimate, blockers, and next actions.", new
+            Fn("quote_get_project_summary", "Get a compact, customer-safe summary of the project: progress, current estimate, active blockers, and recommended next actions, plus - when an order exists - the order number, order status, payment status, and current or next manufacturing milestone. Read-only. Call to answer 'what's the status / where is my order / what's next', and to confirm readiness before formal quote, checkout, order, or payment. Prefer this over quote_get_state whenever you will summarize to the customer.", new
             {
                 type = "OBJECT",
                 properties = new { }
             }),
-            Fn("quote_get_connectors", "List customer-safe planned and future Make Studio connectors such as file import and CAD sender integrations.", new
+            Fn("quote_get_connectors", "List the customer-safe Make Studio connectors (file import, CAD sender, cloud storage such as Google Drive) with their availability and connect state. Read-only. Call first when a customer asks to connect or import from an integration, then use quote_get_connector_handoff for the one they chose. Never invent connector names or URLs.", new
             {
                 type = "OBJECT",
                 properties = new
@@ -246,7 +246,7 @@ public static class ToolRegistry
                     category = new { type = "STRING", description = "Optional connector category such as file_import or cad_sender." }
                 }
             }),
-            Fn("quote_get_connector_handoff", "Get a trusted customer-safe connector setup handoff for Make Studio integrations such as Google Drive.", new
+            Fn("quote_get_connector_handoff", "Get a trusted, customer-safe setup handoff (a directive/URL the UI presents) for a specific connector such as Google Drive. Use after quote_get_connectors when the customer asks to connect that integration. Never invent or hard-code connector URLs; if the connector is already connected, do not ask the customer to authorize again.", new
             {
                 type = "OBJECT",
                 properties = new
@@ -256,7 +256,7 @@ public static class ToolRegistry
                 },
                 required = new[] { "connector_id" }
             }),
-            Fn("quote_register_uploads", "Register uploaded or connector-provided manufacturing files into the current Make Studio session.", new
+            Fn("quote_register_uploads", "Register the customer's uploaded or connector-imported manufacturing files (CAD, drawing, photo, sketch, or supplemental) into the current session so QuoteEngine can run geometry analysis and DFM. Call after files are attached or imported. For a corrected file sent after DFM feedback, set supersedes_part_id / supersedes_upload_id / supersedes_file_name so the fix replaces the old geometry and clears its stale DFM blockers instead of adding a second part.", new
             {
                 type = "OBJECT",
                 properties = new
@@ -460,7 +460,7 @@ public static class ToolRegistry
                 },
                 required = new[] { "description", "cad_commands" }
             }),
-            Fn("quote_resume_project", "Resume an existing customer-owned QuoteEngine project into the current Make Studio session.", new
+            Fn("quote_resume_project", "Load an existing customer-owned project into the current session so its parts, configuration, and artifacts become active. Requires project_id, which comes from quote_search_customer_data. Use when the customer asks to continue or open a specific past project; for a reorder, prefer quote_duplicate_project into a fresh session. Requires an authenticated customer.", new
             {
                 type = "OBJECT",
                 properties = new
@@ -469,7 +469,7 @@ public static class ToolRegistry
                 },
                 required = new[] { "project_id" }
             }),
-            Fn("quote_search_customer_data", "Search customer-owned Make Studio projects, quotes, orders, documents, files, and current-session artifacts.", new
+            Fn("quote_search_customer_data", "Search the signed-in customer's own Make Studio projects, quotes, orders, documents, files, and current-session artifacts; omit query (or send an empty string) to list their recent items. Use to find the project_id or order the customer refers to before resuming, duplicating, or answering a status question. Requires an authenticated customer and returns nothing useful when signed out.", new
             {
                 type = "OBJECT",
                 properties = new
@@ -478,7 +478,7 @@ public static class ToolRegistry
                     limit = new { type = "INTEGER", description = "Maximum result count from 1 to 50." }
                 }
             }),
-            Fn("quote_get_auth_handoff", "Get a customer-safe sign-in or sign-up handoff for checkout or quote actions without collecting credentials in chat.", new
+            Fn("quote_get_auth_handoff", "Get a trusted, customer-safe sign-in or sign-up handoff (the UI presents it; never collect credentials in chat). Call before any authentication-gated step - formal quote, checkout, order, or payment - when quote_get_account_context shows the customer is not signed in. Present only the returned handoff and do not proceed with the gated action until they are authenticated.", new
             {
                 type = "OBJECT",
                 properties = new
@@ -487,12 +487,12 @@ public static class ToolRegistry
                     return_url = new { type = "STRING", description = "Local return URL after trusted authentication completes." }
                 }
             }),
-            Fn("quote_get_settings", "Get customer-safe Make Studio settings for the current quote session, including language, units, currency, interaction mode, and artifact panel preference.", new
+            Fn("quote_get_settings", "Read the current session's customer-safe Make Studio preferences: response language, units (mm/inch), currency, interaction mode, artifact-panel preference, and multilingual mode. Read-only. Use before changing a setting, or when the customer asks what their current preferences are.", new
             {
                 type = "OBJECT",
                 properties = new { }
             }),
-            Fn("quote_update_settings", "Update customer-safe Make Studio session settings such as language, units, currency, interaction mode, artifact panel preference, and multilingual mode.", new
+            Fn("quote_update_settings", "Update the customer's session preferences (response language, units, currency, interaction mode, artifact panel, multilingual). Applies immediately with no confirmation card. Send only the fields the customer asked to change. To switch the UI display language, use quote_set_ui_language instead.", new
             {
                 type = "OBJECT",
                 properties = new
@@ -505,7 +505,7 @@ public static class ToolRegistry
                     multilingual = new { type = "BOOLEAN", description = "Whether bilingual/multilingual responses should remain enabled." }
                 }
             }),
-            Fn("quote_update_account_profile", "Prepare a confirmation-required update to the signed-in customer's safe account profile fields such as display name, phone, company, VAT number, language, currency, or timezone.", new
+            Fn("quote_update_account_profile", "Prepare an update to the signed-in customer's safe account profile fields (display name, phone, company, VAT number, preferred language/currency, timezone). Requires authentication; the BFF returns a confirmation card and only persists after the customer confirms. Use for durable account changes - for session-only preferences use quote_update_settings.", new
             {
                 type = "OBJECT",
                 properties = new
@@ -522,7 +522,7 @@ public static class ToolRegistry
                     timezone = new { type = "STRING", description = "Preferred customer timezone such as Asia/Bangkok." }
                 }
             }),
-            Fn("quote_get_reference_data", "Get customer-safe manufacturing reference options such as processes, materials, finishes, tolerances, quantities, and lead-time options.", new
+            Fn("quote_get_reference_data", "Get the valid manufacturing options QuoteEngine supports - processes, materials, finishes, tolerances, quantities, and lead-time choices - optionally scoped to one process. Read-only. Use before quote_update_part_configuration so you offer and set real option codes instead of guessing.", new
             {
                 type = "OBJECT",
                 properties = new
@@ -530,7 +530,7 @@ public static class ToolRegistry
                     process = new { type = "STRING", description = "Optional manufacturing process code such as fdm, sla, sls, cnc, sheet-metal, or urethane-casting." }
                 }
             }),
-            Fn("quote_update_part_configuration", "Update draft quote configuration for process, material, finish or color, tolerance, quantity, and lead time. This is a draft-only action.", new
+            Fn("quote_update_part_configuration", "Set the draft quote configuration - process, material, finish/color, tolerance, quantity, lead time - for a part. Draft-only and applied without a confirmation card; omit part_id to target the primary part. Use quote_get_reference_data first to pick valid codes, and follow with quote_calculate_estimate to refresh pricing.", new
             {
                 type = "OBJECT",
                 properties = new
@@ -545,7 +545,7 @@ public static class ToolRegistry
                     lead_time = new { type = "STRING", description = "Lead-time target or option." }
                 }
             }),
-            Fn("quote_calculate_estimate", "Request a current estimate after geometry and required configuration gates are satisfied.", new
+            Fn("quote_calculate_estimate", "Request a fresh price estimate for the current part and configuration. Call once geometry (uploaded CAD or a generated 3D preview) and required configuration are ready - in the SAME turn after generating a preview or changing configuration. Returns the estimate, or a customer-friendly blocker naming the missing input; if blocked, explain that next step rather than the internal reason, and never promise to estimate 'later'.", new
             {
                 type = "OBJECT",
                 properties = new
@@ -553,7 +553,7 @@ public static class ToolRegistry
                     currency = new { type = "STRING", description = "Preferred currency code such as THB or USD." }
                 }
             }),
-            Fn("quote_update_checkout_details", "Record billing, shipping, phone, company/VAT, terms, and consent details required before payment.", new
+            Fn("quote_update_checkout_details", "Record the billing/shipping/phone/company/VAT/terms/consent needed before an order and payment. Get billing_address_id and shipping_address_id from quote_get_account_context and reuse the customer's saved defaults - do not ask them to retype details QuoteEngine already returned. Required before quote_create_order / quote_start_payment when checkout is incomplete.", new
             {
                 type = "OBJECT",
                 properties = new
@@ -568,7 +568,7 @@ public static class ToolRegistry
                 },
                 required = new[] { "billing_address_id", "shipping_address_id", "accepted_terms", "consent" }
             }),
-            Fn("quote_prepare_draft_project", "Prepare a draft project action. The BFF returns a confirmation card before durable project creation.", new
+            Fn("quote_prepare_draft_project", "Prepare durable creation of a customer draft project from the current session so it can be saved, resumed, and ordered later. Requires authentication; the BFF returns a confirmation card and only creates the project after the customer confirms.", new
             {
                 type = "OBJECT",
                 properties = new
@@ -577,7 +577,7 @@ public static class ToolRegistry
                     requirements = new { type = "STRING", description = "Project requirements summary." }
                 }
             }),
-            Fn("quote_duplicate_project", "Prepare duplication of the current customer draft project. The BFF returns a confirmation card before creating the duplicate.", new
+            Fn("quote_duplicate_project", "Prepare a copy of the current customer draft project into a fresh Make Studio session. This is the correct path when the customer wants to reorder or rerun an existing job - duplicate first, then change quantities/materials/files there instead of mutating completed order history. Requires authentication; confirmation-gated.", new
             {
                 type = "OBJECT",
                 properties = new
@@ -585,7 +585,7 @@ public static class ToolRegistry
                     title = new { type = "STRING", description = "Optional title for the duplicated project." }
                 }
             }),
-            Fn("quote_pin_project", "Prepare pinning a customer Make Studio project for quick access. The BFF returns a confirmation card before changing project state.", new
+            Fn("quote_pin_project", "Prepare pinning a customer project for quick access in Make Studio. project_id comes from quote_search_customer_data; omit it to use the current draft project. Confirmation-gated by the BFF.", new
             {
                 type = "OBJECT",
                 properties = new
@@ -593,7 +593,7 @@ public static class ToolRegistry
                     project_id = new { type = "STRING", description = "Optional project UUID. Omit to use the current draft project." }
                 }
             }),
-            Fn("quote_unpin_project", "Prepare unpinning a customer Make Studio project from quick access. The BFF returns a confirmation card before changing project state.", new
+            Fn("quote_unpin_project", "Prepare unpinning a customer project from quick access. project_id comes from quote_search_customer_data; omit it to use the current draft project. Confirmation-gated by the BFF.", new
             {
                 type = "OBJECT",
                 properties = new
@@ -601,7 +601,7 @@ public static class ToolRegistry
                     project_id = new { type = "STRING", description = "Optional project UUID. Omit to use the current draft project." }
                 }
             }),
-            Fn("quote_archive_project", "Prepare archiving a customer Make Studio project. The BFF returns a confirmation card before changing project state.", new
+            Fn("quote_archive_project", "Prepare archiving a customer project so it leaves the active project list. project_id comes from quote_search_customer_data; omit it to use the current draft project. Confirmation-gated by the BFF.", new
             {
                 type = "OBJECT",
                 properties = new
@@ -618,7 +618,7 @@ public static class ToolRegistry
                     note = new { type = "STRING", description = "Customer-visible review question or concern for the MALIEV employee." }
                 }
             }),
-            Fn("quote_prepare_formal_quote", "Prepare a formal quote action. The BFF returns a confirmation card and requires customer authentication before execution.", new
+            Fn("quote_prepare_formal_quote", "Prepare generation of the formal quote artifact the customer reviews before approving. Call only after current geometry, DFM, configuration, and pricing are ready. Requires authentication; the BFF returns a confirmation card and generates the artifact only after the customer confirms. First step of the finalization sequence: formal quote -> approve -> create order -> payment.", new
             {
                 type = "OBJECT",
                 properties = new
@@ -626,7 +626,7 @@ public static class ToolRegistry
                     requirements = new { type = "STRING", description = "Requirements summary to include in the formal quote artifact." }
                 }
             }),
-            Fn("quote_approve_quote", "Prepare quote approval after a formal quote is ready. The BFF returns a confirmation card before recording customer approval.", new
+            Fn("quote_approve_quote", "Prepare recording the customer's approval of the formal quote, which unlocks order creation. Call only after the formal quote artifact exists and the customer has reviewed it. Confirmation-gated by the BFF.", new
             {
                 type = "OBJECT",
                 properties = new
@@ -634,7 +634,7 @@ public static class ToolRegistry
                     note = new { type = "STRING", description = "Optional customer approval note." }
                 }
             }),
-            Fn("quote_acknowledge_dfm", "Prepare acknowledgement for reviewed DFM risks. The BFF returns a confirmation card before recording acknowledgement.", new
+            Fn("quote_acknowledge_dfm", "Prepare recording that the customer reviewed and accepts specific DFM risks so those risks stop blocking the quote. issue_ids come from the DFM findings in quote_get_project_summary / quote_get_state. Use only after you have explained the actual risks and options in plain language and the customer chose to proceed. Confirmation-gated.", new
             {
                 type = "OBJECT",
                 properties = new
@@ -643,7 +643,7 @@ public static class ToolRegistry
                     note = new { type = "STRING", description = "Customer acknowledgement note." }
                 }
             }),
-            Fn("quote_create_order", "Prepare manufacturing order creation. The BFF requires authentication, approved quote state, checkout readiness, and an explicit confirmation card.", new
+            Fn("quote_create_order", "Prepare creating the manufacturing order from an approved quote. The BFF requires authentication, an approved quote, and checkout readiness, and returns a confirmation card before creating anything. Call only after quote_approve_quote and complete checkout details; the resulting order_number feeds quote_start_payment.", new
             {
                 type = "OBJECT",
                 properties = new
@@ -652,7 +652,7 @@ public static class ToolRegistry
                     requirements = new { type = "STRING", description = "Order requirements summary." }
                 }
             }),
-            Fn("quote_start_payment", "Prepare payment initiation. The BFF validates ownership, amount, terms, and checkout gates before returning a confirmation/payment handoff.", new
+            Fn("quote_start_payment", "Prepare initiating payment for an existing order. order_number comes from the quote_create_order result / quote_get_project_summary. The BFF validates ownership, amount, terms, and checkout gates, then returns a confirmation/payment handoff. Reuse the same checkout_attempt_id when retrying the same payment so PaymentService can deduplicate.", new
             {
                 type = "OBJECT",
                 properties = new
@@ -663,7 +663,7 @@ public static class ToolRegistry
                     checkout_attempt_id = new { type = "STRING", description = "Stable UUID for this payment attempt. Reuse the same value when retrying the same handoff so PaymentService idempotency can deduplicate safely." }
                 }
             }),
-            Fn("quote_get_account_context", "Get customer sign-in state and safe account context for deciding whether to show sign-in, sign-up, or continuation prompts.", new
+            Fn("quote_get_account_context", "Read the customer's sign-in state and safe account context, including default billing/shipping addresses and profile details used at checkout. Read-only. Call first for any checkout/order/payment flow to decide whether a sign-in/sign-up handoff is needed and to reuse saved addresses (their IDs feed quote_update_checkout_details) instead of asking the customer to retype them.", new
             {
                 type = "OBJECT",
                 properties = new { }
