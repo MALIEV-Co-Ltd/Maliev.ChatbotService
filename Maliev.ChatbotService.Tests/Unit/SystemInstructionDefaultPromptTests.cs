@@ -50,6 +50,7 @@ public sealed class SystemInstructionDefaultPromptTests
         Assert.Contains("quote_cad_apply_operations", prompt, StringComparison.Ordinal);
         Assert.Contains("quote_cad_observe_design", prompt, StringComparison.Ordinal);
         Assert.Contains("quote_cad_finalize_preview", prompt, StringComparison.Ordinal);
+        Assert.Contains("quote_calculate_estimate", prompt, StringComparison.Ordinal);
         Assert.Contains("quote_request_employee_review", prompt, StringComparison.Ordinal);
         Assert.Contains("MALIEV project review queue", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("quote_prepare_formal_quote", prompt, StringComparison.Ordinal);
@@ -85,6 +86,8 @@ public sealed class SystemInstructionDefaultPromptTests
         Assert.Contains("3 operation batches", prompt, StringComparison.Ordinal);
         Assert.Contains("full revised cad_commands", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("say the preview is available in the quote workbench", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("call quote_calculate_estimate in the same turn", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Do not end a response with \"I will now calculate an estimate\"", prompt, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -159,6 +162,7 @@ public sealed class SystemInstructionDefaultPromptTests
         Assert.Contains("quote_cad_apply_operations", prompt, StringComparison.Ordinal);
         Assert.Contains("quote_cad_observe_design", prompt, StringComparison.Ordinal);
         Assert.Contains("quote_cad_finalize_preview", prompt, StringComparison.Ordinal);
+        Assert.Contains("quote_calculate_estimate", prompt, StringComparison.Ordinal);
         Assert.Contains("genuinely blocking ambiguity", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("2-4 discrete mutually exclusive options", prompt, StringComparison.Ordinal);
         Assert.Contains("never say that you opened, displayed, loaded, or showed a viewer", prompt, StringComparison.OrdinalIgnoreCase);
@@ -169,6 +173,8 @@ public sealed class SystemInstructionDefaultPromptTests
         Assert.Contains("3 operation batches", prompt, StringComparison.Ordinal);
         Assert.Contains("full revised cad_commands", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("say the preview is available in the quote workbench", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("call `quote_calculate_estimate` in the same turn", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Do not end a response with \"I will now calculate an estimate\"", prompt, StringComparison.Ordinal);
         Assert.DoesNotContain("state which gate is blocking", prompt, StringComparison.OrdinalIgnoreCase);
     }
 }
