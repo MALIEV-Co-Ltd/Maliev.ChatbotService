@@ -14,7 +14,10 @@ namespace Maliev.ChatbotService.Tests.Integration;
 
 public sealed class GeminiWebhooksApiTests : IAsyncLifetime
 {
-    private const string SigningSecret = "whsec_dGVzdC13ZWJob29rLXNlY3JldA==";
+    private const string SigningSecretPrefix = "whsec_";
+    private const string TestSigningSecretMaterial = "maliev-chatbot-webhook-test-secret";
+    private static string SigningSecret => SigningSecretPrefix + Convert.ToBase64String(SigningSecretBytes);
+    private static byte[] SigningSecretBytes => Encoding.UTF8.GetBytes(TestSigningSecretMaterial);
     private readonly GeminiWebhookTestFactory _factory = new();
 
     public async Task InitializeAsync()
@@ -94,9 +97,8 @@ public sealed class GeminiWebhooksApiTests : IAsyncLifetime
 
     private static string Sign(string webhookId, string timestamp, string payload)
     {
-        var secretBytes = Convert.FromBase64String(SigningSecret["whsec_".Length..]);
         var signedContent = $"{webhookId}.{timestamp}.{payload}";
-        using var hmac = new HMACSHA256(secretBytes);
+        using var hmac = new HMACSHA256(SigningSecretBytes);
         var signature = Convert.ToBase64String(hmac.ComputeHash(Encoding.UTF8.GetBytes(signedContent)));
 
         return $"v1,{signature}";
