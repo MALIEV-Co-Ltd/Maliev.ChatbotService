@@ -88,6 +88,10 @@ public sealed class SystemInstructionDefaultPromptTests
         Assert.Contains("say the preview is available in the quote workbench", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("call quote_calculate_estimate in the same turn", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Do not end a response with \"I will now calculate an estimate\"", prompt, StringComparison.Ordinal);
+        Assert.Contains("Reproduce the part's actual silhouette", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("rather than a plain bounding box", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("trace the closed 2D outline as an extrude profile", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("repeated or cut features", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -175,6 +179,9 @@ public sealed class SystemInstructionDefaultPromptTests
         Assert.Contains("say the preview is available in the quote workbench", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("call `quote_calculate_estimate` in the same turn", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Do not end a response with \"I will now calculate an estimate\"", prompt, StringComparison.Ordinal);
+        Assert.Contains("never reduce a recognizable object to a plain bounding box", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("trace the closed 2D outline as an", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Model repeated or cut features", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("state which gate is blocking", prompt, StringComparison.OrdinalIgnoreCase);
     }
 }

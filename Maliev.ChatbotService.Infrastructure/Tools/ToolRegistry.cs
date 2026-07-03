@@ -341,13 +341,13 @@ public static class ToolRegistry
                     cad_commands = new
                     {
                         type = "ARRAY",
-                        description = "Ordered build commands. Primitives: box params [w,d,h] and aliases plate/slot/cutout; cylinder [radius,height] and aliases hole/boss/standoff; sphere [radius]; cone [radiusBottom,radiusTop,height]. Boolean: cut/fuse with target_id+tool_id+result_id. Edge: fillet with target_id+radius+result_id. Move: translate with target_id+offset+result_id.",
+                        description = "Ordered build commands. Primitives: box params [w,d,h] and aliases plate/slot/cutout; cylinder [radius,height] and aliases hole/boss/standoff; sphere [radius]; cone [radiusBottom,radiusTop,height]. Boolean: cut/fuse/intersect with target_id+tool_id+result_id. Edge: fillet/chamfer with target_id+radius+result_id. Move: translate with target_id+offset+result_id; rotate with target_id+axis+angle. Outline shapes: reproduce the real silhouette instead of a bounding box - extrude with a profile of ordered move/line/arc segments (or a points/polyline list) params [height] traces a real outline (comb with teeth, letter, gear, bracket, hook); revolve sweeps a profile around an axis. Model repeated features explicitly: include every tooth in the extruded outline, or reuse one positioned cutter template with translate+cut for each hole/slot - a shape id may be reused across ops.",
                         items = new
                         {
                             type = "OBJECT",
                             properties = new
                             {
-                                op = new { type = "STRING", description = "box, cylinder, sphere, cone, cut, fuse, fillet, translate, rotate, extrude, revolve, or accepted aliases such as plate, slot, hole, boss, or standoff." },
+                                op = new { type = "STRING", description = "box, cylinder, sphere, cone, cut, fuse, intersect, fillet, chamfer, translate, rotate, extrude, revolve, loft, or accepted aliases such as plate, slot, hole, boss, or standoff." },
                                 operation = new { type = "STRING", description = "Operation alias for op when the model uses operation." },
                                 type = new { type = "STRING", description = "Operation type alias for op when the model uses type." },
                                 shape = new { type = "STRING", description = "Shape alias for primitive op, such as box, cylinder, sphere, or cone." },
@@ -440,8 +440,8 @@ public static class ToolRegistry
                                                 type = "OBJECT",
                                                 properties = new
                                                 {
-                                                    type = new { type = "STRING", description = "Segment type such as line." },
-                                                    @params = new { type = "ARRAY", items = new { type = "NUMBER" }, description = "Segment coordinates." },
+                                                    type = new { type = "STRING", description = "Segment type: move (start the outline at [x,y]), line (straight segment to [x,y]), hLine/vLine (horizontal/vertical delta), arc (three-point arc), or bezier. Order segments as one closed loop tracing the silhouette; the first segment should be move." },
+                                                    @params = new { type = "ARRAY", items = new { type = "NUMBER" }, description = "Segment coordinates in millimetres: move/line [x,y]; hLine/vLine [delta]; arc/bezier [x1,y1,x2,y2]." },
                                                     parameters = new { type = "ARRAY", items = new { type = "NUMBER" }, description = "Alias for segment params." },
                                                     x = new { type = "NUMBER", description = "Named X coordinate for move/line segments." },
                                                     y = new { type = "NUMBER", description = "Named Y coordinate for move/line segments." },
