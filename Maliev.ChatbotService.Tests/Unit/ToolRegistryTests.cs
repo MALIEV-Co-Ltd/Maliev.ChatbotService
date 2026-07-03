@@ -64,6 +64,10 @@ public class ToolRegistryTests
             "quote_get_connector_handoff",
             "quote_register_uploads",
             "quote_generate_3d_preview",
+            "quote_cad_start_design",
+            "quote_cad_apply_operations",
+            "quote_cad_observe_design",
+            "quote_cad_finalize_preview",
             "quote_resume_project",
             "quote_search_customer_data",
             "quote_get_auth_handoff",
@@ -100,6 +104,41 @@ public class ToolRegistryTests
 
         var websiteDeclarations = ToolRegistry.GetToolDeclarationsForProfile("website");
         Assert.Empty(websiteDeclarations);
+    }
+
+    [Fact]
+    public void GetToolDeclarationsForProfile_QuoteCadWorkbenchDeclaresBoundedIterativeTools()
+    {
+        var quoteDeclarations = ToolRegistry.GetToolDeclarationsForProfile("quote-engine");
+        var tools = quoteDeclarations[0].FunctionDeclarations!.ToDictionary(declaration => declaration.Name);
+
+        Assert.Contains("bounded iterative CAD design session", tools["quote_cad_start_design"].Description, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("80 CAD operations", tools["quote_cad_apply_operations"].Description, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("base_revision", tools["quote_cad_apply_operations"].Description, StringComparison.Ordinal);
+        Assert.Contains("Observe", tools["quote_cad_observe_design"].Description, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("finalize", tools["quote_cad_finalize_preview"].Description, StringComparison.OrdinalIgnoreCase);
+
+        var startJson = JsonSerializer.Serialize(tools["quote_cad_start_design"].Parameters);
+        using var startDocument = JsonDocument.Parse(startJson);
+        var startProperties = startDocument.RootElement.GetProperty("properties");
+        Assert.True(startProperties.TryGetProperty("description", out _));
+        Assert.True(startProperties.TryGetProperty("process_hint", out _));
+        Assert.True(startProperties.TryGetProperty("units", out _));
+
+        var applyJson = JsonSerializer.Serialize(tools["quote_cad_apply_operations"].Parameters);
+        using var applyDocument = JsonDocument.Parse(applyJson);
+        var applyProperties = applyDocument.RootElement.GetProperty("properties");
+        Assert.True(applyProperties.TryGetProperty("design_id", out _));
+        Assert.True(applyProperties.TryGetProperty("base_revision", out _));
+        Assert.True(applyProperties.TryGetProperty("stage", out _));
+        Assert.True(applyProperties.TryGetProperty("operations", out var operations));
+        Assert.Equal("ARRAY", operations.GetProperty("type").GetString());
+
+        var finalizeJson = JsonSerializer.Serialize(tools["quote_cad_finalize_preview"].Parameters);
+        using var finalizeDocument = JsonDocument.Parse(finalizeJson);
+        var finalizeProperties = finalizeDocument.RootElement.GetProperty("properties");
+        Assert.True(finalizeProperties.TryGetProperty("design_id", out _));
+        Assert.True(finalizeProperties.TryGetProperty("base_revision", out _));
     }
 
     [Fact]

@@ -290,6 +290,47 @@ public static class ToolRegistry
                 },
                 required = new[] { "files" }
             }),
+            Fn("quote_cad_start_design", "Start a bounded iterative CAD design session for sketch/drawing/photo-derived preview work before applying operations. Use this when the customer has enough shape and scale context for a design attempt.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    description = new { type = "STRING", description = "Short manufacturing description of the target design." },
+                    process_hint = new { type = "STRING", description = "Optional inferred process code such as fdm, sla, sls, or cnc." },
+                    units = new { type = "STRING", description = "Dimensional units for the design, usually mm." }
+                },
+                required = new[] { "description" }
+            }),
+            Fn("quote_cad_apply_operations", "Apply one bounded CAD operation batch to an active design. Requires design_id and base_revision. The full design must stay at or below 80 CAD operations and 3 operation batches.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    design_id = new { type = "STRING", description = "CAD design session UUID returned by quote_cad_start_design." },
+                    base_revision = new { type = "INTEGER", description = "Current design revision observed before this batch. Required to prevent stale edits." },
+                    stage = new { type = "STRING", description = "Progress stage such as requirements, sketch_profile, construction_geometry, solid_features, detailing, or preview_finalized." },
+                    operations = CadWorkbenchOperationsParameter()
+                },
+                required = new[] { "design_id", "base_revision", "operations" }
+            }),
+            Fn("quote_cad_observe_design", "Observe the current bounded CAD design revision, status, operation count, and remaining budget before deciding the next design action.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    design_id = new { type = "STRING", description = "Optional CAD design session UUID. Omit to observe the latest active design." }
+                }
+            }),
+            Fn("quote_cad_finalize_preview", "Finalize an active bounded CAD design into the QuoteEngine generated 3D preview artifact after observing the latest revision.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    design_id = new { type = "STRING", description = "CAD design session UUID returned by quote_cad_start_design." },
+                    base_revision = new { type = "INTEGER", description = "Current design revision observed before finalization. Required to prevent stale finalization." }
+                },
+                required = new[] { "design_id", "base_revision" }
+            }),
             Fn("quote_generate_3d_preview", "Generate an interactive 3D preview only when the part shape and dimensions are explicit, readable from an attached drawing/PDF, CAD-derived, or confirmed by the customer. Do not use this tool for an unlabeled sketch or photo with no scale reference; ask for one focused dimension confirmation first. Never ask for a CAD file as your first or only response. Construct the part as an ordered cad_commands sequence: create primitives, position with translate, combine with cut/fuse, then apply fillet edge ops last.", new
             {
                 type = "OBJECT",
@@ -674,6 +715,63 @@ public static class ToolRegistry
             })
         ];
     }
+
+    private static object CadWorkbenchOperationsParameter() => new
+    {
+        type = "ARRAY",
+        description = "Ordered CAD operation batch. Prefer sketch/profile operations first, then extrude/revolve/loft, then cut/fuse, then fillet/chamfer last.",
+        items = new
+        {
+            type = "OBJECT",
+            properties = new
+            {
+                op = new { type = "STRING", description = "box, cylinder, sphere, cone, extrude, revolve, loft, cut, fuse, intersect, fillet, chamfer, translate, rotate, or accepted aliases such as plate, hole, boss, or standoff." },
+                id = new { type = "STRING", description = "Identifier for a created primitive or profile-derived body." },
+                target_id = new { type = "STRING", description = "Target body id for boolean, edge, or transform operations." },
+                tool_id = new { type = "STRING", description = "Tool body id for cut, fuse, intersect, sweep, or loft operations." },
+                result_id = new { type = "STRING", description = "Result body id produced by this operation." },
+                @params = new { type = "ARRAY", items = new { type = "NUMBER" }, description = "Operation-specific numeric parameters in millimetres." },
+                radius = new { type = "NUMBER", description = "Fillet, chamfer, cylinder, sphere, or profile radius in millimetres when applicable." },
+                height = new { type = "NUMBER", description = "Primitive or extrusion height in millimetres." },
+                thickness = new { type = "NUMBER", description = "Plate or sheet thickness in millimetres." },
+                offset = new { type = "ARRAY", items = new { type = "NUMBER" }, description = "Translate offset [x,y,z] in millimetres." },
+                axis = new { type = "ARRAY", items = new { type = "NUMBER" }, description = "Rotate or revolve axis [x,y,z]." },
+                angleDegrees = new { type = "NUMBER", description = "Rotate or revolve angle in degrees." },
+                profile = new
+                {
+                    type = "OBJECT",
+                    description = "2D profile for extrude or revolve. Use closed move/line/arc segments for sketch-derived silhouettes.",
+                    properties = new
+                    {
+                        plane = new { type = "STRING", description = "Sketch plane such as XY, XZ, or YZ." },
+                        type = new { type = "STRING", description = "Profile shorthand such as rectangle, square, circle, or custom." },
+                        width = new { type = "NUMBER", description = "Rectangle profile width." },
+                        height = new { type = "NUMBER", description = "Rectangle profile height." },
+                        radius = new { type = "NUMBER", description = "Circle profile radius." },
+                        segments = new
+                        {
+                            type = "ARRAY",
+                            description = "Ordered closed sketch segments.",
+                            items = new
+                            {
+                                type = "OBJECT",
+                                properties = new
+                                {
+                                    type = new { type = "STRING", description = "Segment type: move, line, hLine, vLine, arc, or bezier." },
+                                    @params = new { type = "ARRAY", items = new { type = "NUMBER" }, description = "Segment coordinates or deltas." },
+                                    x = new { type = "NUMBER", description = "Named X coordinate for move/line segments." },
+                                    y = new { type = "NUMBER", description = "Named Y coordinate for move/line segments." },
+                                    dx = new { type = "NUMBER", description = "Horizontal delta for hLine segments." },
+                                    dy = new { type = "NUMBER", description = "Vertical delta for vLine segments." }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            required = new[] { "op" }
+        }
+    };
 
     private static List<GeminiToolDeclaration> Wrap(List<GeminiFunctionDeclaration> functionDeclarations)
     {
