@@ -88,7 +88,10 @@ public class SendMessageCommandHandler
         "project", "status", "history", "audit", "activity", "reminder",
         "connector", "handoff", "google drive", "drive file", "authenticate",
         "cad", "3d", "preview", "drawing", "stl", "step", "dxf", "mesh",
-        "inventory", "availability", "stock"
+        "inventory", "availability", "stock", "shipping", "delivery", "courier",
+        "ship", "postage", "freight", "address", "postcode", "postal code",
+        "industrial estate", "maptaphut", "map ta phut", "ค่าส่ง", "จัดส่ง",
+        "ขนส่ง", "ที่อยู่", "รหัสไปรษณีย์", "มาบตาพุด"
     ];
 
     private static readonly HashSet<string> AllowedChatModelOverrides = new(StringComparer.OrdinalIgnoreCase)
@@ -1545,6 +1548,11 @@ public class SendMessageCommandHandler
         };
 
         var messageLower = message.ToLowerInvariant();
+        if (ShouldTriggerAddressWebSearch(messageLower))
+        {
+            return true;
+        }
+
         if (!ContainsAny(messageLower, groundedTopicKeywords))
         {
             return false;
@@ -1563,6 +1571,24 @@ public class SendMessageCommandHandler
         };
 
         return ContainsAny(messageLower, freshnessKeywords) || ContainsAny(messageLower, sourceLookupKeywords);
+    }
+
+    private static bool ShouldTriggerAddressWebSearch(string messageLower)
+    {
+        var addressPlaceKeywords = new[]
+        {
+            "address", "location", "postal code", "postcode", "industrial estate",
+            "maptaphut", "map ta phut", "rayong", "shipping to", "delivery to",
+            "ที่อยู่", "รหัสไปรษณีย์", "นิคม", "มาบตาพุด", "ระยอง"
+        };
+        var lookupIntentKeywords = new[]
+        {
+            "find", "lookup", "look up", "search", "google", "where", "address",
+            "shipping", "delivery", "ship", "courier", "ค่าส่ง", "จัดส่ง", "ขนส่ง", "ที่อยู่"
+        };
+
+        return ContainsAny(messageLower, addressPlaceKeywords) &&
+            ContainsAny(messageLower, lookupIntentKeywords);
     }
 
     private static bool ContainsAny(string value, IEnumerable<string> keywords) =>

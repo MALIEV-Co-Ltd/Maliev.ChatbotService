@@ -101,6 +101,32 @@ public sealed class QuoteEngineToolHandlerTests
         Assert.Equal("/quote/v1/agent/tools/quote_resume_project", handler.SentRequest.RequestUri?.PathAndQuery);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_QuoteGetShippingRates_RoutesThroughToolExecutor()
+    {
+        var handler = new CapturingQuoteEngineHandler();
+        var factory = CreateFactory(handler);
+        var executor = new ToolExecutorService(factory.Object, NullLogger<ToolExecutorService>.Instance);
+
+        var result = await executor.ExecuteAsync(
+            "quote_get_shipping_rates",
+            new Dictionary<string, object>
+            {
+                ["address"] = "1 I-1 Road",
+                ["district"] = "Map Ta Phut",
+                ["state"] = "Mueang Rayong",
+                ["province"] = "Rayong",
+                ["postcode"] = "21150",
+                ["tel"] = "038683930"
+            },
+            new ToolExecutionContext(null, "signed-context-token"),
+            CancellationToken.None);
+
+        Assert.Equal("{\"ok\":true}", result);
+        Assert.NotNull(handler.SentRequest);
+        Assert.Equal("/quote/v1/agent/tools/quote_get_shipping_rates", handler.SentRequest.RequestUri?.PathAndQuery);
+    }
+
     [Theory]
     [MemberData(nameof(DeclaredQuoteEngineTools))]
     public async Task ExecuteAsync_DeclaredQuoteEngineTool_RoutesThroughToolExecutor(string toolName)

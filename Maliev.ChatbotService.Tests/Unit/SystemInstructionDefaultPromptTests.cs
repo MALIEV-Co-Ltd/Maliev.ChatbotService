@@ -46,6 +46,10 @@ public sealed class SystemInstructionDefaultPromptTests
         Assert.Contains("quote_get_account_context", prompt, StringComparison.Ordinal);
         Assert.Contains("quote_update_account_profile", prompt, StringComparison.Ordinal);
         Assert.Contains("quote_generate_3d_preview", prompt, StringComparison.Ordinal);
+        Assert.Contains("quote_get_shipping_rates", prompt, StringComparison.Ordinal);
+        Assert.Contains("quote_select_shipping_rate", prompt, StringComparison.Ordinal);
+        Assert.Contains("Google Search grounding", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("shipping options as a markdown table", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("quote_cad_start_design", prompt, StringComparison.Ordinal);
         Assert.Contains("quote_cad_apply_operations", prompt, StringComparison.Ordinal);
         Assert.Contains("quote_cad_observe_design", prompt, StringComparison.Ordinal);
@@ -145,6 +149,11 @@ public sealed class SystemInstructionDefaultPromptTests
         Assert.Contains("internal", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("customer-friendly next steps", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("quote_generate_3d_preview", prompt, StringComparison.Ordinal);
+        Assert.Contains("enable_web_search: true", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("quote_get_shipping_rates", prompt, StringComparison.Ordinal);
+        Assert.Contains("quote_select_shipping_rate", prompt, StringComparison.Ordinal);
+        Assert.Contains("Google Search grounding", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("shipping options as a markdown table", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("quote_request_employee_review", prompt, StringComparison.Ordinal);
         Assert.Contains("MALIEV project review queue", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("quote_prepare_formal_quote", prompt, StringComparison.Ordinal);

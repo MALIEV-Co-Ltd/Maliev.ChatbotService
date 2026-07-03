@@ -553,6 +553,45 @@ public static class ToolRegistry
                     currency = new { type = "STRING", description = "Preferred currency code such as THB or USD." }
                 }
             }),
+            Fn("quote_get_shipping_couriers", "List courier services available through QuoteEngine's DeliveryService/SHIPPOP boundary. Read-only. Use for general courier availability questions; use quote_get_shipping_rates when the customer asks for shipping cost, lead time, or delivery options for a specific destination.", new
+            {
+                type = "OBJECT",
+                properties = new { }
+            }),
+            Fn("quote_get_shipping_rates", "Get live courier shipping rates from DeliveryService/SHIPPOP for a destination address and current quote package. Use after the destination address, district/subdistrict, amphoe/state, province, postcode, and phone are known or have been grounded. Returns rates, lead times, prices, a markdown table, and customer-clickable selection actions. Do not answer shipping cost by promising to calculate later; call this tool and summarize the returned options.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    name = new { type = "STRING", description = "Recipient or destination display name." },
+                    address = new { type = "STRING", description = "Street address or industrial estate address line." },
+                    district = new { type = "STRING", description = "Subdistrict/tambon or district field required by SHIPPOP." },
+                    state = new { type = "STRING", description = "Amphoe/city/state field required by SHIPPOP." },
+                    province = new { type = "STRING", description = "Destination province, e.g. Rayong." },
+                    postcode = new { type = "STRING", description = "Destination postal code." },
+                    tel = new { type = "STRING", description = "Recipient or public destination phone number." },
+                    courier_codes = new
+                    {
+                        type = "ARRAY",
+                        items = new { type = "STRING" },
+                        description = "Optional courier codes to restrict the quote."
+                    },
+                    weight = new { type = "NUMBER", description = "Optional parcel weight in grams when known; QuoteEngine otherwise uses the current quote package/default." },
+                    length = new { type = "NUMBER", description = "Optional parcel length in centimeters." },
+                    width = new { type = "NUMBER", description = "Optional parcel width in centimeters." },
+                    height = new { type = "NUMBER", description = "Optional parcel height in centimeters." }
+                },
+                required = new[] { "address", "district", "state", "province", "postcode", "tel" }
+            }),
+            Fn("quote_select_shipping_rate", "Select one shipping option returned by quote_get_shipping_rates when the customer replies with or clicks a courier code/name. Use this after showing the shipping options as a markdown table and the customer chooses one.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    courier_code = new { type = "STRING", description = "Courier code from quote_get_shipping_rates, e.g. FLE or KRY." }
+                },
+                required = new[] { "courier_code" }
+            }),
             Fn("quote_update_checkout_details", "Record the billing/shipping/phone/company/VAT/terms/consent needed before an order and payment. Get billing_address_id and shipping_address_id from quote_get_account_context and reuse the customer's saved defaults - do not ask them to retype details QuoteEngine already returned. Required before quote_create_order / quote_start_payment when checkout is incomplete.", new
             {
                 type = "OBJECT",

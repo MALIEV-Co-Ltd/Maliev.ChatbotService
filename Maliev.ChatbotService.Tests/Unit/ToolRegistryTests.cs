@@ -77,6 +77,9 @@ public class ToolRegistryTests
             "quote_get_reference_data",
             "quote_update_part_configuration",
             "quote_calculate_estimate",
+            "quote_get_shipping_couriers",
+            "quote_get_shipping_rates",
+            "quote_select_shipping_rate",
             "quote_update_checkout_details",
             "quote_prepare_draft_project",
             "quote_duplicate_project",
@@ -320,6 +323,35 @@ public class ToolRegistryTests
 
         Assert.True(properties.TryGetProperty("checkout_attempt_id", out var checkoutAttemptId));
         Assert.Equal("STRING", checkoutAttemptId.GetProperty("type").GetString());
+    }
+
+    [Fact]
+    public void GetToolDeclarationsForProfile_QuoteShippingToolsDeclareAddressRateAndSelectionSchema()
+    {
+        var tools = ToolRegistry.GetToolDeclarationsForProfile("quote-engine")[0]
+            .FunctionDeclarations!
+            .ToDictionary(declaration => declaration.Name);
+
+        Assert.Contains("SHIPPOP", tools["quote_get_shipping_rates"].Description, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("markdown table", tools["quote_get_shipping_rates"].Description, StringComparison.OrdinalIgnoreCase);
+
+        var ratesJson = JsonSerializer.Serialize(tools["quote_get_shipping_rates"].Parameters);
+        using var ratesDocument = JsonDocument.Parse(ratesJson);
+        var rateProperties = ratesDocument.RootElement.GetProperty("properties");
+        Assert.True(rateProperties.TryGetProperty("address", out var address));
+        Assert.Equal("STRING", address.GetProperty("type").GetString());
+        Assert.True(rateProperties.TryGetProperty("postcode", out var postcode));
+        Assert.Equal("STRING", postcode.GetProperty("type").GetString());
+        Assert.True(rateProperties.TryGetProperty("tel", out var tel));
+        Assert.Equal("STRING", tel.GetProperty("type").GetString());
+        Assert.True(rateProperties.TryGetProperty("weight", out var weight));
+        Assert.Equal("NUMBER", weight.GetProperty("type").GetString());
+
+        var selectJson = JsonSerializer.Serialize(tools["quote_select_shipping_rate"].Parameters);
+        using var selectDocument = JsonDocument.Parse(selectJson);
+        var selectProperties = selectDocument.RootElement.GetProperty("properties");
+        Assert.True(selectProperties.TryGetProperty("courier_code", out var courierCode));
+        Assert.Equal("STRING", courierCode.GetProperty("type").GetString());
     }
 
     [Fact]

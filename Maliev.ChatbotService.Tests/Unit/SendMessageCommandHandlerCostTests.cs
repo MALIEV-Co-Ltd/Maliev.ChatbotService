@@ -179,6 +179,19 @@ public sealed class SendMessageCommandHandlerCostTests
     }
 
     [Fact]
+    public async Task HandleAsync_QuoteEngineAddressLookup_EnablesGeminiSearch()
+    {
+        var result = await SendWebsiteMessageAsync(
+            channel: Channel.QuoteEngine,
+            messageContent: "find the address for Maptaphut Industrial Estate so I can get shipping to Rayong",
+            instructionEnableWebSearch: true,
+            globalWebSearchEnabled: true);
+
+        Assert.NotNull(result.CapturedRequest);
+        Assert.True(result.CapturedRequest!.EnableWebSearch);
+    }
+
+    [Fact]
     public async Task HandleAsync_UrlContextEnabled_PublicUrlAnalysis_EnablesUrlContextWithoutSearch()
     {
         var result = await SendWebsiteMessageAsync(
