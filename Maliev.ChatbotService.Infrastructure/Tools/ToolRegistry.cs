@@ -725,12 +725,12 @@ public static class ToolRegistry
                 },
                 required = new[] { "name" }
             }),
-            Fn("quote_focus_ui", "Highlight or focus a specific area of the Make Studio workspace to guide the customer to relevant information. Use when pointing the customer to an artifact, estimate, or configuration panel.", new
+            Fn("quote_focus_ui", "Open and highlight a Make Studio workspace panel to guide the customer's attention. Only two panels are supported: 'artifacts' (the workbench / generated 3D preview) and 'summary' (the project summary). Use it to point the customer at a generated preview or the project summary; it cannot open estimate, configuration, or checkout panels.", new
             {
                 type = "OBJECT",
                 properties = new
                 {
-                    panel = new { type = "STRING", description = "Target panel: artifact, estimate, config, or checkout." },
+                    panel = new { type = "STRING", description = "Target panel: 'artifacts' (workbench / 3D preview) or 'summary' (project summary). Other values are ignored." },
                     target_type = new { type = "STRING", description = "Target element type such as summary, part, or artifact." },
                     target_id = new { type = "STRING", description = "Optional target element ID." },
                     highlight_key = new { type = "STRING", description = "Highlight key for the focus directive." },
