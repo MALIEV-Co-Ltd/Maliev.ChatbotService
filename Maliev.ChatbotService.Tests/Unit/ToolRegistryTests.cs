@@ -80,6 +80,8 @@ public class ToolRegistryTests
             "quote_get_shipping_couriers",
             "quote_get_shipping_rates",
             "quote_select_shipping_rate",
+            "quote_list_addresses",
+            "quote_search_addresses",
             "quote_update_checkout_details",
             "quote_prepare_draft_project",
             "quote_duplicate_project",
@@ -376,6 +378,10 @@ public class ToolRegistryTests
         // Estimate tool explains its blocker behavior; finalization sequence is spelled out.
         Assert.Contains("blocker", tools["quote_calculate_estimate"], StringComparison.OrdinalIgnoreCase);
         Assert.Contains("finalization sequence", tools["quote_prepare_formal_quote"], StringComparison.OrdinalIgnoreCase);
+
+        // Address tools: list is customer-scoped; search is registry-grounded.
+        Assert.Contains("only ever see this customer's addresses", tools["quote_list_addresses"], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Thai address registry", tools["quote_search_addresses"], StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

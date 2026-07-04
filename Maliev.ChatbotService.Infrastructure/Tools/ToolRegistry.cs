@@ -592,7 +592,25 @@ public static class ToolRegistry
                 },
                 required = new[] { "courier_code" }
             }),
-            Fn("quote_update_checkout_details", "Record the billing/shipping/phone/company/VAT/terms/consent needed before an order and payment. Get billing_address_id and shipping_address_id from quote_get_account_context and reuse the customer's saved defaults - do not ask them to retype details QuoteEngine already returned. Required before quote_create_order / quote_start_payment when checkout is incomplete.", new
+            Fn("quote_list_addresses", "List the signed-in customer's own saved billing and shipping addresses (id, type, default flag, recipient, one-line summary) so you can confirm which to use at checkout. Read-only and scoped to this customer; you only ever see this customer's addresses. Pass optional type=billing or type=shipping to filter. Use a returned id with quote_update_checkout_details.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    type = new { type = "STRING", description = "Optional filter: 'billing' or 'shipping'. Omit to list all saved addresses." }
+                }
+            }),
+            Fn("quote_search_addresses", "Search the Thai address registry for validated subdistrict/district/province/postal-code options to ground an address the customer is entering. Read-only and not customer-specific. Provide at least two characters. Use a returned suggestion to fill the district/state/province/postcode accurately, then confirm the full address with the customer before saving.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    query = new { type = "STRING", description = "Search text: a Thai subdistrict, district, province, or postal code (minimum 2 characters)." },
+                    limit = new { type = "INTEGER", description = "Optional maximum number of suggestions (1-20, default 8)." }
+                },
+                required = new[] { "query" }
+            }),
+            Fn("quote_update_checkout_details", "Record the billing/shipping/phone/company/VAT/terms/consent needed before an order and payment. Get billing_address_id and shipping_address_id from quote_get_account_context or quote_list_addresses and reuse the customer's saved defaults - do not ask them to retype details QuoteEngine already returned. Required before quote_create_order / quote_start_payment when checkout is incomplete.", new
             {
                 type = "OBJECT",
                 properties = new

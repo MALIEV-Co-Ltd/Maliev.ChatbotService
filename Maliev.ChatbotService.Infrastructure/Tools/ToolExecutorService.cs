@@ -83,6 +83,8 @@ public class ToolExecutorService : IToolExecutorService
             ["quote_get_shipping_couriers"] = quoteEngineHandler,
             ["quote_get_shipping_rates"] = quoteEngineHandler,
             ["quote_select_shipping_rate"] = quoteEngineHandler,
+            ["quote_list_addresses"] = quoteEngineHandler,
+            ["quote_search_addresses"] = quoteEngineHandler,
             ["quote_update_checkout_details"] = quoteEngineHandler,
             ["quote_prepare_draft_project"] = quoteEngineHandler,
             ["quote_duplicate_project"] = quoteEngineHandler,

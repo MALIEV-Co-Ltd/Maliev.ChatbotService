@@ -43,6 +43,8 @@ public sealed class QuoteEngineToolHandler(
         "quote_get_shipping_couriers",
         "quote_get_shipping_rates",
         "quote_select_shipping_rate",
+        "quote_list_addresses",
+        "quote_search_addresses",
         "quote_update_checkout_details",
         "quote_prepare_draft_project",
         "quote_duplicate_project",
