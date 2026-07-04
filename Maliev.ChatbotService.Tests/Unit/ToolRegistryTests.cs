@@ -82,6 +82,7 @@ public class ToolRegistryTests
             "quote_select_shipping_rate",
             "quote_list_addresses",
             "quote_search_addresses",
+            "quote_prepare_address",
             "quote_update_checkout_details",
             "quote_prepare_draft_project",
             "quote_duplicate_project",

@@ -610,6 +610,25 @@ public static class ToolRegistry
                 },
                 required = new[] { "query" }
             }),
+            Fn("quote_prepare_address", "Propose saving a new billing or shipping address for the signed-in customer. The BFF returns a confirmation card the customer must confirm before the address is written (scoped to this customer). Ground the district/province/postcode with quote_search_addresses first and confirm the full address with the customer. address_line_1, city, province, and postal_code are required; country defaults to Thailand (TH). Use for adding an address in chat instead of asking the customer to leave; the customer still confirms before it saves.", new
+            {
+                type = "OBJECT",
+                properties = new
+                {
+                    type = new { type = "STRING", description = "Address type: 'shipping' (default) or 'billing'." },
+                    address_line_1 = new { type = "STRING", description = "Street/house number and road (required)." },
+                    address_line_2 = new { type = "STRING", description = "Optional second line (building, floor, unit)." },
+                    district = new { type = "STRING", description = "Subdistrict/tambon, grounded via quote_search_addresses when possible." },
+                    city = new { type = "STRING", description = "District/amphoe (required)." },
+                    province = new { type = "STRING", description = "Province (required)." },
+                    postal_code = new { type = "STRING", description = "Postal code (required)." },
+                    country_iso2 = new { type = "STRING", description = "Country ISO2 code; defaults to TH (Thailand)." },
+                    recipient_name = new { type = "STRING", description = "Recipient name for shipping." },
+                    recipient_phone = new { type = "STRING", description = "Recipient phone number." },
+                    is_default = new { type = "BOOLEAN", description = "Whether to make this the default address for its type." }
+                },
+                required = new[] { "address_line_1", "city", "province", "postal_code" }
+            }),
             Fn("quote_update_checkout_details", "Record the billing/shipping/phone/company/VAT/terms/consent needed before an order and payment. Get billing_address_id and shipping_address_id from quote_get_account_context or quote_list_addresses and reuse the customer's saved defaults - do not ask them to retype details QuoteEngine already returned. Required before quote_create_order / quote_start_payment when checkout is incomplete.", new
             {
                 type = "OBJECT",

@@ -99,7 +99,7 @@ public sealed class SystemInstructionDefaultPromptTests
         Assert.Contains("act as the signed-in customer with exactly that customer's permissions", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("never access, reference, or reveal another customer's data", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("no saved billing or shipping address", prompt, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("do not collect the full address in chat", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("confirms the address before it is saved", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -198,7 +198,7 @@ public sealed class SystemInstructionDefaultPromptTests
         Assert.Contains("act as the signed-in customer with exactly that customer's permissions", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("never access, reference, or reveal another customer's data", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("no saved billing or shipping address", prompt, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("do not collect the full address in chat", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("confirms the address before it is saved", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("state which gate is blocking", prompt, StringComparison.OrdinalIgnoreCase);
     }
 }
