@@ -377,4 +377,65 @@ public class ToolRegistryTests
         Assert.Contains("blocker", tools["quote_calculate_estimate"], StringComparison.OrdinalIgnoreCase);
         Assert.Contains("finalization sequence", tools["quote_prepare_formal_quote"], StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void GetToolDeclarationsForProfile_QuoteToolsNeverAcceptCustomerIdentityOverrideParameters()
+    {
+        // SECURITY: the agent must have exactly the signed-in customer's permissions and only ever
+        // see that customer's own data. The BFF resolves the customer identity server-side from the
+        // authenticated request (CustomerSessionResolver reads the customer_id claim) and never trusts
+        // tool arguments for identity. A tool that DECLARED an identity-override parameter would invite
+        // a prompt-injected message or a hallucinating model to target another customer's projects,
+        // orders, or account. Enforce that no quote-engine tool exposes such a parameter at any depth.
+        // (Resource references the BFF ownership-checks - project_id, order_number, address_id - are
+        // fine; only identity-of-the-actor overrides are forbidden.)
+        string[] forbidden =
+        [
+            "customer_id", "customerId",
+            "owner_id", "ownerId",
+            "tenant_id", "tenantId",
+            "user_id", "userId",
+            "account_id", "accountId",
+            "on_behalf_of", "onBehalfOf",
+            "impersonate", "as_customer", "asCustomer"
+        ];
+
+        var tools = ToolRegistry.GetToolDeclarationsForProfile("quote-engine")[0].FunctionDeclarations!;
+        foreach (var tool in tools)
+        {
+            var json = JsonSerializer.Serialize(tool.Parameters);
+            using var document = JsonDocument.Parse(json);
+            var propertyNames = new List<string>();
+            CollectObjectKeys(document.RootElement, propertyNames);
+
+            foreach (var forbiddenName in forbidden)
+            {
+                Assert.DoesNotContain(
+                    propertyNames,
+                    name => string.Equals(name, forbiddenName, StringComparison.OrdinalIgnoreCase));
+            }
+        }
+    }
+
+    private static void CollectObjectKeys(JsonElement element, List<string> keys)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.Object:
+                foreach (var property in element.EnumerateObject())
+                {
+                    keys.Add(property.Name);
+                    CollectObjectKeys(property.Value, keys);
+                }
+
+                break;
+            case JsonValueKind.Array:
+                foreach (var item in element.EnumerateArray())
+                {
+                    CollectObjectKeys(item, keys);
+                }
+
+                break;
+        }
+    }
 }

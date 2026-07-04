@@ -96,6 +96,8 @@ public sealed class SystemInstructionDefaultPromptTests
         Assert.Contains("rather than a plain bounding box", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("trace the closed 2D outline as an extrude profile", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("repeated or cut features", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("act as the signed-in customer with exactly that customer's permissions", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("never access, reference, or reveal another customer's data", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -191,6 +193,8 @@ public sealed class SystemInstructionDefaultPromptTests
         Assert.Contains("never reduce a recognizable object to a plain bounding box", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("trace the closed 2D outline as an", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Model repeated or cut features", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("act as the signed-in customer with exactly that customer's permissions", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("never access, reference, or reveal another customer's data", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("state which gate is blocking", prompt, StringComparison.OrdinalIgnoreCase);
     }
 }
