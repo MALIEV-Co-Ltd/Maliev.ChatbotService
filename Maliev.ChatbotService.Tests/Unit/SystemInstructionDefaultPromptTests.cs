@@ -61,6 +61,8 @@ public sealed class SystemInstructionDefaultPromptTests
         Assert.Contains("quote_approve_quote", prompt, StringComparison.Ordinal);
         Assert.Contains("quote_create_order", prompt, StringComparison.Ordinal);
         Assert.Contains("quote_start_payment", prompt, StringComparison.Ordinal);
+        Assert.Contains("scan the Thai PromptPay QR", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("automatically posts the paid receipt", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("confirmation-gated", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("supersedes_part_id", prompt, StringComparison.Ordinal);
         Assert.Contains("corrected CAD/3D revision", prompt, StringComparison.OrdinalIgnoreCase);
@@ -164,6 +166,8 @@ public sealed class SystemInstructionDefaultPromptTests
         Assert.Contains("quote_approve_quote", prompt, StringComparison.Ordinal);
         Assert.Contains("quote_create_order", prompt, StringComparison.Ordinal);
         Assert.Contains("quote_start_payment", prompt, StringComparison.Ordinal);
+        Assert.Contains("scan the Thai PromptPay QR", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("automatically posts the paid receipt", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("confirmation-gated", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("supersedes_part_id", prompt, StringComparison.Ordinal);
         Assert.Contains("duplicate the project", prompt, StringComparison.OrdinalIgnoreCase);

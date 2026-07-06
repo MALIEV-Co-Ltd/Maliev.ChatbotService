@@ -728,7 +728,7 @@ public static class ToolRegistry
                     requirements = new { type = "STRING", description = "Order requirements summary." }
                 }
             }),
-            Fn("quote_start_payment", "Prepare initiating payment for an existing order. order_number comes from the quote_create_order result / quote_get_project_summary. The BFF validates ownership, amount, terms, and checkout gates, then returns a confirmation/payment handoff. Reuse the same checkout_attempt_id when retrying the same payment so PaymentService can deduplicate.", new
+            Fn("quote_start_payment", "Prepare initiating payment for an existing order. order_number comes from the quote_create_order result / quote_get_project_summary. The BFF validates ownership, amount, terms, and checkout gates, then returns a confirmation/payment handoff. The handoff shows a Thai PromptPay QR in the chat for the customer to scan; QuoteEngine auto-confirms the paid receipt in chat once the payment webhook fires, so tell the customer to scan the QR and do not ask them to confirm payment manually. Reuse the same checkout_attempt_id when retrying the same payment so PaymentService can deduplicate.", new
             {
                 type = "OBJECT",
                 properties = new
