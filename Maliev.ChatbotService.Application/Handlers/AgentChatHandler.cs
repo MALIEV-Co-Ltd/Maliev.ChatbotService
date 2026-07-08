@@ -142,17 +142,30 @@ public class AgentChatHandler
 
                 if (!response.HasFunctionCalls)
                 {
-                    // Final text response
-                    return new AgentChatResult
+                    // Some models leak tool calls as text ("tool_code print(quote_calculate_estimate())")
+                    // instead of native function-call parts. Ending the turn there would show the customer
+                    // raw pseudo-code and silently drop the work, so recover and execute those calls.
+                    var recoveredCalls = LeakedToolCallParser.Parse(response.Content, GetDeclaredToolNames(request.Tools));
+                    if (recoveredCalls.Count == 0)
                     {
-                        Success = true,
-                        Content = response.Content,
-                        ThinkingSteps = thinkingSteps,
-                        TokenUsage = sawUsage ? accumulatedUsage : null,
-                        ServiceTier = serviceTier,
-                        GroundingWebSearchQueries = groundingWebSearchQueries,
-                        GoogleSearchGroundingPromptCount = googleSearchGroundingPromptCount
-                    };
+                        // Final text response
+                        return new AgentChatResult
+                        {
+                            Success = true,
+                            Content = response.Content,
+                            ThinkingSteps = thinkingSteps,
+                            TokenUsage = sawUsage ? accumulatedUsage : null,
+                            ServiceTier = serviceTier,
+                            GroundingWebSearchQueries = groundingWebSearchQueries,
+                            GoogleSearchGroundingPromptCount = googleSearchGroundingPromptCount
+                        };
+                    }
+
+                    _logger.LogWarning(
+                        "Model leaked {Count} textual tool call(s) instead of native function calls; recovering: {Tools}",
+                        recoveredCalls.Count,
+                        string.Join(", ", recoveredCalls.Select(call => call.Name)));
+                    response.FunctionCalls.AddRange(recoveredCalls);
                 }
 
                 // Add the model's tool-call turn as native function-call parts (not serialized text).
@@ -519,6 +532,20 @@ public class AgentChatHandler
             Success = false,
             ErrorMessage = "Gemini streaming ended without a final response."
         };
+    }
+
+    private static IReadOnlyCollection<string> GetDeclaredToolNames(List<GeminiToolDeclaration>? tools)
+    {
+        if (tools is null || tools.Count == 0)
+        {
+            return [];
+        }
+
+        return tools
+            .SelectMany(tool => tool.FunctionDeclarations)
+            .Select(declaration => declaration.Name)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .ToHashSet(StringComparer.Ordinal);
     }
 
     private static void AddTokenDetails(

@@ -305,7 +305,7 @@ Review https://example.com/materials/asa-printing-guide.pdf and summarize the re
     }
 
     [Fact]
-    public async Task HandleAsync_IntranetToolMessage_DisablesAgentThoughtsByDefaultWhileKeepingTools()
+    public async Task HandleAsync_IntranetToolMessage_EnablesAgentThoughtsByDefaultWhileKeepingTools()
     {
         var result = await SendWebsiteMessageAsync(
             channel: Channel.Intranet,
@@ -332,8 +332,8 @@ Review https://example.com/materials/asa-printing-guide.pdf and summarize the re
             ]);
 
         Assert.NotNull(result.CapturedRequest);
-        Assert.False(result.CapturedRequest!.IncludeThoughts);
-        Assert.Equal(0, result.CapturedRequest.ThinkingBudget);
+        Assert.True(result.CapturedRequest!.IncludeThoughts);
+        Assert.Equal(1024, result.CapturedRequest.ThinkingBudget);
         Assert.NotNull(result.CapturedRequest.Tools);
         Assert.NotNull(result.CapturedRequest.ToolConfig);
         Assert.Equal("AUTO", result.CapturedRequest.ToolConfig.Mode);

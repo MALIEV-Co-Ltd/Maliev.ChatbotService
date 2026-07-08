@@ -820,6 +820,90 @@ public class AgentChatHandlerTests
         Assert.Null(result.TokenUsage);
     }
 
+    /// <summary>
+    /// Verifies that a leaked textual tool_code response is recovered: the parsed calls execute,
+    /// the loop continues, and the customer receives the follow-up answer instead of pseudo-code.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_LeakedTextualToolCall_ExecutesToolAndContinuesLoop()
+    {
+        var initialRequest = new GeminiRequest
+        {
+            Messages = new List<GeminiMessage> { new GeminiMessage { Role = "user", Content = "เอา ABS ก็ได้ครับ เสนอราคาจำนวน 6" } },
+            Tools = new List<GeminiToolDeclaration>
+            {
+                new()
+                {
+                    FunctionDeclarations = new List<GeminiFunctionDeclaration>
+                    {
+                        new() { Name = "quote_update_configuration" },
+                        new() { Name = "quote_calculate_estimate" }
+                    }
+                }
+            }
+        };
+
+        var callCount = 0;
+        _geminiClientMock.Setup(x => x.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => ++callCount == 1
+                ? new GeminiResponse
+                {
+                    Success = true,
+                    Content = "Sure! tool_code\nprint(quote_update_configuration(material='ABS', quantity=6))\nprint(quote_calculate_estimate())"
+                }
+                : new GeminiResponse { Success = true, Content = "Your 6 ABS parts come to 1,860 THB." });
+
+        var executedTools = new List<(string Name, Dictionary<string, object> Args)>();
+        _toolExecutorMock.Setup(x => x.ExecuteAsync(It.IsAny<string>(), It.IsAny<Dictionary<string, object>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .Callback<string, Dictionary<string, object>, string?, CancellationToken>((name, args, _, _) => executedTools.Add((name, args)))
+            .ReturnsAsync("{\"status\":\"ok\"}");
+
+        var result = await _handler.ExecuteAsync(initialRequest);
+
+        Assert.True(result.Success);
+        Assert.Equal("Your 6 ABS parts come to 1,860 THB.", result.Content);
+        Assert.Equal(2, executedTools.Count);
+        Assert.Equal("quote_update_configuration", executedTools[0].Name);
+        Assert.Equal("ABS", executedTools[0].Args["material"]);
+        Assert.Equal(6L, executedTools[0].Args["quantity"]);
+        Assert.Equal("quote_calculate_estimate", executedTools[1].Name);
+        Assert.Contains(result.ThinkingSteps, step => step.Type == "function_call" && step.Title.Contains("quote_calculate_estimate"));
+        Assert.Contains(result.ThinkingSteps, step => step.Type == "function_result");
+    }
+
+    /// <summary>
+    /// Verifies that text mentioning an undeclared tool is returned verbatim without executing anything.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_TextWithoutRecoverableToolCall_ReturnsTextWithoutExecution()
+    {
+        var initialRequest = new GeminiRequest
+        {
+            Messages = new List<GeminiMessage> { new GeminiMessage { Role = "user", Content = "Hello" } },
+            Tools = new List<GeminiToolDeclaration>
+            {
+                new()
+                {
+                    FunctionDeclarations = new List<GeminiFunctionDeclaration>
+                    {
+                        new() { Name = "quote_calculate_estimate" }
+                    }
+                }
+            }
+        };
+
+        _geminiClientMock.Setup(x => x.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GeminiResponse { Success = true, Content = "print(unknown_tool(target='x'))" });
+
+        var result = await _handler.ExecuteAsync(initialRequest);
+
+        Assert.True(result.Success);
+        Assert.Equal("print(unknown_tool(target='x'))", result.Content);
+        _toolExecutorMock.Verify(
+            x => x.ExecuteAsync(It.IsAny<string>(), It.IsAny<Dictionary<string, object>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
     private static async IAsyncEnumerable<GeminiStreamEvent> CreateStream(IEnumerable<GeminiStreamEvent> events)
     {
         foreach (var streamEvent in events)

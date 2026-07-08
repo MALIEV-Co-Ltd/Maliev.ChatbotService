@@ -209,7 +209,9 @@ public class SendMessageCommandHandler
             configuration?["Gemini:Chat:VideoMediaResolution"],
             "Gemini:Chat:VideoMediaResolution",
             DefaultChatVideoMediaResolution);
-        _agentIncludeThoughts = configuration?.GetValue<bool?>("Gemini:Agent:IncludeThoughts") ?? false;
+        // Default ON: agent turns need visible reasoning in Make Studio, and a zero thinking
+        // budget makes gemini-2.5-flash leak textual "tool_code" instead of native function calls.
+        _agentIncludeThoughts = configuration?.GetValue<bool?>("Gemini:Agent:IncludeThoughts") ?? true;
         _agentThinkingBudgetTokens = Math.Clamp(
             configuration?.GetValue<int?>("Gemini:Agent:ThinkingBudgetTokens") ??
                 DefaultAgentThinkingBudgetTokens,

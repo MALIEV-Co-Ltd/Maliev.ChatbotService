@@ -148,7 +148,9 @@ public sealed class ModelProviderConfigurationTests
         Assert.Equal(100, gemini.GetProperty("Webhooks").GetProperty("QueueCapacity").GetInt32());
 
         var agent = gemini.GetProperty("Agent");
-        Assert.False(agent.GetProperty("IncludeThoughts").GetBoolean());
+        // Agent thoughts default ON: Make Studio must show visible reasoning, and a zero thinking
+        // budget makes gemini-2.5-flash leak textual tool_code instead of native function calls.
+        Assert.True(agent.GetProperty("IncludeThoughts").GetBoolean());
         Assert.Equal(1024, agent.GetProperty("ThinkingBudgetTokens").GetInt32());
 
         var chat = gemini.GetProperty("Chat");
