@@ -85,6 +85,11 @@ public class ConversationHistoryMessage
     /// Gets or sets the message creation timestamp.
     /// </summary>
     public DateTimeOffset CreatedAt { get; set; }
+
+    /// <summary>
+    /// Gets or sets customer-safe web grounding provenance persisted with the assistant message.
+    /// </summary>
+    public GroundingProvenance? GroundingProvenance { get; set; }
 }
 
 /// <summary>

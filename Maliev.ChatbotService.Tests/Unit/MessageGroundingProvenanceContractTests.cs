@@ -62,4 +62,46 @@ public sealed class MessageGroundingProvenanceContractTests
         Assert.Contains("\"url\":\"https://example.com/address\"", json, StringComparison.Ordinal);
         Assert.Contains("\"domain\":\"example.com\"", json, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void PersistedAssistantMetadata_RestoresGroundingProvenanceForConversationHistory()
+    {
+        var metadata = JsonSerializer.Serialize(new
+        {
+            groundingMetadata = new
+            {
+                provenance = new GroundingProvenance
+                {
+                    Purpose = "shipping_address_validation",
+                    Provider = "google_search",
+                    Status = "grounded",
+                    Queries = ["Khlong Khoi Pak Kret Nonthaburi 11120"],
+                    Sources =
+                    [
+                        new GeminiGroundingSource
+                        {
+                            Title = "Public address source",
+                            Url = "https://example.com/address",
+                            Domain = "example.com"
+                        }
+                    ]
+                }
+            }
+        });
+
+        var provenance = MessageGroundingMetadata.TryReadProvenance(metadata);
+        var historyMessage = new ConversationHistoryMessage
+        {
+            MessageId = Guid.NewGuid(),
+            Role = "assistant",
+            Content = "The address was validated.",
+            ContentType = "text",
+            CreatedAt = DateTimeOffset.UtcNow,
+            GroundingProvenance = provenance
+        };
+
+        Assert.NotNull(historyMessage.GroundingProvenance);
+        Assert.Equal("grounded", historyMessage.GroundingProvenance.Status);
+        Assert.Equal("example.com", Assert.Single(historyMessage.GroundingProvenance.Sources).Domain);
+    }
 }

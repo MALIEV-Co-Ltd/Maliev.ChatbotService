@@ -976,6 +976,21 @@ public sealed class GeminiClientFunctionCallSerializationTests
         Assert.Equal("flex", finalResponse!.ServiceTier);
     }
 
+    [Fact]
+    public async Task SendMessageAsync_CallerCancellation_PropagatesInsteadOfReturningFallback()
+    {
+        var client = CreateClient(new CancelingHandler());
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.SendMessageAsync(
+            new GeminiRequest
+            {
+                Messages = [new GeminiMessage { Role = "user", Content = "cancel me" }]
+            },
+            cancellation.Token));
+    }
+
     private static GeminiClient CreateClient(
         HttpMessageHandler handler,
         IReadOnlyDictionary<string, string?>? extraConfiguration = null)
@@ -1061,6 +1076,16 @@ public sealed class GeminiClientFunctionCallSerializationTests
             {
                 Content = new StringContent(responseFactory(request), Encoding.UTF8, "application/json")
             };
+        }
+    }
+
+    private sealed class CancelingHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromCanceled<HttpResponseMessage>(cancellationToken);
         }
     }
 

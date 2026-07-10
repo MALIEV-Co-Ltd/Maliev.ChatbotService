@@ -148,6 +148,10 @@ public class GeminiClient : IGeminiClient
             UpdateSuccessRate();
             return GetFallbackResponse("GeminiAPIError");
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (OperationCanceledException)
         {
             _logger.LogWarning("Gemini API request timed out after {Timeout} seconds", effectiveTimeoutSeconds);

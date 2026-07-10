@@ -130,6 +130,12 @@ public class GeminiRequest
     public bool RequireGrounding { get; set; }
 
     /// <summary>
+    /// Gets or sets previously persisted, customer-safe grounding that may satisfy a continuation
+    /// turn without repeating the external search. This is never serialized to the model provider.
+    /// </summary>
+    public GroundingProvenance? PriorGroundingProvenance { get; set; }
+
+    /// <summary>
     /// Gets or sets whether to enable Gemini URL Context for URLs supplied in the prompt.
     /// </summary>
     public bool EnableUrlContext { get; set; }

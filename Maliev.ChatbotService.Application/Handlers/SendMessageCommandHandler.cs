@@ -538,10 +538,17 @@ public class SendMessageCommandHandler
             var coreInstruction = await _systemInstructionService.GetActiveInstructionAsync(coreInstructionTopicKey, cancellationToken);
 
             var customerAuthoredContent = ExtractCustomerAuthoredContent(command.Content);
+            var priorShippingGrounding = FindLatestGroundedShippingProvenance(conversationHistory);
+            var recentConversationRequestsShippingAddress =
+                RecentConversationRequestsShippingAddress(conversationHistory);
             var requiresAddressGrounding = session.Channel == Channel.QuoteEngine &&
-                ShouldTriggerAddressWebSearch(
+                (ShouldTriggerAddressWebSearch(
                     customerAuthoredContent.ToLowerInvariant(),
-                    RecentConversationRequestsShippingAddress(conversationHistory));
+                    recentConversationRequestsShippingAddress) ||
+                 IsGroundedShippingContinuation(
+                     customerAuthoredContent,
+                     recentConversationRequestsShippingAddress,
+                     priorShippingGrounding));
 
             // Check if Gemini built-in search should be triggered
             bool enableGeminiSearch = false;
@@ -551,7 +558,7 @@ public class SendMessageCommandHandler
                 // inherit the general technical-search flag, which is intentionally disabled by
                 // default. A disabled/missing prompt capability remains fail-closed via
                 // GeminiRequest.RequireGrounding below.
-                enableGeminiSearch = _addressGroundingEnabled;
+                enableGeminiSearch = priorShippingGrounding is null && _addressGroundingEnabled;
                 if (enableGeminiSearch)
                 {
                     _logger.LogInformation(
@@ -622,6 +629,13 @@ public class SendMessageCommandHandler
             List<GeminiToolDeclaration> tools = isAgentToolCandidate
                 ? _toolExecutor.GetToolDeclarations(GetToolProfile(session.Channel))
                 : [];
+            if (enableGeminiSearch && !requiresAddressGrounding)
+            {
+                // Gemini 2.5 cannot combine built-in Google Search with custom function tools. A
+                // general source-lookup turn prefers grounded search; shipping uses the explicit
+                // two-phase harness below instead.
+                tools = [];
+            }
             var hasAgentTools = tools.Count > 0;
             var includeAgentThoughts = hasAgentTools && _agentIncludeThoughts;
             var enableGeminiUrlContext = ShouldEnableUrlContext(
@@ -649,9 +663,9 @@ public class SendMessageCommandHandler
                 IncludeThoughts = includeAgentThoughts,
                 ThinkingBudget = includeAgentThoughts ? _agentThinkingBudgetTokens : 0,
                 MediaResolution = ResolveMediaResolution(geminiMessages),
-                Store = false
-                ,
-                RequireGrounding = requiresAddressGrounding
+                Store = false,
+                RequireGrounding = requiresAddressGrounding,
+                PriorGroundingProvenance = requiresAddressGrounding ? priorShippingGrounding : null
             };
 
             if (!hasAgentTools)
@@ -715,6 +729,28 @@ public class SendMessageCommandHandler
 
             await LogGroundingDomainsAsync(session.Id, geminiResponse, cancellationToken);
 
+            // Provider usage is billable even when the final model step fails or falls back. Compute
+            // and record it before branching on Success so a grounded preflight followed by a failed
+            // tool/model turn cannot bypass the daily budget.
+            var costEstimate = GeminiCostEstimator.Estimate(
+                geminiRequest.ModelName ?? _defaultChatModelName,
+                geminiResponse.ServiceTier ?? geminiRequest.ServiceTier,
+                geminiResponse.TokenUsage,
+                GetGoogleSearchGroundingPromptCount(geminiResponse));
+            await _usageBudgetService.RecordModelUsageAsync(
+                session.UserProfileId,
+                new UsageBudgetCharge
+                {
+                    Tokens = geminiResponse.TokenUsage?.TotalTokens ?? 0,
+                    CostMicroUsd = GetNonGroundingCostMicroUsd(costEstimate),
+                    GoogleSearchGroundingPromptCount = costEstimate?.GoogleSearchGroundingPromptCount ?? 0,
+                    GoogleSearchGroundingMicroUsd = costEstimate?.GoogleSearchGroundingMicroUsd ?? 0
+                },
+                cancellationToken);
+            usageSnapshot = await _usageBudgetService.GetDailyTokenUsageSnapshotAsync(
+                session.UserProfileId,
+                cancellationToken);
+
             if (!geminiResponse.Success && !geminiResponse.IsFallback)
             {
                 _logger.LogError("Gemini API call failed: {ErrorMessage}", geminiResponse.ErrorMessage);
@@ -735,17 +771,9 @@ public class SendMessageCommandHandler
 
 
 
-            GeminiCostEstimate? costEstimate = null;
-
             if (geminiResponse.Success)
 
             {
-                costEstimate = GeminiCostEstimator.Estimate(
-                    geminiRequest.ModelName ?? _defaultChatModelName,
-                    geminiResponse.ServiceTier ?? geminiRequest.ServiceTier,
-                    geminiResponse.TokenUsage,
-                    GetGoogleSearchGroundingPromptCount(geminiResponse));
-
                 // Save assistant message ONLY if it was a successful AI response
 
                 var assistantMessage = new Message
@@ -799,23 +827,6 @@ public class SendMessageCommandHandler
             }
 
 
-
-            // Record token consumption against the user's rolling daily budget (S2). On the agent path
-            // this is the sum across all loop iterations; null/zero usage is a no-op.
-            if (geminiResponse.Success)
-            {
-                await _usageBudgetService.RecordModelUsageAsync(
-                    session.UserProfileId,
-                    new UsageBudgetCharge
-                    {
-                        Tokens = geminiResponse.TokenUsage?.TotalTokens ?? 0,
-                        CostMicroUsd = GetNonGroundingCostMicroUsd(costEstimate),
-                        GoogleSearchGroundingPromptCount = costEstimate?.GoogleSearchGroundingPromptCount ?? 0,
-                        GoogleSearchGroundingMicroUsd = costEstimate?.GoogleSearchGroundingMicroUsd ?? 0
-                    },
-                    cancellationToken);
-                usageSnapshot = await _usageBudgetService.GetDailyTokenUsageSnapshotAsync(session.UserProfileId, cancellationToken);
-            }
 
             // Update session last activity
 
@@ -1311,7 +1322,10 @@ public class SendMessageCommandHandler
             return string.Empty;
         }
 
-        var markerIndex = content.LastIndexOf(customerMessageMarker, StringComparison.OrdinalIgnoreCase);
+        // Use the first trusted envelope marker. The customer controls everything after it and may
+        // repeat the marker; choosing the last occurrence would let them hide an address from the
+        // deterministic grounding gate while the complete prompt still reaches the model.
+        var markerIndex = content.IndexOf(customerMessageMarker, StringComparison.OrdinalIgnoreCase);
         if (markerIndex < 0)
         {
             return content;
@@ -1724,8 +1738,46 @@ public class SendMessageCommandHandler
         return latestAssistant is not null && ContainsAny(latestAssistant, new[]
         {
             "shipping address", "delivery address", "postcode", "postal code", "ship to",
-            "ที่อยู่จัดส่ง", "ที่อยู่", "รหัสไปรษณีย์", "จัดส่ง"
+            "phone number", "telephone", "contact number", "shipping phone",
+            "ที่อยู่จัดส่ง", "ที่อยู่", "รหัสไปรษณีย์", "จัดส่ง", "เบอร์โทร", "โทรศัพท์"
         });
+    }
+
+    private static GroundingProvenance? FindLatestGroundedShippingProvenance(
+        IEnumerable<Message> messages)
+    {
+        return messages
+            .Where(message => message.Role == MessageRole.Assistant)
+            .OrderByDescending(message => message.CreatedAt)
+            .Select(message => MessageGroundingMetadata.TryReadProvenance(message.MetadataJson))
+            .FirstOrDefault(provenance =>
+                provenance is not null &&
+                provenance.Purpose.Equals("shipping_address_validation", StringComparison.OrdinalIgnoreCase) &&
+                provenance.Status.Equals("grounded", StringComparison.OrdinalIgnoreCase) &&
+                provenance.Sources.Count > 0);
+    }
+
+    private static bool IsGroundedShippingContinuation(
+        string message,
+        bool recentConversationRequestsShippingAddress,
+        GroundingProvenance? priorShippingGrounding)
+    {
+        if (!recentConversationRequestsShippingAddress || priorShippingGrounding is null)
+        {
+            return false;
+        }
+
+        var compact = Regex.Replace(
+            message,
+            @"[\s()\-+.]+",
+            string.Empty,
+            RegexOptions.CultureInvariant,
+            TimeSpan.FromMilliseconds(50));
+        return Regex.IsMatch(
+            compact,
+            @"^\d{8,15}$",
+            RegexOptions.CultureInvariant,
+            TimeSpan.FromMilliseconds(50));
     }
 
     private static bool ContainsAny(string value, IEnumerable<string> keywords) =>
