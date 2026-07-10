@@ -1850,6 +1850,7 @@ public class SendMessageCommandHandler
         provenance is not null &&
         provenance.Status.Equals("grounded", StringComparison.OrdinalIgnoreCase) &&
         provenance.Sources.Count > 0 &&
+        HasCompleteShippingAddressEvidence(provenance.ShippingAddress) &&
         ShippingGroundingIdentity.Matches(provenance.AddressDigest, currentAddressDigest);
 
     private static bool IsGroundedShippingContinuation(
@@ -1864,6 +1865,7 @@ public class SendMessageCommandHandler
 
         if (!priorShippingGrounding.Status.Equals("grounded", StringComparison.OrdinalIgnoreCase) ||
             priorShippingGrounding.Sources.Count == 0 ||
+            !HasCompleteShippingAddressEvidence(priorShippingGrounding.ShippingAddress) ||
             !ShippingGroundingIdentity.IsValidDigest(priorShippingGrounding.AddressDigest))
         {
             return false;
@@ -1881,6 +1883,17 @@ public class SendMessageCommandHandler
             RegexOptions.CultureInvariant,
             TimeSpan.FromMilliseconds(50));
     }
+
+    private static bool HasCompleteShippingAddressEvidence(GroundedShippingAddressEvidence? evidence) =>
+        evidence is not null &&
+        !string.IsNullOrWhiteSpace(evidence.Subdistrict) &&
+        !string.IsNullOrWhiteSpace(evidence.District) &&
+        !string.IsNullOrWhiteSpace(evidence.Province) &&
+        Regex.IsMatch(
+            evidence.Postcode,
+            @"^\d{5}$",
+            RegexOptions.CultureInvariant,
+            TimeSpan.FromMilliseconds(50));
 
     private static bool ContainsAny(string value, IEnumerable<string> keywords) =>
         keywords.Any(keyword => value.Contains(keyword, StringComparison.Ordinal));

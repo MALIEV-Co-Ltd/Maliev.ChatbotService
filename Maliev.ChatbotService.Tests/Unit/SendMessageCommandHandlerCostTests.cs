@@ -275,6 +275,13 @@ public sealed class SendMessageCommandHandlerCostTests
             Provider = "google_search",
             Status = "grounded",
             AddressDigest = new string('a', 64),
+            ShippingAddress = new GroundedShippingAddressEvidence
+            {
+                Subdistrict = "khlongkhoi",
+                District = "pakkret",
+                Province = "nonthaburi",
+                Postcode = "11120"
+            },
             Queries = ["Khlong Khoi Pak Kret Nonthaburi 11120"],
             Sources =
             [
@@ -329,6 +336,63 @@ public sealed class SendMessageCommandHandlerCostTests
         var request = Assert.Single(result.CapturedRequests);
         Assert.False(request.EnableWebSearch);
         Assert.Contains(request.Messages, message =>
+            message.Content.Contains("PRIOR VERIFIED SHIPPING ADDRESS GROUNDING", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task HandleAsync_QuoteEnginePhoneContinuation_DoesNotReuseLegacyUntypedGrounding()
+    {
+        var sessionId = Guid.NewGuid();
+        var priorProvenance = new GroundingProvenance
+        {
+            Purpose = "shipping_address_validation",
+            Provider = "google_search",
+            Status = "grounded",
+            AddressDigest = new string('a', 64),
+            Queries = ["Khlong Khoi Pak Kret Nonthaburi 11120"],
+            Sources =
+            [
+                new GeminiGroundingSource
+                {
+                    Title = "Public address source",
+                    Url = "https://example.com/address",
+                    Domain = "example.com"
+                }
+            ]
+        };
+        var result = await SendWebsiteMessageAsync(
+            channel: Channel.QuoteEngine,
+            messageContent: "0898950690",
+            conversationHistory:
+            [
+                new Message
+                {
+                    Id = Guid.NewGuid(),
+                    SessionId = sessionId,
+                    Role = MessageRole.Assistant,
+                    Content = "The address is grounded. What phone number should the courier use?",
+                    ContentType = ContentType.Text,
+                    MetadataJson = JsonSerializer.Serialize(new
+                    {
+                        groundingMetadata = new { provenance = priorProvenance }
+                    }),
+                    CreatedAt = DateTimeOffset.UtcNow.AddSeconds(-1)
+                }
+            ],
+            toolDeclarations:
+            [
+                new GeminiToolDeclaration
+                {
+                    FunctionDeclarations =
+                    [
+                        new GeminiFunctionDeclaration { Name = "quote_search_addresses" },
+                        new GeminiFunctionDeclaration { Name = "quote_get_shipping_rates" }
+                    ]
+                }
+            ]);
+
+        var request = Assert.Single(result.CapturedRequests);
+        Assert.DoesNotContain(request.Messages, message =>
             message.Content.Contains("PRIOR VERIFIED SHIPPING ADDRESS GROUNDING", StringComparison.Ordinal));
     }
 
@@ -687,7 +751,7 @@ public sealed class SendMessageCommandHandlerCostTests
     }
 
     [Fact]
-    public async Task HandleAsync_QuoteEngineBarePostcodeAfterAddressPrompt_RunsGroundingPreflight()
+    public async Task HandleAsync_QuoteEngineBarePostcodeAfterAddressPrompt_FailsClosedAsIncompleteAddress()
     {
         var sessionId = Guid.NewGuid();
         var result = await SendWebsiteMessageAsync(
@@ -732,11 +796,10 @@ public sealed class SendMessageCommandHandlerCostTests
                 }
             ]);
 
-        Assert.Equal(2, result.CapturedRequests.Count);
-        Assert.True(result.CapturedRequests[0].EnableWebSearch);
-        Assert.Empty(result.CapturedRequests[0].Tools ?? []);
-        Assert.False(result.CapturedRequests[1].EnableWebSearch);
-        Assert.NotEmpty(result.CapturedRequests[1].Tools ?? []);
+        var request = Assert.Single(result.CapturedRequests);
+        Assert.True(request.EnableWebSearch);
+        Assert.Empty(request.Tools ?? []);
+        Assert.Equal("no_evidence", result.MessageResult.GroundingProvenance?.Status);
     }
 
     [Fact]
@@ -1499,7 +1562,7 @@ Review https://example.com/materials/asa-printing-guide.pdf and summarize the re
                 ? Task.FromResult(new GeminiResponse
                 {
                     Success = true,
-                    Content = "VALIDATION_STATUS: CONFIRMED\nKhlong Khoi, Pak Kret, Nonthaburi 11120 is corroborated.",
+                    Content = ConfirmedShippingGroundingContent(),
                     TokenUsage = new GeminiTokenUsage
                     {
                         PromptTokens = 40,
@@ -1786,6 +1849,21 @@ Review https://example.com/materials/asa-printing-guide.pdf and summarize the re
         return Task.FromCanceled<GeminiResponse>(cancellation.Token);
     }
 
+    private static string ConfirmedShippingGroundingContent(string? address = null)
+    {
+        var isThai = address?.Contains("คลองข่อย", StringComparison.Ordinal) == true;
+        var isBangTalat = address?.Contains("Bang Talat", StringComparison.OrdinalIgnoreCase) == true;
+        var subdistrict = isThai ? "คลองข่อย" : isBangTalat ? "Bang Talat" : "Khlong Khoi";
+        var district = isThai ? "ปากเกร็ด" : "Pak Kret";
+        var province = isThai ? "นนทบุรี" : "Nonthaburi";
+        return "VALIDATION_STATUS: CONFIRMED\n" +
+            $"SUBDISTRICT: {subdistrict}\n" +
+            $"DISTRICT: {district}\n" +
+            $"PROVINCE: {province}\n" +
+            "POSTCODE: 11120\n" +
+            $"SUMMARY: Public sources corroborate {subdistrict}, {district}, {province} 11120.";
+    }
+
     private static async Task<Message> CreateGroundedShippingAssistantMessageAsync(string address)
     {
         var result = await SendWebsiteMessageAsync(
@@ -1938,7 +2016,10 @@ Review https://example.com/materials/asa-printing-guide.pdf and summarize the re
                 {
                     Success = geminiSuccess,
                     Content = request.EnableWebSearch && groundingSources is { Count: > 0 }
-                        ? "VALIDATION_STATUS: CONFIRMED\nPublic sources corroborate Khlong Khoi, Pak Kret, Nonthaburi 11120."
+                        ? ConfirmedShippingGroundingContent(
+                            request.GroundingAddressInput ??
+                            request.Messages.LastOrDefault(message =>
+                                message.Role.Equals("user", StringComparison.OrdinalIgnoreCase))?.Content)
                         : "We can print PLA, PETG, ABS, ASA, nylon, and engineering materials.",
                     ErrorMessage = geminiErrorMessage,
                     ServiceTier = responseServiceTier,

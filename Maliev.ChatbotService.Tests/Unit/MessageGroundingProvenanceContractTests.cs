@@ -75,6 +75,13 @@ public sealed class MessageGroundingProvenanceContractTests
                     Purpose = "shipping_address_validation",
                     Provider = "google_search",
                     Status = "grounded",
+                    ShippingAddress = new GroundedShippingAddressEvidence
+                    {
+                        Subdistrict = "khlongkhoi",
+                        District = "pakkret",
+                        Province = "nonthaburi",
+                        Postcode = "11120"
+                    },
                     Queries = ["Khlong Khoi Pak Kret Nonthaburi 11120"],
                     Sources =
                     [
@@ -102,6 +109,40 @@ public sealed class MessageGroundingProvenanceContractTests
 
         Assert.NotNull(historyMessage.GroundingProvenance);
         Assert.Equal("grounded", historyMessage.GroundingProvenance.Status);
+        Assert.NotNull(historyMessage.GroundingProvenance.ShippingAddress);
+        Assert.Equal("khlongkhoi", historyMessage.GroundingProvenance.ShippingAddress.Subdistrict);
+        Assert.Equal("pakkret", historyMessage.GroundingProvenance.ShippingAddress.District);
+        Assert.Equal("nonthaburi", historyMessage.GroundingProvenance.ShippingAddress.Province);
+        Assert.Equal("11120", historyMessage.GroundingProvenance.ShippingAddress.Postcode);
         Assert.Equal("example.com", Assert.Single(historyMessage.GroundingProvenance.Sources).Domain);
+    }
+
+    [Fact]
+    public void PersistedAssistantMetadata_DiscardsMalformedShippingPostcodeEvidence()
+    {
+        var metadata = JsonSerializer.Serialize(new
+        {
+            groundingMetadata = new
+            {
+                provenance = new GroundingProvenance
+                {
+                    Purpose = "shipping_address_validation",
+                    Provider = "google_search",
+                    Status = "grounded",
+                    ShippingAddress = new GroundedShippingAddressEvidence
+                    {
+                        Subdistrict = "khlongkhoi",
+                        District = "pakkret",
+                        Province = "nonthaburi",
+                        Postcode = "111200"
+                    }
+                }
+            }
+        });
+
+        var provenance = MessageGroundingMetadata.TryReadProvenance(metadata);
+
+        Assert.NotNull(provenance);
+        Assert.Null(provenance.ShippingAddress);
     }
 }

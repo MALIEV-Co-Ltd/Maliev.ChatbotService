@@ -28,6 +28,11 @@ public sealed class GroundingProvenance
     public string? AddressDigest { get; set; }
 
     /// <summary>
+    /// Gets or sets normalized source-backed Thai administrative address evidence for shipping turns.
+    /// </summary>
+    public GroundedShippingAddressEvidence? ShippingAddress { get; set; }
+
+    /// <summary>
     /// Gets or sets the bounded provider-reported search queries.
     /// </summary>
     public List<string> Queries { get; set; } = [];
@@ -41,4 +46,22 @@ public sealed class GroundingProvenance
     /// Gets or sets a customer-safe error code when grounding did not succeed.
     /// </summary>
     public string? ErrorCode { get; set; }
+}
+
+/// <summary>
+/// Normalized administrative address fields derived from grounded public sources.
+/// </summary>
+public sealed class GroundedShippingAddressEvidence
+{
+    /// <summary>Gets or sets the normalized subdistrict comparison key.</summary>
+    public string Subdistrict { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the normalized district comparison key.</summary>
+    public string District { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the normalized province comparison key.</summary>
+    public string Province { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the five-digit Thai postcode.</summary>
+    public string Postcode { get; set; } = string.Empty;
 }

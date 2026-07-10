@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 
 namespace Maliev.ChatbotService.Application.Models;
@@ -53,6 +54,7 @@ public static class MessageGroundingMetadata
                 AddressDigest = ShippingGroundingIdentity.IsValidDigest(provenance.AddressDigest)
                     ? provenance.AddressDigest!.ToLowerInvariant()
                     : null,
+                ShippingAddress = SanitizeShippingAddress(provenance.ShippingAddress),
                 ErrorCode = string.IsNullOrWhiteSpace(provenance.ErrorCode)
                     ? null
                     : provenance.ErrorCode[..Math.Min(provenance.ErrorCode.Length, 120)],
@@ -75,6 +77,44 @@ public static class MessageGroundingMetadata
             return null;
         }
     }
+
+    private static GroundedShippingAddressEvidence? SanitizeShippingAddress(
+        GroundedShippingAddressEvidence? evidence)
+    {
+        if (evidence is null)
+        {
+            return null;
+        }
+
+        var subdistrict = NormalizeEvidenceKey(evidence.Subdistrict);
+        var district = NormalizeEvidenceKey(evidence.District);
+        var province = NormalizeEvidenceKey(evidence.Province);
+        var postcode = evidence.Postcode?.Trim() ?? string.Empty;
+        if (subdistrict.Length == 0 ||
+            district.Length == 0 ||
+            province.Length == 0 ||
+            postcode.Length != 5 ||
+            postcode.Any(character => character is < '0' or > '9'))
+        {
+            return null;
+        }
+
+        return new GroundedShippingAddressEvidence
+        {
+            Subdistrict = subdistrict,
+            District = district,
+            Province = province,
+            Postcode = postcode
+        };
+    }
+
+    private static string NormalizeEvidenceKey(string? value) =>
+        new((value ?? string.Empty)
+            .Normalize(NormalizationForm.FormKC)
+            .ToLowerInvariant()
+            .Where(char.IsLetterOrDigit)
+            .Take(160)
+            .ToArray());
 
     private static bool TryGetProperty(JsonElement element, string name, out JsonElement value)
     {
