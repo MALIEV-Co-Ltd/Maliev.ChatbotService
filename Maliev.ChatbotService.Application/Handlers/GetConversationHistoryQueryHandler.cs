@@ -137,7 +137,9 @@ public class GetConversationHistoryQueryHandler
             Content = message.Content,
             ContentType = ToWireValue(message.ContentType),
             CreatedAt = message.CreatedAt,
-            GroundingProvenance = MessageGroundingMetadata.TryReadProvenance(message.MetadataJson)
+            GroundingProvenance = message.Role == MessageRole.Assistant
+                ? MessageGroundingMetadata.TryReadProvenance(message.MetadataJson)
+                : null
         };
     }
 

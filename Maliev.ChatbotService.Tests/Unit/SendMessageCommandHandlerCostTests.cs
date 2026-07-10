@@ -274,6 +274,7 @@ public sealed class SendMessageCommandHandlerCostTests
             Purpose = "shipping_address_validation",
             Provider = "google_search",
             Status = "grounded",
+            AddressDigest = new string('a', 64),
             Queries = ["Khlong Khoi Pak Kret Nonthaburi 11120"],
             Sources =
             [
@@ -332,6 +333,276 @@ public sealed class SendMessageCommandHandlerCostTests
     }
 
     [Fact]
+    public async Task HandleAsync_QuoteEngineChangedAddress_DoesNotReusePersistedGrounding()
+    {
+        var sessionId = Guid.NewGuid();
+        var result = await SendWebsiteMessageAsync(
+            channel: Channel.QuoteEngine,
+            messageContent: "Ship to Bang Talat, Pak Kret, Nonthaburi 11120",
+            conversationHistory:
+            [
+                new Message
+                {
+                    Id = Guid.NewGuid(),
+                    SessionId = sessionId,
+                    Role = MessageRole.Assistant,
+                    Content = "Khlong Khoi was validated.",
+                    ContentType = ContentType.Text,
+                    MetadataJson = JsonSerializer.Serialize(new
+                    {
+                        groundingMetadata = new
+                        {
+                            provenance = new
+                            {
+                                purpose = "shipping_address_validation",
+                                provider = "google_search",
+                                status = "grounded",
+                                addressDigest = new string('a', 64),
+                                queries = new[] { "Khlong Khoi Pak Kret Nonthaburi 11120" },
+                                sources = new[]
+                                {
+                                    new
+                                    {
+                                        title = "Public address source",
+                                        url = "https://example.com/address",
+                                        domain = "example.com"
+                                    }
+                                }
+                            }
+                        }
+                    }),
+                    CreatedAt = DateTimeOffset.UtcNow.AddSeconds(-1)
+                },
+                new Message
+                {
+                    Id = Guid.NewGuid(),
+                    SessionId = sessionId,
+                    Role = MessageRole.User,
+                    Content = "Ship to Bang Talat, Pak Kret, Nonthaburi 11120",
+                    ContentType = ContentType.Text,
+                    CreatedAt = DateTimeOffset.UtcNow
+                }
+            ],
+            toolDeclarations:
+            [
+                new GeminiToolDeclaration
+                {
+                    FunctionDeclarations = [new GeminiFunctionDeclaration { Name = "quote_get_shipping_rates" }]
+                }
+            ],
+            groundingSources:
+            [
+                new GeminiGroundingSource
+                {
+                    Title = "Public address source",
+                    Url = "https://example.com/address"
+                }
+            ]);
+
+        Assert.Equal(2, result.CapturedRequests.Count);
+        Assert.True(result.CapturedRequests[0].EnableWebSearch);
+        Assert.DoesNotContain(result.CapturedRequests[1].Messages, message =>
+            message.Content.Contains("PRIOR VERIFIED SHIPPING ADDRESS GROUNDING", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task HandleAsync_QuoteEngineHouseNumberSeparatorChange_DoesNotReusePersistedGrounding()
+    {
+        var groundedAssistant = await CreateGroundedShippingAssistantMessageAsync(
+            "Ship to 36/1 Moo 3, Khlong Khoi, Pak Kret, Nonthaburi 11120");
+        var sessionId = Guid.NewGuid();
+
+        var result = await SendWebsiteMessageAsync(
+            channel: Channel.QuoteEngine,
+            messageContent: "Ship to 361 Moo 3, Khlong Khoi, Pak Kret, Nonthaburi 11120",
+            conversationHistory:
+            [
+                new Message
+                {
+                    Id = groundedAssistant.Id,
+                    SessionId = sessionId,
+                    Role = MessageRole.Assistant,
+                    Content = groundedAssistant.Content,
+                    ContentType = ContentType.Text,
+                    MetadataJson = groundedAssistant.MetadataJson,
+                    CreatedAt = DateTimeOffset.UtcNow.AddSeconds(-1)
+                },
+                new Message
+                {
+                    Id = Guid.NewGuid(),
+                    SessionId = sessionId,
+                    Role = MessageRole.User,
+                    Content = "Ship to 361 Moo 3, Khlong Khoi, Pak Kret, Nonthaburi 11120",
+                    ContentType = ContentType.Text,
+                    CreatedAt = DateTimeOffset.UtcNow
+                }
+            ],
+            toolDeclarations:
+            [
+                new GeminiToolDeclaration
+                {
+                    FunctionDeclarations = [new GeminiFunctionDeclaration { Name = "quote_get_shipping_rates" }]
+                }
+            ],
+            groundingSources:
+            [
+                new GeminiGroundingSource
+                {
+                    Title = "Public address source",
+                    Url = "https://example.com/address"
+                }
+            ]);
+
+        Assert.Equal(2, result.CapturedRequests.Count);
+        Assert.True(result.CapturedRequests[0].EnableWebSearch);
+    }
+
+    [Fact]
+    public async Task HandleAsync_QuoteEnginePhoneAfterIncompleteAddressChange_DoesNotReuseOlderGrounding()
+    {
+        var groundedAssistant = await CreateGroundedShippingAssistantMessageAsync(
+            "Ship to 36/1 Moo 3, Khlong Khoi, Pak Kret, Nonthaburi 11120");
+        var sessionId = Guid.NewGuid();
+
+        var result = await SendWebsiteMessageAsync(
+            channel: Channel.QuoteEngine,
+            messageContent: "0898950690",
+            conversationHistory:
+            [
+                new Message
+                {
+                    Id = groundedAssistant.Id,
+                    SessionId = sessionId,
+                    Role = MessageRole.Assistant,
+                    Content = groundedAssistant.Content,
+                    ContentType = ContentType.Text,
+                    MetadataJson = groundedAssistant.MetadataJson,
+                    CreatedAt = DateTimeOffset.UtcNow.AddSeconds(-4)
+                },
+                new Message
+                {
+                    Id = Guid.NewGuid(),
+                    SessionId = sessionId,
+                    Role = MessageRole.User,
+                    Content = "Ship to 99 Sukhumvit Road, Bangkok",
+                    ContentType = ContentType.Text,
+                    CreatedAt = DateTimeOffset.UtcNow.AddSeconds(-3)
+                },
+                new Message
+                {
+                    Id = Guid.NewGuid(),
+                    SessionId = sessionId,
+                    Role = MessageRole.Assistant,
+                    Content = "Please provide the shipping postcode and phone number.",
+                    ContentType = ContentType.Text,
+                    CreatedAt = DateTimeOffset.UtcNow.AddSeconds(-2)
+                },
+                new Message
+                {
+                    Id = Guid.NewGuid(),
+                    SessionId = sessionId,
+                    Role = MessageRole.User,
+                    Content = "0898950690",
+                    ContentType = ContentType.Text,
+                    CreatedAt = DateTimeOffset.UtcNow
+                }
+            ],
+            toolDeclarations:
+            [
+                new GeminiToolDeclaration
+                {
+                    FunctionDeclarations = [new GeminiFunctionDeclaration { Name = "quote_get_shipping_rates" }]
+                }
+            ]);
+
+        var request = Assert.Single(result.CapturedRequests);
+        Assert.DoesNotContain(request.Messages, message =>
+            message.Content.Contains("PRIOR VERIFIED SHIPPING ADDRESS GROUNDING", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task HandleAsync_QuoteEnginePhoneAfterFailedValidation_DoesNotCrossFailureBoundary()
+    {
+        var sessionId = Guid.NewGuid();
+        var groundedSource = new
+        {
+            title = "Public address source",
+            url = "https://example.com/address",
+            domain = "example.com"
+        };
+        var result = await SendWebsiteMessageAsync(
+            channel: Channel.QuoteEngine,
+            messageContent: "0898950690",
+            conversationHistory:
+            [
+                new Message
+                {
+                    Id = Guid.NewGuid(),
+                    SessionId = sessionId,
+                    Role = MessageRole.Assistant,
+                    Content = "The earlier address was grounded.",
+                    ContentType = ContentType.Text,
+                    MetadataJson = JsonSerializer.Serialize(new
+                    {
+                        groundingMetadata = new
+                        {
+                            provenance = new
+                            {
+                                purpose = "shipping_address_validation",
+                                status = "grounded",
+                                addressDigest = new string('a', 64),
+                                sources = new[] { groundedSource }
+                            }
+                        }
+                    }),
+                    CreatedAt = DateTimeOffset.UtcNow.AddSeconds(-3)
+                },
+                new Message
+                {
+                    Id = Guid.NewGuid(),
+                    SessionId = sessionId,
+                    Role = MessageRole.Assistant,
+                    Content = "I could not verify that shipping address and postcode.",
+                    ContentType = ContentType.Text,
+                    MetadataJson = JsonSerializer.Serialize(new
+                    {
+                        groundingMetadata = new
+                        {
+                            provenance = new
+                            {
+                                purpose = "shipping_address_validation",
+                                status = "no_evidence",
+                                errorCode = "address_public_evidence_not_found",
+                                sources = Array.Empty<object>()
+                            }
+                        }
+                    }),
+                    CreatedAt = DateTimeOffset.UtcNow.AddSeconds(-2)
+                },
+                new Message
+                {
+                    Id = Guid.NewGuid(),
+                    SessionId = sessionId,
+                    Role = MessageRole.User,
+                    Content = "0898950690",
+                    ContentType = ContentType.Text,
+                    CreatedAt = DateTimeOffset.UtcNow
+                }
+            ],
+            toolDeclarations:
+            [
+                new GeminiToolDeclaration
+                {
+                    FunctionDeclarations = [new GeminiFunctionDeclaration { Name = "quote_get_shipping_rates" }]
+                }
+            ]);
+
+        var request = Assert.Single(result.CapturedRequests);
+        Assert.DoesNotContain(request.Messages, message =>
+            message.Content.Contains("PRIOR VERIFIED SHIPPING ADDRESS GROUNDING", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task HandleAsync_QuoteEngineFiveDigitPrice_DoesNotMisclassifyPriceAsPostcode()
     {
         var result = await SendWebsiteMessageAsync(
@@ -373,6 +644,46 @@ public sealed class SendMessageCommandHandlerCostTests
         Assert.Empty(request.Tools ?? []);
         Assert.DoesNotContain(request.Messages, message =>
             message.Content.Contains("shipping address", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Theory]
+    [InlineData(
+        "Find official ASTM D638 testing labs in Rayong province.",
+        "official ASTM D638 testing labs Rayong province")]
+    [InlineData(
+        "Find the official address for an ASTM D638 testing lab in Rayong 21150.",
+        "official address ASTM D638 testing lab Rayong 21150")]
+    public async Task HandleAsync_QuoteEngineGeneralLocalityLookup_RemainsGeneralSearch(
+        string messageContent,
+        string searchQuery)
+    {
+        var result = await SendWebsiteMessageAsync(
+            channel: Channel.QuoteEngine,
+            messageContent: messageContent,
+            instructionEnableWebSearch: true,
+            globalWebSearchEnabled: true,
+            toolDeclarations:
+            [
+                new GeminiToolDeclaration
+                {
+                    FunctionDeclarations = [new GeminiFunctionDeclaration { Name = "quote_get_state" }]
+                }
+            ],
+            groundingWebSearchQueries: [searchQuery],
+            groundingSources:
+            [
+                new GeminiGroundingSource
+                {
+                    Title = "Official supplier source",
+                    Url = "https://example.com/rayong-suppliers"
+                }
+            ]);
+
+        var request = Assert.Single(result.CapturedRequests);
+        Assert.True(request.EnableWebSearch);
+        Assert.Empty(request.Tools ?? []);
+        Assert.DoesNotContain("shipping address", request.SystemInstruction, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("web_search", result.MessageResult.GroundingProvenance?.Purpose);
     }
 
     [Fact]
@@ -1158,6 +1469,68 @@ Review https://example.com/materials/asa-printing-guide.pdf and summarize the re
     }
 
     [Fact]
+    public async Task HandleAsync_CancelledAfterGroundingPreflight_StillRecordsKnownUsageAndSearchCharge()
+    {
+        var usageBudget = new Mock<IUsageBudgetService>();
+        usageBudget
+            .Setup(service => service.GetDailyTokenUsageSnapshotAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UsageBudgetSnapshot());
+        usageBudget
+            .Setup(service => service.RecordModelUsageAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<UsageBudgetCharge>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UsageBudgetRecordResult());
+        using var cancellation = new CancellationTokenSource();
+        var providerCall = 0;
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => SendWebsiteMessageAsync(
+            channel: Channel.QuoteEngine,
+            messageContent: "Ship to Khlong Khoi, Pak Kret, Nonthaburi 11120",
+            toolDeclarations:
+            [
+                new GeminiToolDeclaration
+                {
+                    FunctionDeclarations = [new GeminiFunctionDeclaration { Name = "quote_get_shipping_rates" }]
+                }
+            ],
+            usageBudgetServiceOverride: usageBudget,
+            geminiResponseFactory: (_, _) => ++providerCall == 1
+                ? Task.FromResult(new GeminiResponse
+                {
+                    Success = true,
+                    Content = "VALIDATION_STATUS: CONFIRMED\nKhlong Khoi, Pak Kret, Nonthaburi 11120 is corroborated.",
+                    TokenUsage = new GeminiTokenUsage
+                    {
+                        PromptTokens = 40,
+                        CompletionTokens = 10,
+                        TotalTokens = 50
+                    },
+                    GroundingWebSearchQueries = ["Khlong Khoi Pak Kret Nonthaburi 11120"],
+                    GroundingSources =
+                    [
+                        new GeminiGroundingSource
+                        {
+                            Title = "Public address source",
+                            Url = "https://example.com/address"
+                        }
+                    ],
+                    GoogleSearchGroundingPromptCount = 1
+                })
+                : CancelProviderCall(cancellation),
+            handlerCancellationToken: cancellation.Token));
+
+        usageBudget.Verify(service => service.RecordModelUsageAsync(
+            It.IsAny<Guid>(),
+            It.Is<UsageBudgetCharge>(charge =>
+                charge.Tokens == 50 &&
+                charge.CostMicroUsd == 37 &&
+                charge.GoogleSearchGroundingPromptCount == 1 &&
+                charge.GoogleSearchGroundingMicroUsd == 35000),
+            It.Is<CancellationToken>(token => !token.CanBeCanceled)), Times.Once);
+    }
+
+    [Fact]
     public async Task HandleAsync_OpenAiCompatibleGeminiModelConfiguration_PersistsCostForConfiguredModel()
     {
         var result = await SendWebsiteMessageAsync(
@@ -1407,6 +1780,36 @@ Review https://example.com/materials/asa-printing-guide.pdf and summarize the re
             It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    private static Task<GeminiResponse> CancelProviderCall(CancellationTokenSource cancellation)
+    {
+        cancellation.Cancel();
+        return Task.FromCanceled<GeminiResponse>(cancellation.Token);
+    }
+
+    private static async Task<Message> CreateGroundedShippingAssistantMessageAsync(string address)
+    {
+        var result = await SendWebsiteMessageAsync(
+            channel: Channel.QuoteEngine,
+            messageContent: address,
+            toolDeclarations:
+            [
+                new GeminiToolDeclaration
+                {
+                    FunctionDeclarations = [new GeminiFunctionDeclaration { Name = "quote_get_shipping_rates" }]
+                }
+            ],
+            groundingSources:
+            [
+                new GeminiGroundingSource
+                {
+                    Title = "Public address source",
+                    Url = "https://example.com/address"
+                }
+            ]);
+
+        return Assert.Single(result.CreatedMessages, message => message.Role == MessageRole.Assistant);
+    }
+
     private static async Task<HandlerResult> SendWebsiteMessageAsync(
         List<AttachmentDto>? attachments = null,
         GeminiTokenUsage? tokenUsage = null,
@@ -1437,7 +1840,9 @@ Review https://example.com/materials/asa-printing-guide.pdf and summarize the re
         int googleSearchGroundingPromptCount = 0,
         IReadOnlyList<GeminiGroundingSource>? groundingSources = null,
         Dictionary<string, string?>? configurationOverrides = null,
-        Mock<IUsageBudgetService>? usageBudgetServiceOverride = null)
+        Mock<IUsageBudgetService>? usageBudgetServiceOverride = null,
+        Func<GeminiRequest, CancellationToken, Task<GeminiResponse>>? geminiResponseFactory = null,
+        CancellationToken handlerCancellationToken = default)
     {
         var sessionId = Guid.NewGuid();
         var userProfileId = Guid.NewGuid();
@@ -1528,19 +1933,20 @@ Review https://example.com/materials/asa-printing-guide.pdf and summarize the re
                 capturedRequest = request;
                 capturedRequests.Add(request);
             })
-            .ReturnsAsync((GeminiRequest request, CancellationToken _) => new GeminiResponse
-            {
-                Success = geminiSuccess,
-                Content = request.EnableWebSearch && groundingSources is { Count: > 0 }
-                    ? "VALIDATION_STATUS: CONFIRMED\nPublic sources corroborate Khlong Khoi, Pak Kret, Nonthaburi 11120."
-                    : "We can print PLA, PETG, ABS, ASA, nylon, and engineering materials.",
-                ErrorMessage = geminiErrorMessage,
-                ServiceTier = responseServiceTier,
-                GroundingWebSearchQueries = groundingWebSearchQueries?.ToList() ?? [],
-                GroundingSources = groundingSources?.ToList() ?? [],
-                GoogleSearchGroundingPromptCount = googleSearchGroundingPromptCount,
-                TokenUsage = tokenUsage ?? new GeminiTokenUsage { TotalTokens = 25 }
-            });
+            .Returns((GeminiRequest request, CancellationToken token) =>
+                geminiResponseFactory?.Invoke(request, token) ?? Task.FromResult(new GeminiResponse
+                {
+                    Success = geminiSuccess,
+                    Content = request.EnableWebSearch && groundingSources is { Count: > 0 }
+                        ? "VALIDATION_STATUS: CONFIRMED\nPublic sources corroborate Khlong Khoi, Pak Kret, Nonthaburi 11120."
+                        : "We can print PLA, PETG, ABS, ASA, nylon, and engineering materials.",
+                    ErrorMessage = geminiErrorMessage,
+                    ServiceTier = responseServiceTier,
+                    GroundingWebSearchQueries = groundingWebSearchQueries?.ToList() ?? [],
+                    GroundingSources = groundingSources?.ToList() ?? [],
+                    GoogleSearchGroundingPromptCount = googleSearchGroundingPromptCount,
+                    TokenUsage = tokenUsage ?? new GeminiTokenUsage { TotalTokens = 25 }
+                }));
 
         modelFileStagingService ??= new Mock<IModelFileStagingService>();
 
@@ -1650,18 +2056,20 @@ Review https://example.com/materials/asa-printing-guide.pdf and summarize the re
             Mock.Of<ILogger<SendMessageCommandHandler>>(),
             configuration);
 
-        var messageResult = await handler.HandleAsync(new SendMessageCommand
-        {
-            SessionId = sessionId,
-            Content = attachments is { Count: > 0 }
-                ? "What can you tell from this attachment?"
-                : messageContent,
-            ModelName = modelName,
-            Language = "en",
-            Attachments = attachments,
-            ResponseMimeType = responseMimeType,
-            ResponseSchema = responseSchema
-        });
+        var messageResult = await handler.HandleAsync(
+            new SendMessageCommand
+            {
+                SessionId = sessionId,
+                Content = attachments is { Count: > 0 }
+                    ? "What can you tell from this attachment?"
+                    : messageContent,
+                ModelName = modelName,
+                Language = "en",
+                Attachments = attachments,
+                ResponseMimeType = responseMimeType,
+                ResponseSchema = responseSchema
+            },
+            handlerCancellationToken);
 
         return new HandlerResult(
             capturedRequest,

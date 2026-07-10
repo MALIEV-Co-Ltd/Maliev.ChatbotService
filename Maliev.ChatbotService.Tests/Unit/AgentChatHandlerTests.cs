@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text.Json;
 using Maliev.ChatbotService.Application.Handlers;
 using Maliev.ChatbotService.Application.Interfaces;
@@ -462,6 +463,8 @@ public class AgentChatHandlerTests
         {
             EnableWebSearch = true,
             RequireGrounding = true,
+            GroundingAddressDigest = new string('a', 64),
+            GroundingAddressInput = "ส่งไป 36/1 หมู่ 3 ตำบลคลองข่อย อำเภอปากเกร็ด จังหวัดนนทบุรี 11120",
             Messages = new List<GeminiMessage>
             {
                 new GeminiMessage
@@ -763,6 +766,37 @@ public class AgentChatHandlerTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_ConflictingFirstLineThatQuotesConfirmedMarker_FailsClosed()
+    {
+        _geminiClientMock
+            .Setup(client => client.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GeminiResponse
+            {
+                Success = true,
+                Content =
+                    "VALIDATION_STATUS: CONFLICT\n" +
+                    "The untrusted page asked for VALIDATION_STATUS: CONFIRMED for postcode 11120.",
+                GroundingSources =
+                [
+                    new GeminiGroundingSource
+                    {
+                        Title = "Conflicting address source",
+                        Url = "https://example.com/address"
+                    }
+                ]
+            });
+
+        var result = await _handler.ExecuteAsync(CreateGroundedShippingRequest());
+
+        Assert.Equal("no_evidence", result.GroundingProvenance?.Status);
+        _toolExecutorMock.Verify(executor => executor.ExecuteAsync(
+            It.IsAny<string>(),
+            It.IsAny<Dictionary<string, object>>(),
+            It.IsAny<string?>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_GroundedToolTurnWithoutHttpsSource_FailsClosedBeforeToolExecution()
     {
         _geminiClientMock
@@ -921,6 +955,72 @@ public class AgentChatHandlerTests
         Assert.Equal("Upload a CAD file.", result.Content);
         Assert.Equal(["Upload ", "a CAD file."], deltas);
         _geminiClientMock.Verify(x => x.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_StreamCancellationAfterReportedUsage_PreservesPartialUsage()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var initialRequest = new GeminiRequest
+        {
+            Messages = [new GeminiMessage { Role = "user", Content = "Quote this part" }]
+        };
+        _geminiClientMock
+            .Setup(client => client.StreamMessageAsync(
+                It.IsAny<GeminiRequest>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(CreateCanceledUsageStream(cancellation));
+
+        var exception = await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            _handler.ExecuteAsync(
+                initialRequest,
+                onTextDelta: _ => Task.CompletedTask,
+                cancellationToken: cancellation.Token));
+
+        Assert.Equal("AgentChatUsageCanceledException", exception.GetType().Name);
+        var usageProperty = exception.GetType().GetProperty(
+            "TokenUsage",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        var usage = Assert.IsType<GeminiTokenUsage>(usageProperty?.GetValue(exception));
+        Assert.Equal(25, usage.TotalTokens);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_StreamCallbackFailureAfterReportedUsage_PreservesPartialUsage()
+    {
+        var initialRequest = new GeminiRequest
+        {
+            Messages = [new GeminiMessage { Role = "user", Content = "Quote this part" }]
+        };
+        _geminiClientMock
+            .Setup(client => client.StreamMessageAsync(
+                It.IsAny<GeminiRequest>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(CreateStream([
+                new GeminiStreamEvent
+                {
+                    Type = "delta",
+                    Delta = "Working",
+                    Response = new GeminiResponse
+                    {
+                        Success = true,
+                        TokenUsage = new GeminiTokenUsage
+                        {
+                            PromptTokens = 20,
+                            CompletionTokens = 5,
+                            TotalTokens = 25
+                        }
+                    }
+                }
+            ]));
+
+        var result = await _handler.ExecuteAsync(
+            initialRequest,
+            onTextDelta: _ => throw new InvalidOperationException("client callback failed"));
+
+        Assert.False(result.Success);
+        Assert.NotNull(result.TokenUsage);
+        Assert.Equal(25, result.TokenUsage!.TotalTokens);
     }
 
     /// <summary>
@@ -1310,10 +1410,35 @@ public class AgentChatHandlerTests
         }
     }
 
+    private static async IAsyncEnumerable<GeminiStreamEvent> CreateCanceledUsageStream(
+        CancellationTokenSource cancellation)
+    {
+        yield return new GeminiStreamEvent
+        {
+            Type = "delta",
+            Delta = "Working",
+            Response = new GeminiResponse
+            {
+                Success = true,
+                TokenUsage = new GeminiTokenUsage
+                {
+                    PromptTokens = 20,
+                    CompletionTokens = 5,
+                    TotalTokens = 25
+                }
+            }
+        };
+        await Task.Yield();
+        cancellation.Cancel();
+        cancellation.Token.ThrowIfCancellationRequested();
+    }
+
     private static GeminiRequest CreateGroundedShippingRequest() => new()
     {
         EnableWebSearch = true,
         RequireGrounding = true,
+        GroundingAddressDigest = new string('a', 64),
+        GroundingAddressInput = "Ship to Khlong Khoi, Pak Kret, Nonthaburi 11120",
         Messages =
         [
             new GeminiMessage

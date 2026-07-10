@@ -3,6 +3,7 @@ using Maliev.Aspire.ServiceDefaults.Authorization;
 using Maliev.ChatbotService.Api.Models.Responses;
 using Maliev.ChatbotService.Application.Authorization;
 using Maliev.ChatbotService.Application.Interfaces;
+using Maliev.ChatbotService.Application.Models;
 using Maliev.ChatbotService.Domain.Entities;
 using Maliev.ChatbotService.Domain.Enums;
 using Microsoft.AspNetCore.Mvc;
@@ -89,7 +90,11 @@ public sealed class InternalSessionsController(
             Role = ToWireValue(message.Role),
             Content = message.Content,
             ContentType = ToWireValue(message.ContentType),
-            CreatedAt = message.CreatedAt
+            CreatedAt = message.CreatedAt,
+            GroundingProvenance = GroundingProvenanceResponseMapper.Map(
+                message.Role == MessageRole.Assistant
+                    ? MessageGroundingMetadata.TryReadProvenance(message.MetadataJson)
+                    : null)
         };
     }
 

@@ -538,17 +538,33 @@ public class SendMessageCommandHandler
             var coreInstruction = await _systemInstructionService.GetActiveInstructionAsync(coreInstructionTopicKey, cancellationToken);
 
             var customerAuthoredContent = ExtractCustomerAuthoredContent(command.Content);
-            var priorShippingGrounding = FindLatestGroundedShippingProvenance(conversationHistory);
+            var latestShippingGrounding = FindLatestShippingGroundingProvenance(conversationHistory);
             var recentConversationRequestsShippingAddress =
                 RecentConversationRequestsShippingAddress(conversationHistory);
-            var requiresAddressGrounding = session.Channel == Channel.QuoteEngine &&
-                (ShouldTriggerAddressWebSearch(
+            var currentMessageContainsShippingAddress = session.Channel == Channel.QuoteEngine &&
+                ShouldTriggerAddressWebSearch(
                     customerAuthoredContent.ToLowerInvariant(),
-                    recentConversationRequestsShippingAddress) ||
-                 IsGroundedShippingContinuation(
-                     customerAuthoredContent,
-                     recentConversationRequestsShippingAddress,
-                     priorShippingGrounding));
+                    recentConversationRequestsShippingAddress);
+            var isGroundedShippingContinuation = session.Channel == Channel.QuoteEngine &&
+                IsGroundedShippingContinuation(
+                    customerAuthoredContent,
+                    recentConversationRequestsShippingAddress,
+                    latestShippingGrounding);
+            var requiresAddressGrounding = currentMessageContainsShippingAddress ||
+                isGroundedShippingContinuation;
+            var groundingAddressInput = currentMessageContainsShippingAddress
+                ? customerAuthoredContent
+                : null;
+            var groundingAddressDigest = currentMessageContainsShippingAddress
+                ? ShippingGroundingIdentity.CreateDigest(customerAuthoredContent)
+                : isGroundedShippingContinuation
+                    ? latestShippingGrounding?.AddressDigest
+                    : null;
+            var reusableShippingGrounding = CanReuseShippingGrounding(
+                latestShippingGrounding,
+                groundingAddressDigest)
+                ? latestShippingGrounding
+                : null;
 
             // Check if Gemini built-in search should be triggered
             bool enableGeminiSearch = false;
@@ -558,7 +574,7 @@ public class SendMessageCommandHandler
                 // inherit the general technical-search flag, which is intentionally disabled by
                 // default. A disabled/missing prompt capability remains fail-closed via
                 // GeminiRequest.RequireGrounding below.
-                enableGeminiSearch = priorShippingGrounding is null && _addressGroundingEnabled;
+                enableGeminiSearch = reusableShippingGrounding is null && _addressGroundingEnabled;
                 if (enableGeminiSearch)
                 {
                     _logger.LogInformation(
@@ -665,7 +681,9 @@ public class SendMessageCommandHandler
                 MediaResolution = ResolveMediaResolution(geminiMessages),
                 Store = false,
                 RequireGrounding = requiresAddressGrounding,
-                PriorGroundingProvenance = requiresAddressGrounding ? priorShippingGrounding : null
+                PriorGroundingProvenance = reusableShippingGrounding,
+                GroundingAddressDigest = requiresAddressGrounding ? groundingAddressDigest : null,
+                GroundingAddressInput = requiresAddressGrounding ? groundingAddressInput : null
             };
 
             if (!hasAgentTools)
@@ -694,14 +712,29 @@ public class SendMessageCommandHandler
                 geminiRequest.ToolConfig = new GeminiFunctionCallingConfig { Mode = "AUTO" };
                 geminiRequest.TimeoutSeconds = 30;
 
-                var agentResult = await _agentChatHandler.ExecuteAsync(
-                    geminiRequest,
-                    command.ThinkingStepCallback,
-                    command.UserToken,
-                    command.QuoteAgentContextToken,
-                    command.TextDeltaCallback,
-                    command.ThoughtDeltaCallback,
-                    cancellationToken);
+                AgentChatResult agentResult;
+                try
+                {
+                    agentResult = await _agentChatHandler.ExecuteAsync(
+                        geminiRequest,
+                        command.ThinkingStepCallback,
+                        command.UserToken,
+                        command.QuoteAgentContextToken,
+                        command.TextDeltaCallback,
+                        command.ThoughtDeltaCallback,
+                        cancellationToken);
+                }
+                catch (AgentChatUsageCanceledException exception)
+                {
+                    await RecordKnownModelUsageAsync(
+                        session.UserProfileId,
+                        geminiRequest.ModelName,
+                        exception.ServiceTier ?? geminiRequest.ServiceTier,
+                        exception.TokenUsage,
+                        exception.GoogleSearchGroundingPromptCount,
+                        CancellationToken.None);
+                    throw;
+                }
 
                 thinkingSteps = agentResult.ThinkingSteps;
                 geminiResponse = new GeminiResponse
@@ -720,36 +753,40 @@ public class SendMessageCommandHandler
             }
             else
             {
-                geminiResponse = await SendGeminiMaybeStreamingAsync(
-                    geminiRequest,
-                    command.TextDeltaCallback,
-                    command.ThoughtDeltaCallback,
-                    cancellationToken);
+                try
+                {
+                    geminiResponse = await SendGeminiMaybeStreamingAsync(
+                        geminiRequest,
+                        command.TextDeltaCallback,
+                        command.ThoughtDeltaCallback,
+                        cancellationToken);
+                }
+                catch (GeminiUsageCanceledException exception)
+                {
+                    await RecordKnownModelUsageAsync(
+                        session.UserProfileId,
+                        geminiRequest.ModelName,
+                        exception.PartialResponse.ServiceTier ?? geminiRequest.ServiceTier,
+                        exception.PartialResponse.TokenUsage,
+                        GetGoogleSearchGroundingPromptCount(exception.PartialResponse),
+                        CancellationToken.None);
+                    throw;
+                }
             }
 
-            await LogGroundingDomainsAsync(session.Id, geminiResponse, cancellationToken);
-
             // Provider usage is billable even when the final model step fails or falls back. Compute
-            // and record it before branching on Success so a grounded preflight followed by a failed
-            // tool/model turn cannot bypass the daily budget.
-            var costEstimate = GeminiCostEstimator.Estimate(
-                geminiRequest.ModelName ?? _defaultChatModelName,
+            // and record it with a token independent of the caller before any cancelable post-processing.
+            var costEstimate = await RecordKnownModelUsageAsync(
+                session.UserProfileId,
+                geminiRequest.ModelName,
                 geminiResponse.ServiceTier ?? geminiRequest.ServiceTier,
                 geminiResponse.TokenUsage,
-                GetGoogleSearchGroundingPromptCount(geminiResponse));
-            await _usageBudgetService.RecordModelUsageAsync(
-                session.UserProfileId,
-                new UsageBudgetCharge
-                {
-                    Tokens = geminiResponse.TokenUsage?.TotalTokens ?? 0,
-                    CostMicroUsd = GetNonGroundingCostMicroUsd(costEstimate),
-                    GoogleSearchGroundingPromptCount = costEstimate?.GoogleSearchGroundingPromptCount ?? 0,
-                    GoogleSearchGroundingMicroUsd = costEstimate?.GoogleSearchGroundingMicroUsd ?? 0
-                },
-                cancellationToken);
+                GetGoogleSearchGroundingPromptCount(geminiResponse),
+                CancellationToken.None);
             usageSnapshot = await _usageBudgetService.GetDailyTokenUsageSnapshotAsync(
                 session.UserProfileId,
                 cancellationToken);
+            await LogGroundingDomainsAsync(session.Id, geminiResponse, cancellationToken);
 
             if (!geminiResponse.Success && !geminiResponse.IsFallback)
             {
@@ -1109,10 +1146,16 @@ public class SendMessageCommandHandler
         }
 
         GeminiResponse? finalResponse = null;
+        var partialResponse = new GeminiResponse();
         try
         {
             await foreach (var streamEvent in _geminiClient.StreamMessageAsync(request, cancellationToken))
             {
+                if (streamEvent.Response is not null)
+                {
+                    GeminiStreamUsage.Merge(partialResponse, streamEvent.Response);
+                }
+
                 if (streamEvent.Type.Equals("delta", StringComparison.OrdinalIgnoreCase) &&
                     !string.IsNullOrEmpty(streamEvent.Delta))
                 {
@@ -1129,24 +1172,36 @@ public class SendMessageCommandHandler
                 }
                 else if (streamEvent.Type.Equals("error", StringComparison.OrdinalIgnoreCase))
                 {
-                    finalResponse = new GeminiResponse
-                    {
-                        Success = false,
-                        ErrorMessage = streamEvent.ErrorMessage ?? "Gemini streaming failed"
-                    };
+                    partialResponse.Success = false;
+                    partialResponse.ErrorMessage = streamEvent.ErrorMessage ?? "Gemini streaming failed";
+                    finalResponse = partialResponse;
                 }
             }
         }
+        catch (OperationCanceledException exception) when (
+            GeminiStreamUsage.HasKnownUsage(partialResponse))
+        {
+            throw new GeminiUsageCanceledException(
+                exception,
+                partialResponse,
+                exception.CancellationToken.CanBeCanceled
+                    ? exception.CancellationToken
+                    : cancellationToken);
+        }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            return new GeminiResponse
-            {
-                Success = false,
-                ErrorMessage = "Gemini streaming failed"
-            };
+            partialResponse.Success = false;
+            partialResponse.ErrorMessage = "Gemini streaming failed";
+            return partialResponse;
         }
 
-        return finalResponse ?? new GeminiResponse
+        if (finalResponse is not null)
+        {
+            GeminiStreamUsage.Merge(finalResponse, partialResponse);
+            return finalResponse;
+        }
+
+        return new GeminiResponse
         {
             Success = false,
             ErrorMessage = "Gemini streaming ended without a final response."
@@ -1637,6 +1692,32 @@ public class SendMessageCommandHandler
             : Math.Max(0, estimate.TotalMicroUsd - estimate.GoogleSearchGroundingMicroUsd);
     }
 
+    private async Task<GeminiCostEstimate?> RecordKnownModelUsageAsync(
+        Guid userProfileId,
+        string? modelName,
+        string? serviceTier,
+        GeminiTokenUsage? tokenUsage,
+        int googleSearchGroundingPromptCount,
+        CancellationToken accountingToken)
+    {
+        var estimate = GeminiCostEstimator.Estimate(
+            modelName ?? _defaultChatModelName,
+            serviceTier,
+            tokenUsage,
+            googleSearchGroundingPromptCount);
+        await _usageBudgetService.RecordModelUsageAsync(
+            userProfileId,
+            new UsageBudgetCharge
+            {
+                Tokens = tokenUsage?.TotalTokens ?? 0,
+                CostMicroUsd = GetNonGroundingCostMicroUsd(estimate),
+                GoogleSearchGroundingPromptCount = estimate?.GoogleSearchGroundingPromptCount ?? 0,
+                GoogleSearchGroundingMicroUsd = estimate?.GoogleSearchGroundingMicroUsd ?? 0
+            },
+            accountingToken);
+        return estimate;
+    }
+
     private static int GetGoogleSearchGroundingPromptCount(GeminiResponse response) =>
         response.GoogleSearchGroundingPromptCount > 0
             ? response.GoogleSearchGroundingPromptCount
@@ -1691,41 +1772,28 @@ public class SendMessageCommandHandler
         string messageLower,
         bool addressContinuation = false)
     {
-        var addressPlaceKeywords = new[]
-        {
-            "address", "location", "postal code", "postcode", "industrial estate",
-            "maptaphut", "map ta phut", "rayong", "shipping to", "delivery to",
-            "ship to", "subdistrict", "sub-district", "tambon", "district", "amphoe",
-            "province", "moo ", "soi ", "road ", "ตำบล", "ต.", "แขวง", "อำเภอ",
-            "อ.", "เขต", "จังหวัด", "จ.", "หมู่", "ถนน", "ซอย", "ส่งไป",
-            "ที่อยู่", "รหัสไปรษณีย์", "นิคม", "มาบตาพุด", "ระยอง"
-        };
-        var lookupIntentKeywords = new[]
-        {
-            "find", "lookup", "look up", "search", "google", "where", "address",
-            "shipping", "delivery", "ship", "courier", "ค่าส่ง", "จัดส่ง", "ขนส่ง", "ที่อยู่"
-        };
-
-        var hasAddressPlace = ContainsAny(messageLower, addressPlaceKeywords);
         var hasThaiPostcode = Regex.IsMatch(
             messageLower,
             @"(?<!\d)\d{5}(?!\d)",
             RegexOptions.CultureInvariant,
             TimeSpan.FromMilliseconds(50));
+        return hasThaiPostcode &&
+            (addressContinuation || LooksLikeShippingAddressInput(messageLower));
+    }
 
-        var isBarePostcode = Regex.IsMatch(
-            messageLower.Trim(),
-            @"^\d{5}$",
+    private static bool LooksLikeShippingAddressInput(string messageLower)
+    {
+        var shippingIntentKeywords = new[]
+        {
+            "shipping", "delivery", "ship to", "shipping to", "delivery to", "courier",
+            "ค่าส่ง", "จัดส่ง", "ขนส่ง", "ส่งไป", "ส่งที่", "ที่อยู่จัดส่ง"
+        };
+        var hasStreetNumber = Regex.IsMatch(
+            messageLower,
+            @"(?<![a-z0-9])\d{1,4}(?:/\d{1,4})?\s+[\p{L}\s.]{0,80}(?:moo|soi|road|rd\.?|subdistrict|sub-district|tambon|หมู่|ถนน|ซอย|ตำบล)",
             RegexOptions.CultureInvariant,
             TimeSpan.FromMilliseconds(50));
-
-        return hasThaiPostcode && (hasAddressPlace || isBarePostcode && addressContinuation) ||
-            hasAddressPlace && ContainsAny(messageLower, lookupIntentKeywords) ||
-            ContainsAny(messageLower, new[]
-            {
-                "subdistrict", "sub-district", "tambon", "district", "amphoe", "province",
-                "ตำบล", "แขวง", "อำเภอ", "เขต", "จังหวัด"
-            });
+        return ContainsAny(messageLower, shippingIntentKeywords) || hasStreetNumber;
     }
 
     private static bool RecentConversationRequestsShippingAddress(IEnumerable<Message> messages)
@@ -1743,19 +1811,46 @@ public class SendMessageCommandHandler
         });
     }
 
-    private static GroundingProvenance? FindLatestGroundedShippingProvenance(
+    private static GroundingProvenance? FindLatestShippingGroundingProvenance(
         IEnumerable<Message> messages)
     {
-        return messages
+        var materializedMessages = messages.ToList();
+        var latestShippingGrounding = materializedMessages
             .Where(message => message.Role == MessageRole.Assistant)
             .OrderByDescending(message => message.CreatedAt)
-            .Select(message => MessageGroundingMetadata.TryReadProvenance(message.MetadataJson))
-            .FirstOrDefault(provenance =>
-                provenance is not null &&
-                provenance.Purpose.Equals("shipping_address_validation", StringComparison.OrdinalIgnoreCase) &&
-                provenance.Status.Equals("grounded", StringComparison.OrdinalIgnoreCase) &&
-                provenance.Sources.Count > 0);
+            .Select(message => new
+            {
+                Message = message,
+                Provenance = MessageGroundingMetadata.TryReadProvenance(message.MetadataJson)
+            })
+            .FirstOrDefault(item =>
+                item.Provenance is not null &&
+                item.Provenance.Purpose.Equals("shipping_address_validation", StringComparison.OrdinalIgnoreCase));
+        if (latestShippingGrounding?.Provenance is null ||
+            !latestShippingGrounding.Provenance.Status.Equals("grounded", StringComparison.OrdinalIgnoreCase))
+        {
+            return latestShippingGrounding?.Provenance;
+        }
+
+        var addressChangedAfterGrounding = materializedMessages
+            .Where(message =>
+                message.Role == MessageRole.User &&
+                message.CreatedAt >= latestShippingGrounding.Message.CreatedAt)
+            .Select(message => ExtractCustomerAuthoredContent(message.Content))
+            .Where(content => LooksLikeShippingAddressInput(content.ToLowerInvariant()))
+            .Any(content => !ShippingGroundingIdentity.Matches(
+                latestShippingGrounding.Provenance.AddressDigest,
+                ShippingGroundingIdentity.CreateDigest(content)));
+        return addressChangedAfterGrounding ? null : latestShippingGrounding.Provenance;
     }
+
+    private static bool CanReuseShippingGrounding(
+        GroundingProvenance? provenance,
+        string? currentAddressDigest) =>
+        provenance is not null &&
+        provenance.Status.Equals("grounded", StringComparison.OrdinalIgnoreCase) &&
+        provenance.Sources.Count > 0 &&
+        ShippingGroundingIdentity.Matches(provenance.AddressDigest, currentAddressDigest);
 
     private static bool IsGroundedShippingContinuation(
         string message,
@@ -1763,6 +1858,13 @@ public class SendMessageCommandHandler
         GroundingProvenance? priorShippingGrounding)
     {
         if (!recentConversationRequestsShippingAddress || priorShippingGrounding is null)
+        {
+            return false;
+        }
+
+        if (!priorShippingGrounding.Status.Equals("grounded", StringComparison.OrdinalIgnoreCase) ||
+            priorShippingGrounding.Sources.Count == 0 ||
+            !ShippingGroundingIdentity.IsValidDigest(priorShippingGrounding.AddressDigest))
         {
             return false;
         }

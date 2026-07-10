@@ -315,7 +315,8 @@ public class SessionsController : ControllerBase
             Role = message.Role,
             Content = message.Content,
             ContentType = message.ContentType,
-            CreatedAt = message.CreatedAt
+            CreatedAt = message.CreatedAt,
+            GroundingProvenance = GroundingProvenanceResponseMapper.Map(message.GroundingProvenance)
         };
     }
 }

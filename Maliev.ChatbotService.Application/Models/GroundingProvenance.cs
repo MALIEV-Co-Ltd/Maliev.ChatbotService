@@ -23,6 +23,11 @@ public sealed class GroundingProvenance
     public string Status { get; set; } = string.Empty;
 
     /// <summary>
+    /// Gets or sets the SHA-256 digest of the normalized customer address input validated by this result.
+    /// </summary>
+    public string? AddressDigest { get; set; }
+
+    /// <summary>
     /// Gets or sets the bounded provider-reported search queries.
     /// </summary>
     public List<string> Queries { get; set; } = [];

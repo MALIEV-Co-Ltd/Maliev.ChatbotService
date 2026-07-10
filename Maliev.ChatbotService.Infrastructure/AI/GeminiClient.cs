@@ -288,7 +288,8 @@ public class GeminiClient : IGeminiClient
                     yield return new GeminiStreamEvent
                     {
                         Type = "delta",
-                        Delta = parsed.Content
+                        Delta = parsed.Content,
+                        Response = parsed
                     };
                 }
 
@@ -298,7 +299,8 @@ public class GeminiClient : IGeminiClient
                     yield return new GeminiStreamEvent
                     {
                         Type = "thought",
-                        Thought = parsed.ThoughtContent
+                        Thought = parsed.ThoughtContent,
+                        Response = parsed
                     };
                 }
 
@@ -323,6 +325,19 @@ public class GeminiClient : IGeminiClient
                 }
 
                 tokenUsage = parsed.TokenUsage ?? tokenUsage;
+                if (string.IsNullOrEmpty(parsed.Content) &&
+                    string.IsNullOrEmpty(parsed.ThoughtContent) &&
+                    (parsed.TokenUsage is not null ||
+                     parsed.GoogleSearchGroundingPromptCount > 0 ||
+                     parsed.GroundingWebSearchQueries.Count > 0 ||
+                     parsed.GroundingSources.Count > 0))
+                {
+                    yield return new GeminiStreamEvent
+                    {
+                        Type = "metadata",
+                        Response = parsed
+                    };
+                }
             }
 
             Interlocked.Increment(ref _successfulApiCalls);

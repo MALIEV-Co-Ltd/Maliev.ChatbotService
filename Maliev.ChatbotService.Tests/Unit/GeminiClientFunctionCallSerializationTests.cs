@@ -977,6 +977,29 @@ public sealed class GeminiClientFunctionCallSerializationTests
     }
 
     [Fact]
+    public async Task StreamMessageAsync_DeltaWithUsageMetadata_ExposesUsageBeforeFinalEvent()
+    {
+        var handler = new CapturingHandler("""
+            data: {"candidates":[{"content":{"parts":[{"text":"working"}]}}],"usageMetadata":{"promptTokenCount":20,"candidatesTokenCount":5,"totalTokenCount":25}}
+
+            """);
+        var client = CreateClient(handler);
+        var events = new List<GeminiStreamEvent>();
+
+        await foreach (var streamEvent in client.StreamMessageAsync(new GeminiRequest
+        {
+            Messages = [new GeminiMessage { Role = "user", Content = "stream usage" }]
+        }))
+        {
+            events.Add(streamEvent);
+        }
+
+        var delta = Assert.Single(events, streamEvent => streamEvent.Type == "delta");
+        Assert.NotNull(delta.Response?.TokenUsage);
+        Assert.Equal(25, delta.Response!.TokenUsage!.TotalTokens);
+    }
+
+    [Fact]
     public async Task SendMessageAsync_CallerCancellation_PropagatesInsteadOfReturningFallback()
     {
         var client = CreateClient(new CancelingHandler());

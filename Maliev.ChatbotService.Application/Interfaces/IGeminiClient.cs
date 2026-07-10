@@ -136,6 +136,18 @@ public class GeminiRequest
     public GroundingProvenance? PriorGroundingProvenance { get; set; }
 
     /// <summary>
+    /// Gets or sets the normalized-address digest this shipping grounding request must validate.
+    /// This is an orchestration hint and is not serialized to the model provider.
+    /// </summary>
+    public string? GroundingAddressDigest { get; set; }
+
+    /// <summary>
+    /// Gets or sets the customer-authored address input used by the search-only grounding preflight.
+    /// This is an orchestration hint and is not serialized to function-enabled provider turns.
+    /// </summary>
+    public string? GroundingAddressInput { get; set; }
+
+    /// <summary>
     /// Gets or sets whether to enable Gemini URL Context for URLs supplied in the prompt.
     /// </summary>
     public bool EnableUrlContext { get; set; }
@@ -305,7 +317,7 @@ public class GeminiResponse
 public class GeminiStreamEvent
 {
     /// <summary>
-    /// Gets or sets the event type: started, delta, final, or error.
+    /// Gets or sets the event type: started, delta, thought, metadata, final, or error.
     /// </summary>
     public string Type { get; set; } = "delta";
 
@@ -320,7 +332,7 @@ public class GeminiStreamEvent
     public string? Thought { get; set; }
 
     /// <summary>
-    /// Gets or sets the final accumulated response.
+    /// Gets or sets provider response metadata for this event, or the final accumulated response.
     /// </summary>
     public GeminiResponse? Response { get; set; }
 

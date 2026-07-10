@@ -50,6 +50,9 @@ public static class MessageGroundingMetadata
                     ? "google_search"
                     : provenance.Provider[..Math.Min(provenance.Provider.Length, 80)],
                 Status = provenance.Status[..Math.Min(provenance.Status.Length, 40)],
+                AddressDigest = ShippingGroundingIdentity.IsValidDigest(provenance.AddressDigest)
+                    ? provenance.AddressDigest!.ToLowerInvariant()
+                    : null,
                 ErrorCode = string.IsNullOrWhiteSpace(provenance.ErrorCode)
                     ? null
                     : provenance.ErrorCode[..Math.Min(provenance.ErrorCode.Length, 120)],

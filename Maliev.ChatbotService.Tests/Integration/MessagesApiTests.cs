@@ -43,6 +43,37 @@ public class MessagesApiTests : IAsyncLifetime
         return result!.SessionId;
     }
 
+    private static string CreateGroundingMetadataJson() => JsonSerializer.Serialize(new
+    {
+        groundingMetadata = new
+        {
+            providerRawPayload = "must-not-leak",
+            provenance = new
+            {
+                purpose = "shipping_address_validation",
+                provider = "google_search",
+                status = "grounded",
+                addressDigest = new string('a', 64),
+                queries = new[] { "Khlong Khoi Pak Kret Nonthaburi 11120" },
+                sources = new object[]
+                {
+                    new
+                    {
+                        title = "Public address source",
+                        url = "https://example.com/address",
+                        domain = "example.com"
+                    },
+                    new
+                    {
+                        title = "Insecure source",
+                        url = "http://insecure.example/address",
+                        domain = "insecure.example"
+                    }
+                }
+            }
+        }
+    });
+
     [Fact]
     public async Task SendMessage_ExceedingPerIpLimit_ReturnsTooManyRequests()
     {
@@ -583,6 +614,7 @@ What materials can you print?
                 Role = MessageRole.User,
                 Content = "Can you create customer Acme?",
                 ContentType = ContentType.Text,
+                MetadataJson = CreateGroundingMetadataJson(),
                 CreatedAt = now.AddMinutes(-9)
             });
 
@@ -593,6 +625,7 @@ What materials can you print?
                 Role = MessageRole.Assistant,
                 Content = "I can help with that.",
                 ContentType = ContentType.Text,
+                MetadataJson = CreateGroundingMetadataJson(),
                 CreatedAt = now.AddMinutes(-8)
             });
 
@@ -612,7 +645,8 @@ What materials can you print?
         var response = await client.GetAsync($"/chatbot/v1/sessions/{sessionId}/messages");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var result = await response.Content.ReadFromJsonAsync<ConversationMessagesResponse>(_factory.JsonSerializerOptions);
+        var payload = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<ConversationMessagesResponse>(payload, _factory.JsonSerializerOptions);
 
         Assert.NotNull(result);
         Assert.Equal(sessionId, result.SessionId);
@@ -620,6 +654,23 @@ What materials can you print?
         Assert.Equal(2, result.Messages.Count);
         Assert.Equal("user", result.Messages[0].Role);
         Assert.Equal("assistant", result.Messages[1].Role);
+        using (var document = JsonDocument.Parse(payload))
+        {
+            var messages = document.RootElement.GetProperty("messages");
+            Assert.Equal(JsonValueKind.Null, messages[0].GetProperty("grounding_provenance").ValueKind);
+            var provenance = messages[1].GetProperty("grounding_provenance");
+            Assert.Equal("shipping_address_validation", provenance.GetProperty("purpose").GetString());
+            Assert.Equal("google_search", provenance.GetProperty("provider").GetString());
+            Assert.Equal("grounded", provenance.GetProperty("status").GetString());
+            Assert.Equal(
+                "Khlong Khoi Pak Kret Nonthaburi 11120",
+                Assert.Single(provenance.GetProperty("queries").EnumerateArray()).GetString());
+            var source = Assert.Single(provenance.GetProperty("sources").EnumerateArray());
+            Assert.Equal("https://example.com/address", source.GetProperty("url").GetString());
+            Assert.DoesNotContain("must-not-leak", payload, StringComparison.Ordinal);
+            Assert.DoesNotContain("insecure.example", payload, StringComparison.Ordinal);
+            Assert.DoesNotContain("metadata_json", payload, StringComparison.Ordinal);
+        }
 
         var otherResponse = await client.GetAsync($"/chatbot/v1/sessions/{otherSessionId}/messages");
 
@@ -675,6 +726,7 @@ What materials can you print?
                 Role = MessageRole.User,
                 Content = "Can you help with my quote?",
                 ContentType = ContentType.Text,
+                MetadataJson = CreateGroundingMetadataJson(),
                 CreatedAt = now.AddMinutes(-4)
             });
 
@@ -685,6 +737,7 @@ What materials can you print?
                 Role = MessageRole.Assistant,
                 Content = "Yes, I can continue that quote conversation.",
                 ContentType = ContentType.Text,
+                MetadataJson = CreateGroundingMetadataJson(),
                 CreatedAt = now.AddMinutes(-3)
             });
         }
@@ -694,7 +747,8 @@ What materials can you print?
         var response = await client.GetAsync($"/chatbot/v1/internal/sessions/{sessionId}/messages");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var result = await response.Content.ReadFromJsonAsync<ConversationMessagesResponse>(_factory.JsonSerializerOptions);
+        var payload = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<ConversationMessagesResponse>(payload, _factory.JsonSerializerOptions);
 
         Assert.NotNull(result);
         Assert.Equal(sessionId, result.SessionId);
@@ -705,6 +759,17 @@ What materials can you print?
         Assert.Equal("user", result.Messages[0].Role);
         Assert.Equal("Can you help with my quote?", result.Messages[0].Content);
         Assert.Equal("assistant", result.Messages[1].Role);
+        using var document = JsonDocument.Parse(payload);
+        var messages = document.RootElement.GetProperty("messages");
+        Assert.Equal(JsonValueKind.Null, messages[0].GetProperty("grounding_provenance").ValueKind);
+        var provenance = messages[1].GetProperty("grounding_provenance");
+        Assert.Equal("shipping_address_validation", provenance.GetProperty("purpose").GetString());
+        Assert.Equal("grounded", provenance.GetProperty("status").GetString());
+        var source = Assert.Single(provenance.GetProperty("sources").EnumerateArray());
+        Assert.Equal("https://example.com/address", source.GetProperty("url").GetString());
+        Assert.DoesNotContain("must-not-leak", payload, StringComparison.Ordinal);
+        Assert.DoesNotContain("insecure.example", payload, StringComparison.Ordinal);
+        Assert.DoesNotContain("metadata_json", payload, StringComparison.Ordinal);
     }
 
     [Fact]
