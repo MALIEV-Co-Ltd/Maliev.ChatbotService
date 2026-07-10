@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using System.Net;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -19,6 +20,7 @@ public class AgentChatHandler
     private const int MaxCallsPerTool = 3;
     private const int MaxGroundingSources = 5;
     private const int MaxGroundingEvidenceCharacters = 3000;
+    private const int MaxBufferedToolTextCharacters = 64_000;
 
     private readonly IGeminiClient _geminiClient;
     private readonly IToolExecutorService _toolExecutor;
@@ -85,6 +87,7 @@ public class AgentChatHandler
         var groundingSources = new List<GeminiGroundingSource>();
         GroundingProvenance? groundingProvenance = null;
         var registryAddressCandidates = new List<RegistryAddressCandidate>();
+        var toolResults = new List<ToolExecutionResult>();
         var stagedFileNames = new List<string>();
 
         try
@@ -255,10 +258,27 @@ public class AgentChatHandler
 
                 if (!response.Success)
                 {
+                    var failureContent = string.IsNullOrWhiteSpace(response.Content) && toolResults.Count > 0
+                        ? "I couldn't finish preparing the response. Please try again."
+                        : response.Content;
+                    if (request.Tools is { Count: > 0 } &&
+                        onTextDelta is not null &&
+                        !string.IsNullOrWhiteSpace(failureContent))
+                    {
+                        try
+                        {
+                            await onTextDelta(failureContent);
+                        }
+                        catch (Exception ex) when (ex is not OperationCanceledException)
+                        {
+                            _logger.LogWarning(ex, "Customer text callback failed after an agent provider failure.");
+                        }
+                    }
+
                     return new AgentChatResult
                     {
                         Success = false,
-                        Content = response.Content,
+                        Content = failureContent,
                         ErrorMessage = response.ErrorMessage,
                         IsFallback = response.IsFallback,
                         ThinkingSteps = thinkingSteps,
@@ -279,11 +299,41 @@ public class AgentChatHandler
                     var recoveredCalls = LeakedToolCallParser.Parse(response.Content, GetDeclaredToolNames(request.Tools));
                     if (recoveredCalls.Count == 0)
                     {
-                        // Final text response
+                        var terminalContent = string.IsNullOrWhiteSpace(response.Content) && toolResults.Count > 0
+                            ? ToolTerminalResponseBuilder.Build(toolResults)
+                            : response.Content;
+                        if (request.Tools is { Count: > 0 } &&
+                            onTextDelta is not null &&
+                            !string.IsNullOrWhiteSpace(terminalContent))
+                        {
+                            try
+                            {
+                                await onTextDelta(terminalContent);
+                            }
+                            catch (Exception ex) when (ex is not OperationCanceledException)
+                            {
+                                _logger.LogWarning(ex, "Customer text callback failed after the agent terminal response.");
+                                return new AgentChatResult
+                                {
+                                    Success = false,
+                                    Content = terminalContent,
+                                    ErrorMessage = "Assistant response streaming failed.",
+                                    ThinkingSteps = thinkingSteps,
+                                    TokenUsage = sawUsage ? accumulatedUsage : null,
+                                    ServiceTier = serviceTier,
+                                    GroundingWebSearchQueries = groundingWebSearchQueries,
+                                    GroundingSources = groundingSources,
+                                    GoogleSearchGroundingPromptCount = googleSearchGroundingPromptCount,
+                                    GroundingProvenance = groundingProvenance
+                                };
+                            }
+                        }
+
+                        // Final customer-facing text response.
                         return new AgentChatResult
                         {
                             Success = true,
-                            Content = response.Content,
+                            Content = terminalContent,
                             ThinkingSteps = thinkingSteps,
                             TokenUsage = sawUsage ? accumulatedUsage : null,
                             ServiceTier = serviceTier,
@@ -389,6 +439,7 @@ public class AgentChatHandler
                         }
                     }
                     sw.Stop();
+                    toolResults.Add(new ToolExecutionResult(functionCall.Name, toolResult));
 
                     stepNumber++;
                     var resultStep = new ThinkingStep
@@ -661,6 +712,10 @@ public class AgentChatHandler
             return await _geminiClient.SendMessageAsync(request, cancellationToken);
         }
 
+        // Tool-enabled turns must be classified before customer text is emitted. Models sometimes stream
+        // pseudo calls as ordinary text; buffer those iterations and emit only the validated terminal answer.
+        var bufferTextUntilTerminal = request.Tools is { Count: > 0 };
+        var bufferedText = bufferTextUntilTerminal ? new StringBuilder() : null;
         GeminiResponse? finalResponse = null;
         var partialResponse = new GeminiResponse();
         try
@@ -672,11 +727,23 @@ public class AgentChatHandler
                     GeminiStreamUsage.Merge(partialResponse, streamEvent.Response);
                 }
 
-                if (onTextDelta != null &&
-                    streamEvent.Type.Equals("delta", StringComparison.OrdinalIgnoreCase) &&
+                if (streamEvent.Type.Equals("delta", StringComparison.OrdinalIgnoreCase) &&
                     !string.IsNullOrEmpty(streamEvent.Delta))
                 {
-                    await onTextDelta(streamEvent.Delta);
+                    if (bufferedText is not null)
+                    {
+                        var remainingCharacters = MaxBufferedToolTextCharacters - bufferedText.Length;
+                        if (remainingCharacters > 0)
+                        {
+                            bufferedText.Append(streamEvent.Delta.AsSpan(
+                                0,
+                                Math.Min(streamEvent.Delta.Length, remainingCharacters)));
+                        }
+                    }
+                    else if (onTextDelta is not null)
+                    {
+                        await onTextDelta(streamEvent.Delta);
+                    }
                 }
                 else if (streamEvent.Type.Equals("thought", StringComparison.OrdinalIgnoreCase) &&
                          !string.IsNullOrEmpty(streamEvent.Thought) && onThoughtDelta != null)
@@ -715,6 +782,11 @@ public class AgentChatHandler
         if (finalResponse is not null)
         {
             GeminiStreamUsage.Merge(finalResponse, partialResponse);
+            if (bufferedText is { Length: > 0 } && string.IsNullOrWhiteSpace(finalResponse.Content))
+            {
+                finalResponse.Content = bufferedText.ToString();
+            }
+
             return finalResponse;
         }
 

@@ -1514,6 +1514,202 @@ public class AgentChatHandlerTests
         Assert.Equal(priceResult, functionResponse.ResponseJson);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_BlankTerminalAfterTool_SynthesizesSafeCustomerResponse()
+    {
+        var initialRequest = CreateEstimateToolRequest();
+        var providerCall = 0;
+        _geminiClientMock
+            .Setup(client => client.SendMessageAsync(
+                It.IsAny<GeminiRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => ++providerCall == 1
+                ? new GeminiResponse
+                {
+                    Success = true,
+                    FunctionCalls =
+                    [
+                        new GeminiFunctionCall
+                        {
+                            Name = "quote_calculate_estimate",
+                            Args = new Dictionary<string, object>()
+                        }
+                    ]
+                }
+                : new GeminiResponse { Success = true, Content = "   " });
+        _toolExecutorMock.Setup(executor => executor.ExecuteAsync(
+                "quote_calculate_estimate",
+                It.IsAny<Dictionary<string, object>>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync("""{"totalPrice":1860,"currency":"THB"}""");
+
+        var result = await _handler.ExecuteAsync(initialRequest);
+
+        Assert.True(result.Success);
+        Assert.Equal("The current estimate is 1,860 THB.", result.Content);
+        Assert.DoesNotContain("totalPrice", result.Content, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ProviderFailureAfterTool_ReturnsNonEmptySafeTerminal()
+    {
+        var initialRequest = CreateEstimateToolRequest();
+        var providerCall = 0;
+        _geminiClientMock
+            .Setup(client => client.SendMessageAsync(
+                It.IsAny<GeminiRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => ++providerCall == 1
+                ? new GeminiResponse
+                {
+                    Success = true,
+                    FunctionCalls =
+                    [
+                        new GeminiFunctionCall
+                        {
+                            Name = "quote_calculate_estimate",
+                            Args = new Dictionary<string, object>()
+                        }
+                    ]
+                }
+                : new GeminiResponse
+                {
+                    Success = false,
+                    Content = string.Empty,
+                    ErrorMessage = "provider internal failure"
+                });
+        _toolExecutorMock.Setup(executor => executor.ExecuteAsync(
+                "quote_calculate_estimate",
+                It.IsAny<Dictionary<string, object>>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync("""{"totalPrice":1860,"currency":"THB"}""");
+
+        var result = await _handler.ExecuteAsync(initialRequest);
+
+        Assert.False(result.Success);
+        Assert.False(string.IsNullOrWhiteSpace(result.Content));
+        Assert.DoesNotContain("provider", result.Content, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("totalPrice", result.Content, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ToolEnabledStream_BuffersPseudoToolTextAndEmitsOnlyTerminalAnswer()
+    {
+        var initialRequest = CreateEstimateToolRequest();
+        var providerCall = 0;
+        _geminiClientMock
+            .Setup(client => client.StreamMessageAsync(
+                It.IsAny<GeminiRequest>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(() => ++providerCall == 1
+                ? CreateStream(
+                [
+                    new GeminiStreamEvent { Type = "delta", Delta = "tools.quotecalculateestimate()" },
+                    new GeminiStreamEvent
+                    {
+                        Type = "final",
+                        Response = new GeminiResponse
+                        {
+                            Success = true,
+                            Content = string.Empty
+                        }
+                    }
+                ])
+                : CreateStream(
+                [
+                    new GeminiStreamEvent { Type = "delta", Delta = "Your estimated total is 1,860 THB." },
+                    new GeminiStreamEvent
+                    {
+                        Type = "final",
+                        Response = new GeminiResponse
+                        {
+                            Success = true,
+                            Content = "Your estimated total is 1,860 THB."
+                        }
+                    }
+                ]));
+        _toolExecutorMock.Setup(executor => executor.ExecuteAsync(
+                "quote_calculate_estimate",
+                It.IsAny<Dictionary<string, object>>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync("""{"totalPrice":1860,"currency":"THB"}""");
+        var deltas = new List<string>();
+
+        var result = await _handler.ExecuteAsync(
+            initialRequest,
+            onTextDelta: delta =>
+            {
+                deltas.Add(delta);
+                return Task.CompletedTask;
+            });
+
+        Assert.True(result.Success);
+        Assert.Equal("Your estimated total is 1,860 THB.", result.Content);
+        Assert.Equal(["Your estimated total is 1,860 THB."], deltas);
+        Assert.DoesNotContain(deltas, delta => delta.Contains("tools.", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_BlankTerminalToolStream_EmitsSynthesizedSafeResponse()
+    {
+        var initialRequest = CreateEstimateToolRequest();
+        var providerCall = 0;
+        _geminiClientMock
+            .Setup(client => client.StreamMessageAsync(
+                It.IsAny<GeminiRequest>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(() => ++providerCall == 1
+                ? CreateStream(
+                [
+                    new GeminiStreamEvent
+                    {
+                        Type = "final",
+                        Response = new GeminiResponse
+                        {
+                            Success = true,
+                            FunctionCalls =
+                            [
+                                new GeminiFunctionCall
+                                {
+                                    Name = "quote_calculate_estimate",
+                                    Args = new Dictionary<string, object>()
+                                }
+                            ]
+                        }
+                    }
+                ])
+                : CreateStream(
+                [
+                    new GeminiStreamEvent
+                    {
+                        Type = "final",
+                        Response = new GeminiResponse { Success = true, Content = string.Empty }
+                    }
+                ]));
+        _toolExecutorMock.Setup(executor => executor.ExecuteAsync(
+                "quote_calculate_estimate",
+                It.IsAny<Dictionary<string, object>>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync("""{"totalPrice":1860,"currency":"THB"}""");
+        var deltas = new List<string>();
+
+        var result = await _handler.ExecuteAsync(
+            initialRequest,
+            onTextDelta: delta =>
+            {
+                deltas.Add(delta);
+                return Task.CompletedTask;
+            });
+
+        Assert.True(result.Success);
+        Assert.Equal("The current estimate is 1,860 THB.", result.Content);
+        Assert.Equal(["The current estimate is 1,860 THB."], deltas);
+    }
+
     /// <summary>
     /// Verifies that text mentioning an undeclared tool is returned verbatim without executing anything.
     /// </summary>
@@ -1555,6 +1751,21 @@ public class AgentChatHandlerTests
             await Task.Yield();
         }
     }
+
+    private static GeminiRequest CreateEstimateToolRequest() => new()
+    {
+        Messages = [new GeminiMessage { Role = "user", Content = "Calculate my estimate" }],
+        Tools =
+        [
+            new GeminiToolDeclaration
+            {
+                FunctionDeclarations =
+                [
+                    new GeminiFunctionDeclaration { Name = "quote_calculate_estimate" }
+                ]
+            }
+        ]
+    };
 
     private static async IAsyncEnumerable<GeminiStreamEvent> CreateCanceledUsageStream(
         CancellationTokenSource cancellation)
