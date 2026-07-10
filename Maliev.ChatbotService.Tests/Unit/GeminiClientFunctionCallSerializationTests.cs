@@ -874,6 +874,46 @@ public sealed class GeminiClientFunctionCallSerializationTests
     }
 
     [Fact]
+    public async Task SendMessageAsync_GroundingChunks_MapsDeduplicatedHttpsSources()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "candidates":[{
+                "content":{"parts":[{"text":"grounded address"}]},
+                "groundingMetadata":{
+                  "groundingChunks":[
+                    {"web":{"title":"<b>Registry</b>\nresult","uri":"https://example.com/address#result"}},
+                    {"web":{"title":"<b>Duplicate</b>\nresult","uri":"https://example.com/address"}},
+                    {"web":{"title":"Unsafe result","uri":"http://example.com/plain-http"}},
+                    {"web":{"title":"Second result","uri":"https://maps.example.org/place"}}
+                  ]
+                }
+              }]
+            }
+            """);
+        var client = CreateClient(handler);
+
+        var response = await client.SendMessageAsync(new GeminiRequest
+        {
+            EnableWebSearch = true,
+            Messages = [new GeminiMessage { Role = "user", Content = "Ground this Thai address" }]
+        });
+
+        var sourcesProperty = response.GetType().GetProperty("GroundingSources");
+        Assert.NotNull(sourcesProperty);
+        var sources = Assert.IsAssignableFrom<System.Collections.IEnumerable>(sourcesProperty!.GetValue(response))
+            .Cast<object>()
+            .ToList();
+        Assert.Equal(2, sources.Count);
+        Assert.Equal(
+            ["https://example.com/address", "https://maps.example.org/place"],
+            sources.Select(source => source.GetType().GetProperty("Url")?.GetValue(source)?.ToString() ?? string.Empty).ToArray());
+        Assert.Equal(
+            "Duplicate result",
+            sources[0].GetType().GetProperty("Title")?.GetValue(sources[0])?.ToString());
+    }
+
+    [Fact]
     public async Task SendMessageAsync_ResponseServiceTierHeader_MapsToResponse()
     {
         var handler = new CapturingHandler(

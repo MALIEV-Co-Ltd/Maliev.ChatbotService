@@ -178,17 +178,175 @@ public sealed class SendMessageCommandHandlerCostTests
         Assert.True(result.CapturedRequest!.EnableWebSearch);
     }
 
-    [Fact]
-    public async Task HandleAsync_QuoteEngineAddressLookup_EnablesGeminiSearch()
+    [Theory]
+    [InlineData("Ship to 36/1 Moo 3, Khlong Khoi subdistrict, Pak Kret district, Nonthaburi province 11120")]
+    [InlineData("ส่งไป 36/1 หมู่ 3 ตำบลคลองข่อย อำเภอปากเกร็ด จังหวัดนนทบุรี 11120")]
+    public async Task HandleAsync_QuoteEngineAdministrativeAddress_RunsSearchOnlyThenFunctionsOnly(string address)
     {
         var result = await SendWebsiteMessageAsync(
             channel: Channel.QuoteEngine,
-            messageContent: "find the address for Maptaphut Industrial Estate so I can get shipping to Rayong",
+            messageContent: address,
             instructionEnableWebSearch: true,
-            globalWebSearchEnabled: true);
+            globalWebSearchEnabled: false,
+            toolDeclarations:
+            [
+                new GeminiToolDeclaration
+                {
+                    FunctionDeclarations =
+                    [
+                        new GeminiFunctionDeclaration { Name = "quote_get_shipping_rates" }
+                    ]
+                }
+            ],
+            groundingSources:
+            [
+                new GeminiGroundingSource
+                {
+                    Title = "Public address source",
+                    Url = "https://example.com/address"
+                }
+            ]);
 
-        Assert.NotNull(result.CapturedRequest);
-        Assert.True(result.CapturedRequest!.EnableWebSearch);
+        Assert.Equal(2, result.CapturedRequests.Count);
+        Assert.True(result.CapturedRequests[0].EnableWebSearch);
+        Assert.Empty(result.CapturedRequests[0].Tools ?? []);
+        Assert.False(result.CapturedRequests[1].EnableWebSearch);
+        Assert.NotEmpty(result.CapturedRequests[1].Tools ?? []);
+    }
+
+    [Fact]
+    public async Task HandleAsync_QuoteEnginePhoneOnlyContinuation_KeepsScopedToolsAvailable()
+    {
+        var result = await SendWebsiteMessageAsync(
+            channel: Channel.QuoteEngine,
+            messageContent: "0898950690",
+            toolDeclarations:
+            [
+                new GeminiToolDeclaration
+                {
+                    FunctionDeclarations =
+                    [
+                        new GeminiFunctionDeclaration { Name = "quote_get_shipping_rates" }
+                    ]
+                }
+            ]);
+
+        var request = Assert.Single(result.CapturedRequests);
+        Assert.False(request.EnableWebSearch);
+        Assert.NotEmpty(request.Tools ?? []);
+        Assert.NotNull(request.ToolConfig);
+    }
+
+    [Fact]
+    public async Task HandleAsync_QuoteEngineFiveDigitPrice_DoesNotMisclassifyPriceAsPostcode()
+    {
+        var result = await SendWebsiteMessageAsync(
+            channel: Channel.QuoteEngine,
+            messageContent: "The total should be 25000 THB",
+            instructionEnableWebSearch: true,
+            globalWebSearchEnabled: false,
+            toolDeclarations:
+            [
+                new GeminiToolDeclaration
+                {
+                    FunctionDeclarations = [new GeminiFunctionDeclaration { Name = "quote_calculate_estimate" }]
+                }
+            ]);
+
+        var request = Assert.Single(result.CapturedRequests);
+        Assert.False(request.EnableWebSearch);
+        Assert.False(request.RequireGrounding);
+    }
+
+    [Fact]
+    public async Task HandleAsync_QuoteEngineBarePostcodeAfterAddressPrompt_RunsGroundingPreflight()
+    {
+        var sessionId = Guid.NewGuid();
+        var result = await SendWebsiteMessageAsync(
+            channel: Channel.QuoteEngine,
+            messageContent: "11120",
+            instructionEnableWebSearch: false,
+            globalWebSearchEnabled: false,
+            conversationHistory:
+            [
+                new Message
+                {
+                    Id = Guid.NewGuid(),
+                    SessionId = sessionId,
+                    Role = MessageRole.Assistant,
+                    Content = "Please provide the complete shipping address and postcode.",
+                    ContentType = ContentType.Text,
+                    CreatedAt = DateTimeOffset.UtcNow.AddSeconds(-1)
+                },
+                new Message
+                {
+                    Id = Guid.NewGuid(),
+                    SessionId = sessionId,
+                    Role = MessageRole.User,
+                    Content = "11120",
+                    ContentType = ContentType.Text,
+                    CreatedAt = DateTimeOffset.UtcNow
+                }
+            ],
+            toolDeclarations:
+            [
+                new GeminiToolDeclaration
+                {
+                    FunctionDeclarations = [new GeminiFunctionDeclaration { Name = "quote_get_shipping_rates" }]
+                }
+            ],
+            groundingSources:
+            [
+                new GeminiGroundingSource
+                {
+                    Title = "Public postcode source",
+                    Url = "https://example.com/postcode"
+                }
+            ]);
+
+        Assert.Equal(2, result.CapturedRequests.Count);
+        Assert.True(result.CapturedRequests[0].EnableWebSearch);
+        Assert.Empty(result.CapturedRequests[0].Tools ?? []);
+        Assert.False(result.CapturedRequests[1].EnableWebSearch);
+        Assert.NotEmpty(result.CapturedRequests[1].Tools ?? []);
+    }
+
+    [Fact]
+    public async Task HandleAsync_QuoteEngineAddressWhenGroundingDisabled_FailsClosedWithUnavailableStatus()
+    {
+        var result = await SendWebsiteMessageAsync(
+            channel: Channel.QuoteEngine,
+            messageContent: "Ship to Khlong Khoi subdistrict, Pak Kret district, Nonthaburi province 11120",
+            instructionEnableWebSearch: true,
+            globalWebSearchEnabled: false,
+            configurationOverrides: new Dictionary<string, string?>
+            {
+                ["Features:AddressGroundingEnabled"] = "false"
+            },
+            toolDeclarations:
+            [
+                new GeminiToolDeclaration
+                {
+                    FunctionDeclarations =
+                    [
+                        new GeminiFunctionDeclaration { Name = "quote_get_shipping_rates" }
+                    ]
+                }
+            ]);
+
+        Assert.Equal(
+            "Address verification is temporarily unavailable, so I haven't requested courier rates. Please try again in a moment.",
+            result.MessageResult.Content);
+        var provenance = result.MessageResult.GetType().GetProperty("GroundingProvenance")?.GetValue(result.MessageResult);
+        Assert.NotNull(provenance);
+        Assert.Equal("unavailable", provenance!.GetType().GetProperty("Status")?.GetValue(provenance)?.ToString());
+        result.ToolExecutor.Verify(
+            item => item.ExecuteAsync(
+                It.IsAny<string>(),
+                It.IsAny<Dictionary<string, object>>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]
@@ -249,7 +407,7 @@ public sealed class SendMessageCommandHandlerCostTests
     }
 
     [Fact]
-    public async Task HandleAsync_UrlContextEnabled_QuoteEngineContextWrappedUrlReview_UsesCustomerMessageForToolDecision()
+    public async Task HandleAsync_UrlContextEnabled_QuoteEngineContextWrappedUrlReview_KeepsScopedToolsAvailable()
     {
         const string composedQuoteEngineMessage = """
 Surface: QuoteEngine chat-based custom manufacturing platform.
@@ -287,11 +445,11 @@ Review https://example.com/materials/asa-printing-guide.pdf and summarize the re
             ]);
 
         Assert.NotNull(result.CapturedRequest);
-        Assert.True(result.CapturedRequest!.EnableUrlContext);
-        Assert.True(result.CapturedRequest.Tools is null || result.CapturedRequest.Tools.Count == 0);
+        Assert.False(result.CapturedRequest!.EnableUrlContext);
+        Assert.NotEmpty(result.CapturedRequest.Tools ?? []);
         result.ModelContextCacheService.Verify(item => item.GetOrCreateSystemInstructionCacheAsync(
             It.IsAny<ModelContextCacheRequest>(),
-            It.IsAny<CancellationToken>()), Times.Once);
+            It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -1124,11 +1282,13 @@ Review https://example.com/materials/asa-printing-guide.pdf and summarize the re
         bool urlContextEnabled = false,
         IReadOnlyList<string>? groundingWebSearchQueries = null,
         int googleSearchGroundingPromptCount = 0,
+        IReadOnlyList<GeminiGroundingSource>? groundingSources = null,
         Dictionary<string, string?>? configurationOverrides = null)
     {
         var sessionId = Guid.NewGuid();
         var userProfileId = Guid.NewGuid();
         GeminiRequest? capturedRequest = null;
+        var capturedRequests = new List<GeminiRequest>();
         ModelContextCacheRequest? capturedContextCacheRequest = null;
         var createdMessages = new List<Message>();
         var sessionRepository = new Mock<IConversationSessionRepository>();
@@ -1209,7 +1369,11 @@ Review https://example.com/materials/asa-printing-guide.pdf and summarize the re
         var geminiClient = geminiClientOverride ?? new Mock<IGeminiClient>();
         geminiClient
             .Setup(item => item.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()))
-            .Callback<GeminiRequest, CancellationToken>((request, _) => capturedRequest = request)
+            .Callback<GeminiRequest, CancellationToken>((request, _) =>
+            {
+                capturedRequest = request;
+                capturedRequests.Add(request);
+            })
             .ReturnsAsync(new GeminiResponse
             {
                 Success = geminiSuccess,
@@ -1217,6 +1381,7 @@ Review https://example.com/materials/asa-printing-guide.pdf and summarize the re
                 ErrorMessage = geminiErrorMessage,
                 ServiceTier = responseServiceTier,
                 GroundingWebSearchQueries = groundingWebSearchQueries?.ToList() ?? [],
+                GroundingSources = groundingSources?.ToList() ?? [],
                 GoogleSearchGroundingPromptCount = googleSearchGroundingPromptCount,
                 TokenUsage = tokenUsage ?? new GeminiTokenUsage { TotalTokens = 25 }
             });
@@ -1262,6 +1427,11 @@ Review https://example.com/materials/asa-printing-guide.pdf and summarize the re
             .Setup(item => item.PublishAsync(It.IsAny<ChatbotMessageReceivedEvent>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
         var searchDomainLogRepository = new Mock<ISearchDomainLogRepository>();
+        searchDomainLogRepository
+            .Setup(repository => repository.CreateAsync(
+                It.IsAny<SearchDomainLog>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((SearchDomainLog log, CancellationToken _) => log);
         var webSearchService = new Mock<IWebSearchService>();
         var toolExecutor = new Mock<IToolExecutorService>();
         toolExecutor
@@ -1324,7 +1494,7 @@ Review https://example.com/materials/asa-printing-guide.pdf and summarize the re
             Mock.Of<ILogger<SendMessageCommandHandler>>(),
             configuration);
 
-        await handler.HandleAsync(new SendMessageCommand
+        var messageResult = await handler.HandleAsync(new SendMessageCommand
         {
             SessionId = sessionId,
             Content = attachments is { Count: > 0 }
@@ -1344,7 +1514,9 @@ Review https://example.com/materials/asa-printing-guide.pdf and summarize the re
             toolExecutor,
             intentClassificationService,
             modelContextCacheService,
-            usageBudgetService);
+            usageBudgetService,
+            capturedRequests,
+            messageResult);
     }
 
     private static Dictionary<string, string?> BuildConfigurationValues(
@@ -1385,5 +1557,7 @@ Review https://example.com/materials/asa-printing-guide.pdf and summarize the re
         Mock<IToolExecutorService> ToolExecutor,
         Mock<IIntentClassificationService> IntentClassificationService,
         Mock<IModelContextCacheService> ModelContextCacheService,
-        Mock<IUsageBudgetService> UsageBudgetService);
+        Mock<IUsageBudgetService> UsageBudgetService,
+        IReadOnlyList<GeminiRequest> CapturedRequests,
+        SendMessageResult MessageResult);
 }

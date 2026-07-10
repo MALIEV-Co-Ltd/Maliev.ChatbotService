@@ -558,7 +558,7 @@ public static class ToolRegistry
                 type = "OBJECT",
                 properties = new { }
             }),
-            Fn("quote_get_shipping_rates", "Get live courier shipping rates from DeliveryService/SHIPPOP for a destination address and current quote package. Use after the destination address, district/subdistrict, amphoe/state, province, postcode, and phone are known or have been grounded. Returns rates, lead times, prices, a markdown table, and customer-clickable selection actions. Do not answer shipping cost by promising to calculate later; call this tool and summarize the returned options.", new
+            Fn("quote_get_shipping_rates", "Get live courier shipping rates for a destination address and current quote package. Use only after the separate web grounding preflight has valid HTTPS provenance and quote_search_addresses confirms the Thai subdistrict/district/province/postcode hierarchy. The street address and phone must also be known. Returns rates, lead times, prices, a markdown table, and customer-clickable selection actions. Do not answer shipping cost by promising to calculate later; call this tool and summarize the returned options.", new
             {
                 type = "OBJECT",
                 properties = new

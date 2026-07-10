@@ -49,6 +49,8 @@ public sealed class SystemInstructionDefaultPromptTests
         Assert.Contains("quote_get_shipping_rates", prompt, StringComparison.Ordinal);
         Assert.Contains("quote_select_shipping_rate", prompt, StringComparison.Ordinal);
         Assert.Contains("Google Search grounding", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("RegistryService remains authoritative", prompt, StringComparison.Ordinal);
+        Assert.Contains("No valid HTTPS source means you must not call quote_get_shipping_rates", prompt, StringComparison.Ordinal);
         Assert.Contains("shipping options as a markdown table", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("quote_cad_start_design", prompt, StringComparison.Ordinal);
         Assert.Contains("quote_cad_apply_operations", prompt, StringComparison.Ordinal);
@@ -159,6 +161,8 @@ public sealed class SystemInstructionDefaultPromptTests
         Assert.Contains("quote_get_shipping_rates", prompt, StringComparison.Ordinal);
         Assert.Contains("quote_select_shipping_rate", prompt, StringComparison.Ordinal);
         Assert.Contains("Google Search grounding", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("RegistryService remains authoritative", prompt, StringComparison.Ordinal);
+        Assert.Contains("No valid HTTPS source means you must not call `quote_get_shipping_rates`", prompt, StringComparison.Ordinal);
         Assert.Contains("shipping options as a markdown table", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("quote_request_employee_review", prompt, StringComparison.Ordinal);
         Assert.Contains("MALIEV project review queue", prompt, StringComparison.OrdinalIgnoreCase);

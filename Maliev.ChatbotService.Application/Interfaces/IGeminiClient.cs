@@ -1,3 +1,5 @@
+using Maliev.ChatbotService.Application.Models;
+
 namespace Maliev.ChatbotService.Application.Interfaces;
 
 /// <summary>
@@ -120,6 +122,12 @@ public class GeminiRequest
     /// Gets or sets whether to enable web search capabilities.
     /// </summary>
     public bool EnableWebSearch { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether this turn must fail closed when Google Search grounding is unavailable.
+    /// This is an orchestration hint and is not serialized to the model provider.
+    /// </summary>
+    public bool RequireGrounding { get; set; }
 
     /// <summary>
     /// Gets or sets whether to enable Gemini URL Context for URLs supplied in the prompt.
@@ -245,6 +253,16 @@ public class GeminiResponse
     public List<string> GroundingWebSearchQueries { get; set; } = [];
 
     /// <summary>
+    /// Gets or sets customer-safe HTTPS source provenance reported by Google Search grounding.
+    /// </summary>
+    public List<GeminiGroundingSource> GroundingSources { get; set; } = [];
+
+    /// <summary>
+    /// Gets or sets customer-safe grounding provenance assembled by the agent harness.
+    /// </summary>
+    public GroundingProvenance? GroundingProvenance { get; set; }
+
+    /// <summary>
     /// Gets or sets the number of Gemini prompts that used Google Search grounding.
     /// </summary>
     public int GoogleSearchGroundingPromptCount { get; set; }
@@ -360,6 +378,21 @@ public class GeminiTokenUsage
     /// Gets or sets token counts by tool-use prompt modality.
     /// </summary>
     public List<GeminiModalityTokenCount> ToolUsePromptTokenDetails { get; set; } = [];
+}
+
+/// <summary>
+/// A bounded customer-safe source returned by Gemini Google Search grounding.
+/// </summary>
+public sealed class GeminiGroundingSource
+{
+    /// <summary>Gets or sets the source title.</summary>
+    public string Title { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the canonical HTTPS source URL.</summary>
+    public string Url { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the normalized source host.</summary>
+    public string Domain { get; set; } = string.Empty;
 }
 
 /// <summary>

@@ -352,6 +352,24 @@ public class MessagesController : ControllerBase
             }).ToList(),
             CreatedAt = result.CreatedAt,
             ThinkingSteps = thinkingSteps,
+            GroundingProvenance = result.GroundingProvenance is null
+                ? null
+                : new GroundingProvenanceResponse
+                {
+                    Purpose = result.GroundingProvenance.Purpose,
+                    Provider = result.GroundingProvenance.Provider,
+                    Status = result.GroundingProvenance.Status,
+                    Queries = result.GroundingProvenance.Queries.ToList(),
+                    ErrorCode = result.GroundingProvenance.ErrorCode,
+                    Sources = result.GroundingProvenance.Sources
+                        .Select(source => new GroundingSourceResponse
+                        {
+                            Title = source.Title,
+                            Url = source.Url,
+                            Domain = source.Domain
+                        })
+                        .ToList()
+                },
             UsageSnapshot = result.UsageSnapshot is null
                 ? null
                 : new UsageSnapshotResponse

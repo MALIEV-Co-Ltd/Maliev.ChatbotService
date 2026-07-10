@@ -335,7 +335,9 @@ public class ToolRegistryTests
             .FunctionDeclarations!
             .ToDictionary(declaration => declaration.Name);
 
-        Assert.Contains("SHIPPOP", tools["quote_get_shipping_rates"].Description, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("SHIPPOP", tools["quote_get_shipping_rates"].Description, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("web grounding", tools["quote_get_shipping_rates"].Description, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("quote_search_addresses", tools["quote_get_shipping_rates"].Description, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("markdown table", tools["quote_get_shipping_rates"].Description, StringComparison.OrdinalIgnoreCase);
 
         var ratesJson = JsonSerializer.Serialize(tools["quote_get_shipping_rates"].Parameters);

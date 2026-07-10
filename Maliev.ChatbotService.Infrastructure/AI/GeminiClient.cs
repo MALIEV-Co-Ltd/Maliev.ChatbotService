@@ -9,6 +9,7 @@ using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace Maliev.ChatbotService.Infrastructure.AI;
 
@@ -17,6 +18,9 @@ namespace Maliev.ChatbotService.Infrastructure.AI;
 /// </summary>
 public class GeminiClient : IGeminiClient
 {
+    private const int MaxGroundingSources = 5;
+    private const int MaxGroundingSourceTitleCharacters = 160;
+    private const int MaxGroundingSourceUrlCharacters = 2048;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
@@ -170,6 +174,7 @@ public class GeminiClient : IGeminiClient
         var accumulatedThought = new StringBuilder();
         var functionCalls = new List<GeminiFunctionCall>();
         var groundingWebSearchQueries = new List<string>();
+        var groundingSources = new List<GeminiGroundingSource>();
         var googleSearchGroundingPromptCount = 0;
         GeminiTokenUsage? tokenUsage = null;
         string? streamServiceTier = null;
@@ -303,6 +308,11 @@ public class GeminiClient : IGeminiClient
                     groundingWebSearchQueries.AddRange(parsed.GroundingWebSearchQueries);
                 }
 
+                if (parsed.GroundingSources.Count > 0)
+                {
+                    groundingSources.AddRange(parsed.GroundingSources);
+                }
+
                 if (parsed.GoogleSearchGroundingPromptCount > 0)
                 {
                     googleSearchGroundingPromptCount = 1;
@@ -325,6 +335,7 @@ public class GeminiClient : IGeminiClient
                     TokenUsage = tokenUsage,
                     ServiceTier = streamServiceTier,
                     GroundingWebSearchQueries = groundingWebSearchQueries,
+                    GroundingSources = NormalizeGroundingSources(groundingSources),
                     GoogleSearchGroundingPromptCount = googleSearchGroundingPromptCount
                 }
             };
@@ -956,6 +967,7 @@ public class GeminiClient : IGeminiClient
         }
 
         var groundingWebSearchQueries = ParseGroundingWebSearchQueries(firstCandidate);
+        var groundingSources = ParseGroundingSources(firstCandidate);
 
         return new GeminiResponse
         {
@@ -966,8 +978,124 @@ public class GeminiClient : IGeminiClient
             TokenUsage = tokenUsage,
             ServiceTier = serviceTier,
             GroundingWebSearchQueries = groundingWebSearchQueries,
-            GoogleSearchGroundingPromptCount = groundingWebSearchQueries.Count > 0 ? 1 : 0
+            GroundingSources = groundingSources,
+            GoogleSearchGroundingPromptCount = groundingWebSearchQueries.Count > 0 || groundingSources.Count > 0 ? 1 : 0
         };
+    }
+
+    private static List<GeminiGroundingSource> ParseGroundingSources(JsonElement candidate)
+    {
+        if (!candidate.TryGetProperty("groundingMetadata", out var groundingMetadata) ||
+            groundingMetadata.ValueKind != JsonValueKind.Object ||
+            !groundingMetadata.TryGetProperty("groundingChunks", out var groundingChunks) ||
+            groundingChunks.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var sources = new List<GeminiGroundingSource>();
+        foreach (var chunk in groundingChunks.EnumerateArray())
+        {
+            if (chunk.ValueKind != JsonValueKind.Object ||
+                !chunk.TryGetProperty("web", out var web) ||
+                web.ValueKind != JsonValueKind.Object ||
+                !web.TryGetProperty("uri", out var uriElement))
+            {
+                continue;
+            }
+
+            var rawUrl = uriElement.GetString();
+            if (!TryNormalizeHttpsUrl(rawUrl, out var normalizedUrl))
+            {
+                continue;
+            }
+
+            var rawTitle = web.TryGetProperty("title", out var titleElement)
+                ? titleElement.GetString()
+                : null;
+            var title = SanitizeGroundingSourceTitle(rawTitle, new Uri(normalizedUrl).Host);
+            sources.Add(new GeminiGroundingSource
+            {
+                Title = title,
+                Url = normalizedUrl,
+                Domain = new Uri(normalizedUrl).Host
+            });
+        }
+
+        return NormalizeGroundingSources(sources);
+    }
+
+    private static List<GeminiGroundingSource> NormalizeGroundingSources(
+        IEnumerable<GeminiGroundingSource> sources)
+    {
+        return sources
+            .Where(source => TryNormalizeHttpsUrl(source.Url, out _))
+            .Select(source =>
+            {
+                TryNormalizeHttpsUrl(source.Url, out var normalizedUrl);
+                var title = SanitizeGroundingSourceTitle(source.Title, new Uri(normalizedUrl).Host);
+                return new GeminiGroundingSource
+                {
+                    Title = title,
+                    Url = normalizedUrl,
+                    Domain = new Uri(normalizedUrl).Host
+                };
+            })
+            .GroupBy(source => source.Url, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group
+                .OrderBy(source => source.Title, StringComparer.Ordinal)
+                .First())
+            .OrderBy(source => source.Url, StringComparer.Ordinal)
+            .ThenBy(source => source.Title, StringComparer.Ordinal)
+            .Take(MaxGroundingSources)
+            .ToList();
+    }
+
+    private static bool TryNormalizeHttpsUrl(string? value, out string normalizedUrl)
+    {
+        normalizedUrl = string.Empty;
+        if (string.IsNullOrWhiteSpace(value) || value.Length > MaxGroundingSourceUrlCharacters ||
+            !Uri.TryCreate(value.Trim(), UriKind.Absolute, out var uri) ||
+            !uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+            string.IsNullOrWhiteSpace(uri.Host))
+        {
+            return false;
+        }
+
+        var builder = new UriBuilder(uri)
+        {
+            Scheme = Uri.UriSchemeHttps,
+            Host = uri.Host.ToLowerInvariant(),
+            Fragment = string.Empty
+        };
+        normalizedUrl = builder.Uri.AbsoluteUri.TrimEnd('/');
+        return normalizedUrl.Length <= MaxGroundingSourceUrlCharacters;
+    }
+
+    private static string SanitizeGroundingSourceTitle(string? value, string fallback)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return fallback;
+        }
+
+        var bounded = value[..Math.Min(value.Length, 1024)];
+        var decoded = WebUtility.HtmlDecode(bounded);
+        var withoutTags = Regex.Replace(
+            decoded,
+            "<[^>]*>",
+            " ",
+            RegexOptions.CultureInvariant,
+            TimeSpan.FromMilliseconds(50));
+        var normalized = string.Join(
+            ' ',
+            withoutTags.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return fallback;
+        }
+
+        return normalized[..Math.Min(normalized.Length, MaxGroundingSourceTitleCharacters)];
     }
 
     private static List<string> ParseGroundingWebSearchQueries(JsonElement candidate)

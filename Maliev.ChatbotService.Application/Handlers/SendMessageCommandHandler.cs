@@ -1,6 +1,7 @@
 using Maliev.ChatbotService.Application.Commands;
 using Maliev.ChatbotService.Application.Costing;
 using Maliev.ChatbotService.Application.Interfaces;
+using Maliev.ChatbotService.Application.Models;
 using Maliev.ChatbotService.Application.Validators;
 using Maliev.ChatbotService.Domain.Entities;
 using Maliev.ChatbotService.Domain.Enums;
@@ -11,6 +12,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace Maliev.ChatbotService.Application.Handlers;
 
@@ -45,6 +47,7 @@ public class SendMessageCommandHandler
     private readonly StackExchange.Redis.IConnectionMultiplexer _redis;
     private readonly ILogger<SendMessageCommandHandler> _logger;
     private readonly bool _webSearchGloballyEnabled;
+    private readonly bool _addressGroundingEnabled;
     private readonly bool _urlContextEnabled;
     private readonly int _urlContextMaxUrls;
     private readonly long _fileApiInlineThresholdBytes;
@@ -183,6 +186,7 @@ public class SendMessageCommandHandler
         _redis = redis;
         _logger = logger;
         _webSearchGloballyEnabled = configuration?.GetValue<bool>("Features:WebSearchEnabled") ?? false;
+        _addressGroundingEnabled = configuration?.GetValue<bool?>("Features:AddressGroundingEnabled") ?? true;
         _urlContextEnabled = configuration?.GetValue<bool>("Gemini:UrlContext:Enabled") ?? false;
         _urlContextMaxUrls = Math.Clamp(
             configuration?.GetValue<int?>("Gemini:UrlContext:MaxUrlsPerRequest") ?? DefaultUrlContextMaxUrls,
@@ -534,13 +538,31 @@ public class SendMessageCommandHandler
             var coreInstruction = await _systemInstructionService.GetActiveInstructionAsync(coreInstructionTopicKey, cancellationToken);
 
             var customerAuthoredContent = ExtractCustomerAuthoredContent(command.Content);
+            var requiresAddressGrounding = session.Channel == Channel.QuoteEngine &&
+                ShouldTriggerAddressWebSearch(
+                    customerAuthoredContent.ToLowerInvariant(),
+                    RecentConversationRequestsShippingAddress(conversationHistory));
 
             // Check if Gemini built-in search should be triggered
             bool enableGeminiSearch = false;
-            if (coreInstruction != null &&
-                _webSearchGloballyEnabled &&
-                coreInstruction.EnableWebSearch &&
-                ShouldTriggerWebSearch(customerAuthoredContent))
+            if (requiresAddressGrounding)
+            {
+                // Shipping-address verification has its own default-on switch. It must not silently
+                // inherit the general technical-search flag, which is intentionally disabled by
+                // default. A disabled/missing prompt capability remains fail-closed via
+                // GeminiRequest.RequireGrounding below.
+                enableGeminiSearch = _addressGroundingEnabled;
+                if (enableGeminiSearch)
+                {
+                    _logger.LogInformation(
+                        "Google Search address grounding enabled for QuoteEngine session {SessionId}.",
+                        session.Id);
+                }
+            }
+            else if (coreInstruction != null &&
+                     _webSearchGloballyEnabled &&
+                     coreInstruction.EnableWebSearch &&
+                     ShouldTriggerWebSearch(customerAuthoredContent))
             {
                 var competitorKeywords = new[] { "competitor", "pricing", "cost comparison", "price comparison" };
                 var isCompetitorQuery = competitorKeywords.Any(k => customerAuthoredContent.ToLowerInvariant().Contains(k));
@@ -628,6 +650,8 @@ public class SendMessageCommandHandler
                 ThinkingBudget = includeAgentThoughts ? _agentThinkingBudgetTokens : 0,
                 MediaResolution = ResolveMediaResolution(geminiMessages),
                 Store = false
+                ,
+                RequireGrounding = requiresAddressGrounding
             };
 
             if (!hasAgentTools)
@@ -675,6 +699,8 @@ public class SendMessageCommandHandler
                     TokenUsage = agentResult.TokenUsage,
                     ServiceTier = agentResult.ServiceTier,
                     GroundingWebSearchQueries = agentResult.GroundingWebSearchQueries,
+                    GroundingSources = agentResult.GroundingSources,
+                    GroundingProvenance = agentResult.GroundingProvenance,
                     GoogleSearchGroundingPromptCount = agentResult.GoogleSearchGroundingPromptCount
                 };
             }
@@ -686,6 +712,8 @@ public class SendMessageCommandHandler
                     command.ThoughtDeltaCallback,
                     cancellationToken);
             }
+
+            await LogGroundingDomainsAsync(session.Id, geminiResponse, cancellationToken);
 
             if (!geminiResponse.Success && !geminiResponse.IsFallback)
             {
@@ -863,6 +891,19 @@ public class SendMessageCommandHandler
                 ThoughtContent = geminiResponse.ThoughtContent,
                 SessionId = session.Id,
                 UsageSnapshot = usageSnapshot
+                ,
+                GroundingProvenance = geminiResponse.GroundingProvenance ??
+                    (geminiResponse.GroundingSources.Count == 0
+                        ? null
+                        : new GroundingProvenance
+                        {
+                            Purpose = requiresAddressGrounding
+                                ? "shipping_address_validation"
+                                : "web_search",
+                            Status = "grounded",
+                            Queries = NormalizeGroundingQueries(geminiResponse.GroundingWebSearchQueries),
+                            Sources = geminiResponse.GroundingSources
+                        })
             };
 
 
@@ -1243,6 +1284,11 @@ public class SendMessageCommandHandler
             return false;
         }
 
+        if (channel == Channel.QuoteEngine)
+        {
+            return true;
+        }
+
         if (attachments is { Count: > 0 })
         {
             return true;
@@ -1475,14 +1521,66 @@ public class SendMessageCommandHandler
     private static object? BuildGroundingMetadata(GeminiResponse response)
     {
         var groundedPromptCount = GetGoogleSearchGroundingPromptCount(response);
-        return groundedPromptCount == 0 && response.GroundingWebSearchQueries.Count == 0
+        return groundedPromptCount == 0 &&
+            response.GroundingWebSearchQueries.Count == 0 &&
+            response.GroundingProvenance is null
             ? null
             : new
             {
                 groundedPromptCount,
-                webSearchQueries = response.GroundingWebSearchQueries.ToArray()
+                webSearchQueries = response.GroundingWebSearchQueries.ToArray(),
+                provenance = response.GroundingProvenance
             };
     }
+
+    private async Task LogGroundingDomainsAsync(
+        Guid sessionId,
+        GeminiResponse response,
+        CancellationToken cancellationToken)
+    {
+        var sources = response.GroundingProvenance?.Sources ?? response.GroundingSources;
+        if (sources.Count == 0)
+        {
+            return;
+        }
+
+        var query = NormalizeGroundingQueries(response.GroundingWebSearchQueries).FirstOrDefault() ??
+            "shipping_address_validation";
+        foreach (var domain in sources
+            .Select(source => source.Domain)
+            .Where(domain => !string.IsNullOrWhiteSpace(domain))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(5))
+        {
+            try
+            {
+                await _searchDomainLogRepository.CreateAsync(new SearchDomainLog
+                {
+                    Id = Guid.NewGuid(),
+                    SessionId = sessionId,
+                    Domain = domain[..Math.Min(domain.Length, 500)],
+                    SearchQuery = query[..Math.Min(query.Length, 1000)],
+                    AccessedAt = DateTimeOffset.UtcNow
+                }, cancellationToken);
+            }
+            catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                _logger.LogWarning(
+                    exception,
+                    "Unable to persist grounding domain provenance for session {SessionId}.",
+                    sessionId);
+            }
+        }
+    }
+
+    private static List<string> NormalizeGroundingQueries(IEnumerable<string> queries) =>
+        queries
+            .Where(query => !string.IsNullOrWhiteSpace(query))
+            .Select(query => query.Trim())
+            .Where(query => query.Length <= 500)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(5)
+            .ToList();
 
     private static object[] BuildModalityTokenDetails(IReadOnlyCollection<GeminiModalityTokenCount> details)
     {
@@ -1528,7 +1626,7 @@ public class SendMessageCommandHandler
     private static int GetGoogleSearchGroundingPromptCount(GeminiResponse response) =>
         response.GoogleSearchGroundingPromptCount > 0
             ? response.GoogleSearchGroundingPromptCount
-            : response.GroundingWebSearchQueries.Count > 0 ? 1 : 0;
+            : response.GroundingWebSearchQueries.Count > 0 || response.GroundingSources.Count > 0 ? 1 : 0;
 
     /// <summary>
     /// Detects whether the user message explicitly requires Google Search grounding.
@@ -1575,12 +1673,17 @@ public class SendMessageCommandHandler
         return ContainsAny(messageLower, freshnessKeywords) || ContainsAny(messageLower, sourceLookupKeywords);
     }
 
-    private static bool ShouldTriggerAddressWebSearch(string messageLower)
+    private static bool ShouldTriggerAddressWebSearch(
+        string messageLower,
+        bool addressContinuation = false)
     {
         var addressPlaceKeywords = new[]
         {
             "address", "location", "postal code", "postcode", "industrial estate",
             "maptaphut", "map ta phut", "rayong", "shipping to", "delivery to",
+            "ship to", "subdistrict", "sub-district", "tambon", "district", "amphoe",
+            "province", "moo ", "soi ", "road ", "ตำบล", "ต.", "แขวง", "อำเภอ",
+            "อ.", "เขต", "จังหวัด", "จ.", "หมู่", "ถนน", "ซอย", "ส่งไป",
             "ที่อยู่", "รหัสไปรษณีย์", "นิคม", "มาบตาพุด", "ระยอง"
         };
         var lookupIntentKeywords = new[]
@@ -1589,8 +1692,40 @@ public class SendMessageCommandHandler
             "shipping", "delivery", "ship", "courier", "ค่าส่ง", "จัดส่ง", "ขนส่ง", "ที่อยู่"
         };
 
-        return ContainsAny(messageLower, addressPlaceKeywords) &&
-            ContainsAny(messageLower, lookupIntentKeywords);
+        var hasAddressPlace = ContainsAny(messageLower, addressPlaceKeywords);
+        var hasThaiPostcode = Regex.IsMatch(
+            messageLower,
+            @"(?<!\d)\d{5}(?!\d)",
+            RegexOptions.CultureInvariant,
+            TimeSpan.FromMilliseconds(50));
+
+        var isBarePostcode = Regex.IsMatch(
+            messageLower.Trim(),
+            @"^\d{5}$",
+            RegexOptions.CultureInvariant,
+            TimeSpan.FromMilliseconds(50));
+
+        return hasThaiPostcode && (hasAddressPlace || isBarePostcode && addressContinuation) ||
+            hasAddressPlace && ContainsAny(messageLower, lookupIntentKeywords) ||
+            ContainsAny(messageLower, new[]
+            {
+                "subdistrict", "sub-district", "tambon", "district", "amphoe", "province",
+                "ตำบล", "แขวง", "อำเภอ", "เขต", "จังหวัด"
+            });
+    }
+
+    private static bool RecentConversationRequestsShippingAddress(IEnumerable<Message> messages)
+    {
+        var latestAssistant = messages
+            .Where(message => message.Role == MessageRole.Assistant)
+            .OrderByDescending(message => message.CreatedAt)
+            .Select(message => message.Content.ToLowerInvariant())
+            .FirstOrDefault();
+        return latestAssistant is not null && ContainsAny(latestAssistant, new[]
+        {
+            "shipping address", "delivery address", "postcode", "postal code", "ship to",
+            "ที่อยู่จัดส่ง", "ที่อยู่", "รหัสไปรษณีย์", "จัดส่ง"
+        });
     }
 
     private static bool ContainsAny(string value, IEnumerable<string> keywords) =>
@@ -1839,4 +1974,7 @@ public class SendMessageResult
     /// Gets or sets the current daily token usage snapshot.
     /// </summary>
     public UsageBudgetSnapshot? UsageSnapshot { get; set; }
+
+    /// <summary>Gets or sets customer-safe Google Search grounding provenance.</summary>
+    public GroundingProvenance? GroundingProvenance { get; set; }
 }

@@ -147,6 +147,52 @@ public sealed class GeminiClientStreamingTests
     }
 
     [Fact]
+    public async Task StreamMessageAsync_GroundingChunks_DeduplicatesSourcesAcrossChunks()
+    {
+        var handler = new GeminiStreamingHandler([
+            """
+            data: {"candidates":[{"content":{"parts":[{"text":"grounded "}]},"groundingMetadata":{"groundingChunks":[{"web":{"title":"First","uri":"https://example.com/address#one"}},{"web":{"title":"Unsafe","uri":"javascript:alert(1)"}}]}}]}
+            """,
+            """
+            data: {"candidates":[{"content":{"parts":[{"text":"address"}]},"groundingMetadata":{"groundingChunks":[{"web":{"title":"Duplicate","uri":"https://example.com/address"}},{"web":{"title":"Second","uri":"https://maps.example.org/place"}}]},"finishReason":"STOP"}]}
+            """
+        ]);
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Gemini:ApiKey"] = "test-key",
+                ["Gemini:MainModelName"] = "gemini-test"
+            })
+            .Build();
+        var client = new GeminiClient(
+            new HttpClient(handler) { BaseAddress = new Uri("https://generativelanguage.googleapis.com/") },
+            configuration,
+            new ConversationMetrics(CreateMeterFactory(), configuration),
+            NullLogger<GeminiClient>.Instance);
+
+        var events = new List<GeminiStreamEvent>();
+        await foreach (var streamEvent in client.StreamMessageAsync(new GeminiRequest
+        {
+            EnableWebSearch = true,
+            Messages = [new GeminiMessage { Role = "user", Content = "Ground this Thai address" }]
+        }))
+        {
+            events.Add(streamEvent);
+        }
+
+        var final = Assert.Single(events, item => item.Type == "final");
+        Assert.NotNull(final.Response);
+        var sourcesProperty = final.Response.GetType().GetProperty("GroundingSources");
+        Assert.NotNull(sourcesProperty);
+        var sources = Assert.IsAssignableFrom<System.Collections.IEnumerable>(sourcesProperty!.GetValue(final.Response))
+            .Cast<object>()
+            .ToList();
+        Assert.Equal(
+            ["https://example.com/address", "https://maps.example.org/place"],
+            sources.Select(source => source.GetType().GetProperty("Url")?.GetValue(source)?.ToString() ?? string.Empty).ToArray());
+    }
+
+    [Fact]
     public async Task StreamMessageAsync_PromptFeedbackBlock_ReturnsValidationFallback()
     {
         var handler = new GeminiStreamingHandler([

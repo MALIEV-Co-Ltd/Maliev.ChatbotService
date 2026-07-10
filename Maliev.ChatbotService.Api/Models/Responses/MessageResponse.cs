@@ -44,6 +44,50 @@ public class MessageResponse
     /// Gets or sets the current daily token usage snapshot.
     /// </summary>
     public UsageSnapshotResponse? UsageSnapshot { get; set; }
+
+    /// <summary>
+    /// Gets or sets customer-safe web grounding provenance for this turn.
+    /// </summary>
+    public GroundingProvenanceResponse? GroundingProvenance { get; set; }
+}
+
+/// <summary>
+/// Customer-safe provenance for a web-grounded response.
+/// </summary>
+public sealed class GroundingProvenanceResponse
+{
+    /// <summary>Gets or sets the grounding purpose.</summary>
+    public string Purpose { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the grounding provider.</summary>
+    public string Provider { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets grounded, no_evidence, or unavailable.</summary>
+    public string Status { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets bounded provider search queries.</summary>
+    public List<string> Queries { get; set; } = [];
+
+    /// <summary>Gets or sets bounded HTTPS sources.</summary>
+    public List<GroundingSourceResponse> Sources { get; set; } = [];
+
+    /// <summary>Gets or sets a customer-safe failure code.</summary>
+    public string? ErrorCode { get; set; }
+}
+
+/// <summary>
+/// Customer-safe HTTPS source used for web grounding.
+/// </summary>
+public sealed class GroundingSourceResponse
+{
+    /// <summary>Gets or sets the source title.</summary>
+    public string Title { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the canonical HTTPS source URL.</summary>
+    public string Url { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the normalized source host.</summary>
+    public string Domain { get; set; } = string.Empty;
 }
 
 /// <summary>
