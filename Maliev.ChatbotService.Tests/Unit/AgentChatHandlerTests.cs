@@ -872,6 +872,76 @@ public class AgentChatHandlerTests
     }
 
     /// <summary>
+    /// Verifies that a compact tools-prefixed leak resolves to the declared tool name, executes once,
+    /// and sends the price result back to the model before returning a customer-facing answer.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_LeakedCompactToolCall_ReentersResultAndReturnsCustomerAnswer()
+    {
+        var initialRequest = new GeminiRequest
+        {
+            Messages = new List<GeminiMessage> { new GeminiMessage { Role = "user", Content = "Calculate my estimate" } },
+            Tools = new List<GeminiToolDeclaration>
+            {
+                new()
+                {
+                    FunctionDeclarations = new List<GeminiFunctionDeclaration>
+                    {
+                        new() { Name = "quote_calculate_estimate" }
+                    }
+                }
+            }
+        };
+        var capturedRequests = new List<GeminiRequest>();
+
+        _geminiClientMock.Setup(x => x.SendMessageAsync(It.IsAny<GeminiRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<GeminiRequest, CancellationToken>((request, _) =>
+            {
+                capturedRequests.Add(new GeminiRequest
+                {
+                    Messages = request.Messages.Select(message => new GeminiMessage
+                    {
+                        Role = message.Role,
+                        Content = message.Content,
+                        FunctionResponses = message.FunctionResponses?.Select(response => new GeminiFunctionResponse
+                        {
+                            Name = response.Name,
+                            Id = response.Id,
+                            ResponseJson = response.ResponseJson
+                        }).ToList()
+                    }).ToList()
+                });
+            })
+            .ReturnsAsync(() => capturedRequests.Count == 1
+                ? new GeminiResponse { Success = true, Content = "tools.quotecalculateestimate()" }
+                : new GeminiResponse { Success = true, Content = "Your estimated total is 1,860 THB." });
+
+        const string priceResult = "{\"totalPrice\":1860,\"currency\":\"THB\"}";
+        _toolExecutorMock.Setup(x => x.ExecuteAsync(
+                "quote_calculate_estimate",
+                It.IsAny<Dictionary<string, object>>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(priceResult);
+
+        var result = await _handler.ExecuteAsync(initialRequest);
+
+        Assert.True(result.Success);
+        Assert.Equal("Your estimated total is 1,860 THB.", result.Content);
+        Assert.DoesNotContain("tools.", result.Content, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(2, capturedRequests.Count);
+        _toolExecutorMock.Verify(x => x.ExecuteAsync(
+            "quote_calculate_estimate",
+            It.IsAny<Dictionary<string, object>>(),
+            It.IsAny<string?>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+        var responseMessage = Assert.Single(capturedRequests[1].Messages, message => message.FunctionResponses is { Count: > 0 });
+        var functionResponse = Assert.Single(responseMessage.FunctionResponses!);
+        Assert.Equal("quote_calculate_estimate", functionResponse.Name);
+        Assert.Equal(priceResult, functionResponse.ResponseJson);
+    }
+
+    /// <summary>
     /// Verifies that text mentioning an undeclared tool is returned verbatim without executing anything.
     /// </summary>
     [Fact]

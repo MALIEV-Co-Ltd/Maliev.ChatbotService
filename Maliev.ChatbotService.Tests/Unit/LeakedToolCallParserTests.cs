@@ -51,6 +51,42 @@ public class LeakedToolCallParserTests
         Assert.Equal("quote_calculate_estimate", calls[0].Name);
     }
 
+    /// <summary>Compact tool names with a tools namespace resolve to their exact declarations.</summary>
+    [Theory]
+    [InlineData("tools.quotecalculateestimate()", "quote_calculate_estimate")]
+    [InlineData("tools.quotegetshippingrates(addressline1='36/1', postalcode='12345')", "quote_get_shipping_rates")]
+    [InlineData("tools.quoteprepareformal_quote()", "quote_prepare_formal_quote")]
+    public void Parse_CompactToolsPrefix_ResolvesDeclaredCanonicalName(string text, string expected)
+    {
+        var calls = LeakedToolCallParser.Parse(text,
+            ["quote_calculate_estimate", "quote_get_shipping_rates", "quote_prepare_formal_quote"]);
+
+        Assert.Single(calls);
+        Assert.Equal(expected, calls[0].Name);
+    }
+
+    /// <summary>Canonical aliases that match more than one exact declaration are never recovered.</summary>
+    [Fact]
+    public void Parse_CanonicalDeclarationCollision_ReturnsEmpty()
+    {
+        var calls = LeakedToolCallParser.Parse(
+            "tools.quotecalculateestimate()",
+            ["quote_calculate_estimate", "quotecalculateestimate"]);
+
+        Assert.Empty(calls);
+    }
+
+    /// <summary>A compact name still must match a declaration on the current request.</summary>
+    [Fact]
+    public void Parse_UndeclaredCompactToolName_ReturnsEmpty()
+    {
+        var calls = LeakedToolCallParser.Parse(
+            "tools.quotecalculateestimate()",
+            ["quote_get_state"]);
+
+        Assert.Empty(calls);
+    }
+
     /// <summary>Invocations of tools that are not declared on the request must be ignored.</summary>
     [Fact]
     public void Parse_UndeclaredToolName_ReturnsEmpty()

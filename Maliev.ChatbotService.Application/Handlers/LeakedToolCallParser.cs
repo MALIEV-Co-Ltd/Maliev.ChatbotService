@@ -26,7 +26,12 @@ public static class LeakedToolCallParser
             return calls;
         }
 
-        var names = declaredToolNames as ISet<string> ?? new HashSet<string>(declaredToolNames, StringComparer.Ordinal);
+        var namesByCanonicalKey = BuildCanonicalToolNames(declaredToolNames);
+        if (namesByCanonicalKey.Count == 0)
+        {
+            return calls;
+        }
+
         var index = 0;
         while (index < content.Length && calls.Count < MaxRecoveredCalls)
         {
@@ -43,7 +48,25 @@ public static class LeakedToolCallParser
             }
 
             var identifier = content[identifierStart..index];
-            if (!names.Contains(identifier))
+            if (identifier.Equals("tools", StringComparison.OrdinalIgnoreCase) &&
+                index + 1 < content.Length &&
+                content[index] == '.' &&
+                IsIdentifierStart(content[index + 1]))
+            {
+                index++;
+                while (index < content.Length && IsIdentifierPart(content[index]))
+                {
+                    index++;
+                }
+
+                identifier = content[identifierStart..index];
+            }
+            else if (identifierStart > 0 && content[identifierStart - 1] == '.')
+            {
+                continue;
+            }
+
+            if (!namesByCanonicalKey.TryGetValue(CanonicalToolKey(identifier), out var declaredName))
             {
                 continue;
             }
@@ -64,11 +87,59 @@ public static class LeakedToolCallParser
                 continue;
             }
 
-            calls.Add(new GeminiFunctionCall { Name = identifier, Args = args });
+            calls.Add(new GeminiFunctionCall { Name = declaredName, Args = args });
             index = closeParen + 1;
         }
 
         return calls;
+    }
+
+    private static Dictionary<string, string> BuildCanonicalToolNames(IEnumerable<string> declaredToolNames)
+    {
+        var namesByCanonicalKey = new Dictionary<string, string>(StringComparer.Ordinal);
+        var collidingKeys = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var declaredName in declaredToolNames)
+        {
+            if (string.IsNullOrWhiteSpace(declaredName))
+            {
+                continue;
+            }
+
+            var key = CanonicalToolKey(declaredName);
+            if (key.Length == 0 || collidingKeys.Contains(key))
+            {
+                continue;
+            }
+
+            if (namesByCanonicalKey.TryGetValue(key, out var existingName))
+            {
+                if (!existingName.Equals(declaredName, StringComparison.Ordinal))
+                {
+                    namesByCanonicalKey.Remove(key);
+                    collidingKeys.Add(key);
+                }
+
+                continue;
+            }
+
+            namesByCanonicalKey.Add(key, declaredName);
+        }
+
+        return namesByCanonicalKey;
+    }
+
+    private static string CanonicalToolKey(string value)
+    {
+        const string toolsNamespace = "tools.";
+        var unqualifiedName = value.StartsWith(toolsNamespace, StringComparison.OrdinalIgnoreCase)
+            ? value[toolsNamespace.Length..]
+            : value;
+
+        return new string(unqualifiedName
+            .Where(char.IsLetterOrDigit)
+            .Select(char.ToLowerInvariant)
+            .ToArray());
     }
 
     private static bool IsIdentifierStart(char c) => char.IsLetter(c) || c == '_';
