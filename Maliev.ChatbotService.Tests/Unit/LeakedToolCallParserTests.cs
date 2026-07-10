@@ -65,6 +65,29 @@ public class LeakedToolCallParserTests
         Assert.Equal(expected, calls[0].Name);
     }
 
+    /// <summary>A tools namespace used as a dotted identifier suffix is not a supported boundary.</summary>
+    [Theory]
+    [InlineData("other.tools.quotecalculateestimate()")]
+    [InlineData("window.tools.quotecalculateestimate()")]
+    public void Parse_ToolsNamespaceAfterDottedIdentifier_ReturnsEmpty(string text)
+    {
+        var calls = LeakedToolCallParser.Parse(text, ["quote_calculate_estimate"]);
+
+        Assert.Empty(calls);
+    }
+
+    /// <summary>Whitespace and non-dot punctuation remain valid boundaries for the tools namespace.</summary>
+    [Theory]
+    [InlineData(" tools.quotecalculateestimate()")]
+    [InlineData(";tools.quotecalculateestimate()")]
+    public void Parse_ToolsNamespaceAtTokenBoundary_RecoversDeclaredTool(string text)
+    {
+        var calls = LeakedToolCallParser.Parse(text, ["quote_calculate_estimate"]);
+
+        var call = Assert.Single(calls);
+        Assert.Equal("quote_calculate_estimate", call.Name);
+    }
+
     /// <summary>Canonical aliases that match more than one exact declaration are never recovered.</summary>
     [Fact]
     public void Parse_CanonicalDeclarationCollision_ReturnsEmpty()

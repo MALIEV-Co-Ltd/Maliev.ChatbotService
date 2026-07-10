@@ -48,6 +48,11 @@ public static class LeakedToolCallParser
             }
 
             var identifier = content[identifierStart..index];
+            if (identifierStart > 0 && content[identifierStart - 1] == '.')
+            {
+                continue;
+            }
+
             if (identifier.Equals("tools", StringComparison.OrdinalIgnoreCase) &&
                 index + 1 < content.Length &&
                 content[index] == '.' &&
@@ -60,10 +65,6 @@ public static class LeakedToolCallParser
                 }
 
                 identifier = content[identifierStart..index];
-            }
-            else if (identifierStart > 0 && content[identifierStart - 1] == '.')
-            {
-                continue;
             }
 
             if (!namesByCanonicalKey.TryGetValue(CanonicalToolKey(identifier), out var declaredName))
