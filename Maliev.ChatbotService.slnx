@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="Maliev.ChatbotService.Api/Maliev.ChatbotService.Api.csproj" />
+  <Project Path="Maliev.ChatbotService.Application/Maliev.ChatbotService.Application.csproj" />
+  <Project Path="Maliev.ChatbotService.Domain/Maliev.ChatbotService.Domain.csproj" />
+  <Project Path="Maliev.ChatbotService.Infrastructure/Maliev.ChatbotService.Infrastructure.csproj" />
+  <Project Path="Maliev.ChatbotService.Tests/Maliev.ChatbotService.Tests.csproj" />
+</Solution>
