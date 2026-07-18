@@ -1,0 +1,122 @@
+openapi: 3.0.0
+info:
+  title: Maliev Chatbot Service - Categorized Instructions API
+  version: 1.0.0
+  description: API for managing categorized system instructions and knowledge base facts.
+
+paths:
+  /chatbot/v1/admin/instructions:
+    get:
+      summary: Get system instructions
+      tags: [Instructions]
+      parameters:
+        - name: category
+          in: query
+          schema:
+            type: string
+            enum: [Core, Topic]
+        - name: topicKey
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of instructions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SystemInstructionDto'
+    post:
+      summary: Create system instruction
+      tags: [Instructions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSystemInstructionRequest'
+      responses:
+        '201':
+          description: Instruction created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemInstructionDto'
+
+  /chatbot/v1/admin/knowledge-base:
+    get:
+      summary: Get knowledge base entries
+      tags: [KnowledgeBase]
+      parameters:
+        - name: topicKey
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of KB entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/KnowledgeBaseDto'
+    post:
+      summary: Create knowledge base entry
+      tags: [KnowledgeBase]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateKnowledgeBaseRequest'
+      responses:
+        '201':
+          description: Entry created
+
+components:
+  schemas:
+    SystemInstructionDto:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        category: { type: string, enum: [Core, Topic] }
+        topicKey: { type: string, nullable: true }
+        priority: { type: integer }
+        personaDefinition: { type: string }
+        businessConstraints: { type: string }
+        isActive: { type: boolean }
+        version: { type: integer }
+
+    CreateSystemInstructionRequest:
+      type: object
+      required: [name, category, personaDefinition, businessConstraints]
+      properties:
+        name: { type: string }
+        category: { type: string, enum: [Core, Topic] }
+        topicKey: { type: string }
+        priority: { type: integer }
+        personaDefinition: { type: string }
+        businessConstraints: { type: string }
+        isActive: { type: boolean }
+
+    KnowledgeBaseDto:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        topicKey: { type: string }
+        factKey: { type: string }
+        content: { type: string }
+        metadata: { type: object }
+
+    CreateKnowledgeBaseRequest:
+      type: object
+      required: [topicKey, factKey, content]
+      properties:
+        topicKey: { type: string }
+        factKey: { type: string }
+        content: { type: string }
+        metadata: { type: object }

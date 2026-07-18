@@ -1,0 +1,1058 @@
+using System.Net;
+using System.Text;
+using System.Text.Json;
+using Maliev.ChatbotService.Application.Interfaces;
+using Maliev.ChatbotService.Infrastructure.AI;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
+
+namespace Maliev.ChatbotService.Tests.Unit;
+
+public sealed class OpenAICompatibleModelProviderClientTests
+{
+    [Fact]
+    public async Task SendMessageAsync_PromptOnlyRequest_SerializesPromptAsUserMessage()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "choices": [
+                {
+                  "message": {
+                    "content": "Stainless steel 304 is an austenitic stainless steel."
+                  }
+                }
+              ]
+            }
+            """, "application/json");
+        var client = CreateClient(handler);
+
+        var response = await client.SendMessageAsync(new GeminiRequest
+        {
+            SystemInstruction = "You are a manufacturing assistant.",
+            Prompt = "What is stainless steel 304?"
+        });
+
+        Assert.True(response.Success);
+        using var payload = JsonDocument.Parse(handler.RequestBody);
+        var messages = payload.RootElement.GetProperty("messages").EnumerateArray().ToArray();
+        Assert.Equal("system", messages[0].GetProperty("role").GetString());
+        Assert.Equal("user", messages[1].GetProperty("role").GetString());
+        Assert.Equal("What is stainless steel 304?", messages[1].GetProperty("content").GetString());
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_BlankCompatibleGeminiConfig_FallsBackToGeminiKeyAndModel()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "choices": [
+                {
+                  "message": {
+                    "content": "ok"
+                  }
+                }
+              ]
+            }
+            """, "application/json");
+        var client = CreateClient(
+            handler,
+            baseAddress: new Uri("https://generativelanguage.googleapis.com/v1beta/openai/"),
+            configurationOverrides: new Dictionary<string, string?>
+            {
+                ["Llm:OpenAICompatible:ApiKey"] = "",
+                ["Llm:OpenAICompatible:ModelName"] = "",
+                ["Gemini:ApiKey"] = "gemini-key",
+                ["Gemini:MainModelName"] = "gemini-2.5-flash"
+            });
+
+        var response = await client.SendMessageAsync(new GeminiRequest
+        {
+            Messages = [new GeminiMessage { Role = "user", Content = "Summarize this ticket." }]
+        });
+
+        Assert.True(response.Success);
+        Assert.Equal("Bearer gemini-key", handler.Authorization);
+        using var payload = JsonDocument.Parse(handler.RequestBody);
+        Assert.Equal("gemini-2.5-flash", payload.RootElement.GetProperty("model").GetString());
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_WithImageAndTools_UsesOpenAiCompatiblePayloadAndParsesToolCalls()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "choices": [
+                {
+                  "message": {
+                    "content": "I need the current quote state.",
+                    "tool_calls": [
+                      {
+                        "type": "function",
+                        "function": {
+                          "name": "quote_engine_get_state",
+                          "arguments": "{\"sessionId\":\"abc\",\"includeArtifacts\":true}"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ],
+              "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "total_tokens": 15
+              }
+            }
+            """, "application/json");
+        var client = CreateClient(handler);
+
+        var response = await client.SendMessageAsync(new GeminiRequest
+        {
+            SystemInstruction = "You are a quote agent.",
+            Messages =
+            [
+                new GeminiMessage
+                {
+                    Role = "user",
+                    Content = "Check this bracket sketch.",
+                    Attachments =
+                    [
+                        new GeminiAttachment
+                        {
+                            MimeType = "image/png",
+                            Data = "aW1hZ2U="
+                        }
+                    ]
+                }
+            ],
+            Tools =
+            [
+                new GeminiToolDeclaration
+                {
+                    FunctionDeclarations =
+                    [
+                        new GeminiFunctionDeclaration
+                        {
+                            Name = "quote_engine_get_state",
+                            Description = "Gets quote state.",
+                            Parameters = new
+                            {
+                                type = "object",
+                                properties = new
+                                {
+                                    sessionId = new { type = "string" },
+                                    includeArtifacts = new { type = "boolean" }
+                                }
+                            }
+                        }
+                    ]
+                }
+            ]
+        });
+
+        Assert.True(response.Success);
+        Assert.Equal("I need the current quote state.", response.Content);
+        var functionCall = Assert.Single(response.FunctionCalls);
+        Assert.Equal("quote_engine_get_state", functionCall.Name);
+        Assert.Equal("abc", functionCall.Args["sessionId"]);
+        Assert.Equal(true, functionCall.Args["includeArtifacts"]);
+        Assert.NotNull(response.TokenUsage);
+        Assert.Equal(15, response.TokenUsage.TotalTokens);
+        Assert.Equal("Bearer test-key", handler.Authorization);
+
+        using var payload = JsonDocument.Parse(handler.RequestBody);
+        Assert.Equal("qwen-vl-test", payload.RootElement.GetProperty("model").GetString());
+        Assert.False(payload.RootElement.GetProperty("stream").GetBoolean());
+        Assert.Equal("auto", payload.RootElement.GetProperty("tool_choice").GetString());
+        var tools = payload.RootElement.GetProperty("tools").EnumerateArray().ToArray();
+        Assert.Single(tools);
+        Assert.Equal("function", tools[0].GetProperty("type").GetString());
+
+        var messages = payload.RootElement.GetProperty("messages").EnumerateArray().ToArray();
+        Assert.Equal("system", messages[0].GetProperty("role").GetString());
+        var contentParts = messages[1].GetProperty("content").EnumerateArray().ToArray();
+        Assert.Equal("text", contentParts[0].GetProperty("type").GetString());
+        Assert.Equal("image_url", contentParts[1].GetProperty("type").GetString());
+        Assert.Equal(
+            "data:image/png;base64,aW1hZ2U=",
+            contentParts[1].GetProperty("image_url").GetProperty("url").GetString());
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_FunctionCallWithStructuredArguments_PreservesNestedJsonForToolForwarding()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "choices": [
+                {
+                  "message": {
+                    "content": null,
+                    "tool_calls": [
+                      {
+                        "id": "call-1",
+                        "type": "function",
+                        "function": {
+                          "name": "quote_generate_3d_preview",
+                          "arguments": "{\"description\":\"Rectangular part\",\"cad_commands\":[{\"op\":\"box\",\"id\":\"part\",\"params\":[30,50,100]}],\"metadata\":{\"units\":\"mm\"}}"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+            """, "application/json");
+        var client = CreateClient(handler);
+
+        var response = await client.SendMessageAsync(new GeminiRequest
+        {
+            Messages = [new GeminiMessage { Role = "user", Content = "Generate a CAD preview." }]
+        });
+
+        Assert.True(response.Success);
+        var functionCall = Assert.Single(response.FunctionCalls);
+        Assert.Equal("quote_generate_3d_preview", functionCall.Name);
+        Assert.Equal("call-1", functionCall.Id);
+
+        var forwardingOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+        };
+        var forwardedJson = JsonSerializer.Serialize(functionCall.Args, forwardingOptions);
+        using var forwarded = JsonDocument.Parse(forwardedJson);
+        Assert.Equal("Rectangular part", forwarded.RootElement.GetProperty("description").GetString());
+
+        var cadCommands = forwarded.RootElement.GetProperty("cad_commands");
+        Assert.Equal(JsonValueKind.Array, cadCommands.ValueKind);
+        var command = Assert.Single(cadCommands.EnumerateArray());
+        Assert.Equal("box", command.GetProperty("op").GetString());
+        Assert.Equal(JsonValueKind.Array, command.GetProperty("params").ValueKind);
+
+        var metadata = forwarded.RootElement.GetProperty("metadata");
+        Assert.Equal(JsonValueKind.Object, metadata.ValueKind);
+        Assert.Equal("mm", metadata.GetProperty("units").GetString());
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_WithAudioAttachment_SerializesInputAudioPart()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "choices": [
+                {
+                  "message": {
+                    "content": "transcribed"
+                  }
+                }
+              ]
+            }
+            """, "application/json");
+        var client = CreateClient(handler);
+
+        var response = await client.SendMessageAsync(new GeminiRequest
+        {
+            Messages =
+            [
+                new GeminiMessage
+                {
+                    Role = "user",
+                    Content = "Transcribe this audio.",
+                    Attachments =
+                    [
+                        new GeminiAttachment
+                        {
+                            MimeType = "audio/wav",
+                            Data = "data:audio/wav;base64,UklGRg=="
+                        }
+                    ]
+                }
+            ]
+        });
+
+        Assert.True(response.Success);
+        using var payload = JsonDocument.Parse(handler.RequestBody);
+        var messages = payload.RootElement.GetProperty("messages").EnumerateArray().ToArray();
+        var contentParts = messages[0].GetProperty("content").EnumerateArray().ToArray();
+        Assert.Equal("text", contentParts[0].GetProperty("type").GetString());
+        Assert.Equal("input_audio", contentParts[1].GetProperty("type").GetString());
+
+        var inputAudio = contentParts[1].GetProperty("input_audio");
+        Assert.Equal("UklGRg==", inputAudio.GetProperty("data").GetString());
+        Assert.Equal("wav", inputAudio.GetProperty("format").GetString());
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_WithUnsupportedPdfAttachment_ReturnsFallbackWithoutProviderCall()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "choices": [
+                {
+                  "message": {
+                    "content": "ok"
+                  }
+                }
+              ]
+            }
+            """, "application/json");
+        var client = CreateClient(handler);
+
+        var response = await client.SendMessageAsync(new GeminiRequest
+        {
+            Messages =
+            [
+                new GeminiMessage
+                {
+                    Role = "user",
+                    Content = "Summarize this drawing.",
+                    Attachments =
+                    [
+                        new GeminiAttachment
+                        {
+                            MimeType = "application/pdf",
+                            Data = "data:application/pdf;base64,JVBERi0xLjQ="
+                        }
+                    ]
+                }
+            ]
+        });
+
+        Assert.False(response.Success);
+        Assert.True(response.IsFallback);
+        Assert.Equal("ModelProviderUnsupportedAttachment", response.ErrorType);
+        Assert.Equal(0, handler.RequestCount);
+        Assert.Equal(string.Empty, handler.RequestBody);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_GeminiOpenAiCompatibleBaseAddress_UsesDocumentedChatCompletionsPath()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "choices": [
+                {
+                  "message": {
+                    "content": "ok"
+                  }
+                }
+              ]
+            }
+            """, "application/json");
+        var client = CreateClient(
+            handler,
+            new Uri("https://generativelanguage.googleapis.com/v1beta/openai/"),
+            "gemini-2.5-flash");
+
+        await client.SendMessageAsync(new GeminiRequest
+        {
+            Messages = [new GeminiMessage { Role = "user", Content = "Hello" }]
+        });
+
+        Assert.Equal(
+            "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+            handler.RequestUri?.ToString());
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_GeminiOpenAiCompatibleMaxPromptTokensExceeded_CountsTokensAndSkipsGeneration()
+    {
+        var handler = new SequencedCapturingHandler(
+        [
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""{"totalTokens":20001}""", Encoding.UTF8, "application/json")
+            },
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""
+                    {
+                      "choices": [
+                        {
+                          "message": {
+                            "content": "should not be called"
+                          }
+                        }
+                      ]
+                    }
+                    """, Encoding.UTF8, "application/json")
+            }
+        ]);
+        var client = CreateClient(
+            handler,
+            new Uri("https://generativelanguage.googleapis.com/v1beta/openai/"),
+            "gemini-2.5-flash");
+
+        var response = await client.SendMessageAsync(new GeminiRequest
+        {
+            SystemInstruction = "You are a manufacturing assistant.",
+            MaxPromptTokens = 20000,
+            Messages = [new GeminiMessage { Role = "user", Content = "Summarize this large document." }]
+        });
+
+        Assert.False(response.Success);
+        Assert.True(response.IsFallback);
+        Assert.Equal("GeminiInputTokenLimit", response.ErrorType);
+        Assert.Single(handler.RequestUris);
+        Assert.Equal(
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:countTokens",
+            handler.RequestUris[0].ToString());
+
+        using var payload = JsonDocument.Parse(handler.RequestBodies[0]);
+        var generateRequest = payload.RootElement.GetProperty("generateContentRequest");
+        Assert.Equal("models/gemini-2.5-flash", generateRequest.GetProperty("model").GetString());
+        Assert.Equal(
+            "You are a manufacturing assistant.",
+            generateRequest.GetProperty("systemInstruction").GetProperty("parts")[0].GetProperty("text").GetString());
+        Assert.Equal(
+            "Summarize this large document.",
+            generateRequest.GetProperty("contents")[0].GetProperty("parts")[0].GetProperty("text").GetString());
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_NonGoogleCompatibleMaxPromptTokens_DoesNotCallGeminiCountTokens()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "choices": [
+                {
+                  "message": {
+                    "content": "ok"
+                  }
+                }
+              ]
+            }
+            """, "application/json");
+        var client = CreateClient(
+            handler,
+            new Uri("https://example.test/openai/"),
+            "gemini-2.5-flash");
+
+        var response = await client.SendMessageAsync(new GeminiRequest
+        {
+            MaxPromptTokens = 1,
+            Messages = [new GeminiMessage { Role = "user", Content = "Hello" }]
+        });
+
+        Assert.True(response.Success);
+        Assert.Equal(1, handler.RequestCount);
+        Assert.DoesNotContain(":countTokens", handler.RequestUri?.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StreamMessageAsync_GeminiOpenAiCompatibleMaxPromptTokensExceeded_CountsTokensAndSkipsGeneration()
+    {
+        var handler = new SequencedCapturingHandler(
+        [
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""{"totalTokens":20001}""", Encoding.UTF8, "application/json")
+            },
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("data: {\"choices\":[{\"delta\":{\"content\":\"should not stream\"}}]}\n\ndata: [DONE]", Encoding.UTF8, "text/event-stream")
+            }
+        ]);
+        var client = CreateClient(
+            handler,
+            new Uri("https://generativelanguage.googleapis.com/v1beta/openai/"),
+            "gemini-2.5-flash");
+
+        var events = new List<GeminiStreamEvent>();
+        await foreach (var streamEvent in client.StreamMessageAsync(new GeminiRequest
+        {
+            MaxPromptTokens = 20000,
+            Messages = [new GeminiMessage { Role = "user", Content = "Summarize this large document." }]
+        }))
+        {
+            events.Add(streamEvent);
+        }
+
+        Assert.Equal("started", events[0].Type);
+        var final = Assert.Single(events, item => item.Type.Equals("final", StringComparison.OrdinalIgnoreCase));
+        Assert.NotNull(final.Response);
+        Assert.False(final.Response!.Success);
+        Assert.Equal("GeminiInputTokenLimit", final.Response.ErrorType);
+        Assert.Single(handler.RequestUris);
+        Assert.Equal(
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:countTokens",
+            handler.RequestUris[0].ToString());
+
+        using var payload = JsonDocument.Parse(handler.RequestBodies[0]);
+        Assert.Equal(
+            "models/gemini-2.5-flash",
+            payload.RootElement.GetProperty("generateContentRequest").GetProperty("model").GetString());
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_RootOpenAiCompatibleBaseAddress_UsesV1ChatCompletionsPath()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "choices": [
+                {
+                  "message": {
+                    "content": "ok"
+                  }
+                }
+              ]
+            }
+            """, "application/json");
+        var client = CreateClient(handler, new Uri("https://api.openai.com/"));
+
+        await client.SendMessageAsync(new GeminiRequest
+        {
+            Messages = [new GeminiMessage { Role = "user", Content = "Hello" }]
+        });
+
+        Assert.Equal(
+            "https://api.openai.com/v1/chat/completions",
+            handler.RequestUri?.ToString());
+    }
+
+    [Fact]
+    public async Task StreamMessageAsync_WithUnsupportedPdfAttachment_ReturnsFallbackWithoutProviderCall()
+    {
+        var handler = new CapturingHandler(
+            "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]",
+            "text/event-stream");
+        var client = CreateClient(handler);
+
+        GeminiResponse? finalResponse = null;
+        await foreach (var streamEvent in client.StreamMessageAsync(new GeminiRequest
+        {
+            Messages =
+            [
+                new GeminiMessage
+                {
+                    Role = "user",
+                    Content = "Summarize this drawing.",
+                    Attachments =
+                    [
+                        new GeminiAttachment
+                        {
+                            MimeType = "application/pdf",
+                            Data = "data:application/pdf;base64,JVBERi0xLjQ="
+                        }
+                    ]
+                }
+            ]
+        }))
+        {
+            if (streamEvent.Type.Equals("final", StringComparison.OrdinalIgnoreCase))
+            {
+                finalResponse = streamEvent.Response;
+            }
+        }
+
+        Assert.NotNull(finalResponse);
+        Assert.False(finalResponse!.Success);
+        Assert.True(finalResponse.IsFallback);
+        Assert.Equal("ModelProviderUnsupportedAttachment", finalResponse.ErrorType);
+        Assert.Equal(0, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_GeminiCostControls_SerializesServiceTierAndExtraBody()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "choices": [
+                {
+                  "message": {
+                    "content": "ok"
+                  }
+                }
+              ]
+            }
+            """, "application/json");
+        var client = CreateClient(handler);
+
+        await client.SendMessageAsync(new GeminiRequest
+        {
+            Messages = [new GeminiMessage { Role = "user", Content = "Summarize cached customer context." }],
+            ServiceTier = "flex",
+            CachedContentName = "cachedContents/customer-context-123",
+            ThinkingBudget = 0,
+            IncludeThoughts = true
+        });
+
+        using var payload = JsonDocument.Parse(handler.RequestBody);
+        Assert.Equal("flex", payload.RootElement.GetProperty("service_tier").GetString());
+        Assert.False(payload.RootElement.TryGetProperty("serviceTier", out _));
+
+        var google = payload.RootElement.GetProperty("extra_body").GetProperty("google");
+        Assert.Equal("cachedContents/customer-context-123", google.GetProperty("cached_content").GetString());
+
+        var thinkingConfig = google.GetProperty("thinking_config");
+        Assert.Equal(0, thinkingConfig.GetProperty("thinking_budget").GetInt32());
+        Assert.True(thinkingConfig.GetProperty("include_thoughts").GetBoolean());
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_FlexServiceTier_UsesFlexInferenceTimeoutWindow()
+    {
+        var handler = new DelayedCapturingHandler(
+            TimeSpan.FromMilliseconds(1250),
+            """
+            {
+              "choices": [
+                {
+                  "message": {
+                    "content": "ok"
+                  }
+                }
+              ]
+            }
+            """,
+            "application/json");
+        var client = CreateClient(handler);
+
+        var response = await client.SendMessageAsync(new GeminiRequest
+        {
+            Messages = [new GeminiMessage { Role = "user", Content = "Summarize this queueable utility task." }],
+            ServiceTier = "flex",
+            TimeoutSeconds = 1
+        });
+
+        Assert.True(response.Success);
+        Assert.False(response.IsFallback);
+        Assert.Equal("ok", response.Content);
+        Assert.Equal(1, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_Gemini25FlashWithoutThinkingBudget_DisablesThinkingByDefault()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "choices": [
+                {
+                  "message": {
+                    "content": "ok"
+                  }
+                }
+              ]
+            }
+            """, "application/json");
+        var client = CreateClient(handler);
+
+        await client.SendMessageAsync(new GeminiRequest
+        {
+            ModelName = "gemini-2.5-flash",
+            Messages = [new GeminiMessage { Role = "user", Content = "Classify this support message." }]
+        });
+
+        using var payload = JsonDocument.Parse(handler.RequestBody);
+        Assert.Equal("gemini-2.5-flash", payload.RootElement.GetProperty("model").GetString());
+        Assert.Equal("none", payload.RootElement.GetProperty("reasoning_effort").GetString());
+        Assert.False(payload.RootElement.TryGetProperty("extra_body", out _));
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_Gemini25ProWithoutThinkingBudget_DoesNotDisableRequiredThinking()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "choices": [
+                {
+                  "message": {
+                    "content": "ok"
+                  }
+                }
+              ]
+            }
+            """, "application/json");
+        var client = CreateClient(handler);
+
+        await client.SendMessageAsync(new GeminiRequest
+        {
+            ModelName = "gemini-2.5-pro",
+            Messages = [new GeminiMessage { Role = "user", Content = "Analyze this complex issue." }]
+        });
+
+        using var payload = JsonDocument.Parse(handler.RequestBody);
+        Assert.Equal("gemini-2.5-pro", payload.RootElement.GetProperty("model").GetString());
+        Assert.False(payload.RootElement.TryGetProperty("extra_body", out _));
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_NonGeminiModelWithZeroThinkingBudget_DoesNotSerializeGeminiThinkingConfig()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "choices": [
+                {
+                  "message": {
+                    "content": "ok"
+                  }
+                }
+              ]
+            }
+            """, "application/json");
+        var client = CreateClient(handler, modelName: "qwen-vl-test");
+
+        await client.SendMessageAsync(new GeminiRequest
+        {
+            Messages = [new GeminiMessage { Role = "user", Content = "Classify this support message." }],
+            ThinkingBudget = 0
+        });
+
+        using var payload = JsonDocument.Parse(handler.RequestBody);
+        Assert.Equal("qwen-vl-test", payload.RootElement.GetProperty("model").GetString());
+        Assert.False(payload.RootElement.TryGetProperty("reasoning_effort", out _));
+        Assert.False(payload.RootElement.TryGetProperty("extra_body", out _));
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_StoreFalse_SerializesStoreFlag()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "choices": [
+                {
+                  "message": {
+                    "content": "ok"
+                  }
+                }
+              ]
+            }
+            """, "application/json");
+        var client = CreateClient(handler);
+
+        await client.SendMessageAsync(new GeminiRequest
+        {
+            Messages = [new GeminiMessage { Role = "user", Content = "Summarize private customer context." }],
+            Store = false
+        });
+
+        using var payload = JsonDocument.Parse(handler.RequestBody);
+        Assert.False(payload.RootElement.GetProperty("store").GetBoolean());
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_ServiceTierHeader_MapsActualTierToResponse()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "choices": [
+                {
+                  "message": {
+                    "content": "ok"
+                  }
+                }
+              ]
+            }
+            """, "application/json", ("x-gemini-service-tier", "standard"));
+        var client = CreateClient(handler);
+
+        var response = await client.SendMessageAsync(new GeminiRequest
+        {
+            Messages = [new GeminiMessage { Role = "user", Content = "Triage this urgent issue." }],
+            ServiceTier = "priority"
+        });
+
+        Assert.True(response.Success);
+        Assert.Equal("standard", response.ServiceTier);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_UsageDetails_MapsCachedAudioReasoningAndBodyServiceTier()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "service_tier": "standard",
+              "choices": [
+                {
+                  "message": {
+                    "content": "ok"
+                  }
+                }
+              ],
+              "usage": {
+                "prompt_tokens": 100,
+                "completion_tokens": 20,
+                "total_tokens": 120,
+                "prompt_tokens_details": {
+                  "cached_tokens": 60,
+                  "audio_tokens": 25
+                },
+                "completion_tokens_details": {
+                  "reasoning_tokens": 7
+                }
+              }
+            }
+            """, "application/json");
+        var client = CreateClient(handler);
+
+        var response = await client.SendMessageAsync(new GeminiRequest
+        {
+            Messages = [new GeminiMessage { Role = "user", Content = "Transcribe and summarize this." }],
+            ServiceTier = "priority"
+        });
+
+        Assert.True(response.Success);
+        Assert.Equal("standard", response.ServiceTier);
+        Assert.NotNull(response.TokenUsage);
+        Assert.Equal(100, response.TokenUsage.PromptTokens);
+        Assert.Equal(13, response.TokenUsage.CompletionTokens);
+        Assert.Equal(7, response.TokenUsage.ThoughtTokens);
+        Assert.Equal(60, response.TokenUsage.CachedPromptTokens);
+        Assert.Equal(120, response.TokenUsage.TotalTokens);
+        Assert.Contains(
+            response.TokenUsage.PromptTokenDetails,
+            item => item.Modality == "AUDIO" && item.TokenCount == 25);
+        Assert.Contains(
+            response.TokenUsage.PromptTokenDetails,
+            item => item.Modality == "TEXT" && item.TokenCount == 75);
+    }
+
+    [Fact]
+    public async Task StreamMessageAsync_WithoutTools_EmitsOpenAiCompatibleDeltasAndFinalResponse()
+    {
+        var handler = new CapturingHandler(string.Join("\n\n",
+            """
+            data: {"choices":[{"delta":{"content":"Hello "}}]}
+            """,
+            """
+            data: {"choices":[{"delta":{"content":"world"}}]}
+            """,
+            "data: [DONE]"), "text/event-stream");
+        var client = CreateClient(handler);
+
+        var events = new List<GeminiStreamEvent>();
+        await foreach (var streamEvent in client.StreamMessageAsync(new GeminiRequest
+        {
+            Messages = [new GeminiMessage { Role = "user", Content = "Say hello" }]
+        }))
+        {
+            events.Add(streamEvent);
+        }
+
+        Assert.Equal("started", events[0].Type);
+        Assert.Equal(
+            ["Hello ", "world"],
+            events.Where(item => item.Type == "delta").Select(item => item.Delta ?? string.Empty).ToArray());
+        var final = Assert.Single(events, item => item.Type == "final");
+        Assert.NotNull(final.Response);
+        Assert.True(final.Response.Success);
+        Assert.Equal("Hello world", final.Response.Content);
+
+        using var payload = JsonDocument.Parse(handler.RequestBody);
+        Assert.True(payload.RootElement.GetProperty("stream").GetBoolean());
+    }
+
+    [Fact]
+    public async Task StreamMessageAsync_UsageChunk_RequestsAndMapsTokenUsage()
+    {
+        var handler = new CapturingHandler(string.Join("\n\n",
+            """
+            data: {"choices":[{"delta":{"content":"ok"}}]}
+            """,
+            """
+            data: {"choices":[{"delta":{}}],"usage":{"prompt_tokens":12,"completion_tokens":3,"total_tokens":15}}
+            """,
+            "data: [DONE]"), "text/event-stream");
+        var client = CreateClient(handler);
+
+        GeminiResponse? finalResponse = null;
+        await foreach (var streamEvent in client.StreamMessageAsync(new GeminiRequest
+        {
+            Messages = [new GeminiMessage { Role = "user", Content = "Summarize this." }]
+        }))
+        {
+            if (streamEvent.Type.Equals("final", StringComparison.OrdinalIgnoreCase))
+            {
+                finalResponse = streamEvent.Response;
+            }
+        }
+
+        using var payload = JsonDocument.Parse(handler.RequestBody);
+        Assert.True(payload.RootElement.GetProperty("stream_options").GetProperty("include_usage").GetBoolean());
+
+        Assert.NotNull(finalResponse);
+        Assert.NotNull(finalResponse!.TokenUsage);
+        Assert.Equal(12, finalResponse.TokenUsage.PromptTokens);
+        Assert.Equal(3, finalResponse.TokenUsage.CompletionTokens);
+        Assert.Equal(15, finalResponse.TokenUsage.TotalTokens);
+    }
+
+    [Fact]
+    public async Task StreamMessageAsync_UsageChunk_MapsUsageDetailsAndBodyServiceTier()
+    {
+        var handler = new CapturingHandler(string.Join("\n\n",
+            """
+            data: {"choices":[{"delta":{"content":"ok"}}]}
+            """,
+            """
+            data: {"service_tier":"standard","choices":[],"usage":{"prompt_tokens":100,"completion_tokens":20,"total_tokens":120,"prompt_tokens_details":{"cached_tokens":60,"audio_tokens":25},"completion_tokens_details":{"reasoning_tokens":7}}}
+            """,
+            "data: [DONE]"), "text/event-stream");
+        var client = CreateClient(handler);
+
+        GeminiResponse? finalResponse = null;
+        await foreach (var streamEvent in client.StreamMessageAsync(new GeminiRequest
+        {
+            Messages = [new GeminiMessage { Role = "user", Content = "Transcribe and summarize this." }],
+            ServiceTier = "priority"
+        }))
+        {
+            if (streamEvent.Type.Equals("final", StringComparison.OrdinalIgnoreCase))
+            {
+                finalResponse = streamEvent.Response;
+            }
+        }
+
+        Assert.NotNull(finalResponse);
+        Assert.Equal("standard", finalResponse!.ServiceTier);
+        Assert.NotNull(finalResponse.TokenUsage);
+        Assert.Equal(100, finalResponse.TokenUsage.PromptTokens);
+        Assert.Equal(13, finalResponse.TokenUsage.CompletionTokens);
+        Assert.Equal(7, finalResponse.TokenUsage.ThoughtTokens);
+        Assert.Equal(60, finalResponse.TokenUsage.CachedPromptTokens);
+        Assert.Equal(120, finalResponse.TokenUsage.TotalTokens);
+        Assert.Contains(
+            finalResponse.TokenUsage.PromptTokenDetails,
+            item => item.Modality == "AUDIO" && item.TokenCount == 25);
+        Assert.Contains(
+            finalResponse.TokenUsage.PromptTokenDetails,
+            item => item.Modality == "TEXT" && item.TokenCount == 75);
+    }
+
+    [Fact]
+    public async Task StreamMessageAsync_ServiceTierHeader_MapsActualTierToFinalResponse()
+    {
+        var handler = new CapturingHandler(string.Join("\n\n",
+            """
+            data: {"choices":[{"delta":{"content":"ok"}}]}
+            """,
+            "data: [DONE]"), "text/event-stream", ("x-gemini-service-tier", "flex"));
+        var client = CreateClient(handler);
+
+        GeminiResponse? finalResponse = null;
+        await foreach (var streamEvent in client.StreamMessageAsync(new GeminiRequest
+        {
+            Messages = [new GeminiMessage { Role = "user", Content = "Summarize this background record." }],
+            ServiceTier = "flex"
+        }))
+        {
+            if (streamEvent.Type.Equals("final", StringComparison.OrdinalIgnoreCase))
+            {
+                finalResponse = streamEvent.Response;
+            }
+        }
+
+        Assert.NotNull(finalResponse);
+        Assert.Equal("flex", finalResponse!.ServiceTier);
+    }
+
+    private static OpenAICompatibleModelProviderClient CreateClient(
+        HttpMessageHandler handler,
+        Uri? baseAddress = null,
+        string modelName = "qwen-vl-test",
+        Dictionary<string, string?>? configurationOverrides = null)
+    {
+        var configurationValues = new Dictionary<string, string?>
+        {
+            ["Llm:OpenAICompatible:ApiKey"] = "test-key",
+            ["Llm:OpenAICompatible:ModelName"] = modelName
+        };
+        if (configurationOverrides is not null)
+        {
+            foreach (var item in configurationOverrides)
+            {
+                configurationValues[item.Key] = item.Value;
+            }
+        }
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(configurationValues)
+            .Build();
+
+        return new OpenAICompatibleModelProviderClient(
+            new HttpClient(handler) { BaseAddress = baseAddress ?? new Uri("https://example.test/") },
+            configuration,
+            NullLogger<OpenAICompatibleModelProviderClient>.Instance);
+    }
+
+    private sealed class CapturingHandler(
+        string responseBody,
+        string mediaType,
+        params (string Name, string Value)[] responseHeaders) : HttpMessageHandler
+    {
+        public string RequestBody { get; private set; } = string.Empty;
+
+        public Uri? RequestUri { get; private set; }
+
+        public string? Authorization { get; private set; }
+
+        public int RequestCount { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            RequestCount++;
+            RequestUri = request.RequestUri;
+            Authorization = request.Headers.Authorization?.ToString();
+            RequestBody = request.Content is null
+                ? string.Empty
+                : await request.Content.ReadAsStringAsync(cancellationToken);
+
+            var response = new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(responseBody, Encoding.UTF8, mediaType)
+            };
+
+            foreach (var (name, value) in responseHeaders)
+            {
+                response.Headers.Add(name, value);
+            }
+
+            return response;
+        }
+    }
+
+    private sealed class DelayedCapturingHandler(
+        TimeSpan responseDelay,
+        string responseBody,
+        string mediaType) : HttpMessageHandler
+    {
+        public int RequestCount { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            RequestCount++;
+            await Task.Delay(responseDelay, cancellationToken);
+
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(responseBody, Encoding.UTF8, mediaType)
+            };
+        }
+    }
+
+    private sealed class SequencedCapturingHandler(IReadOnlyList<HttpResponseMessage> responses) : HttpMessageHandler
+    {
+        private int _index;
+
+        public List<Uri> RequestUris { get; } = [];
+
+        public List<string> RequestBodies { get; } = [];
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            RequestUris.Add(request.RequestUri!);
+            RequestBodies.Add(request.Content is null
+                ? string.Empty
+                : await request.Content.ReadAsStringAsync(cancellationToken));
+
+            var response = responses[Math.Min(_index, responses.Count - 1)];
+            _index++;
+            return response;
+        }
+    }
+}

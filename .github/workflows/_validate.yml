@@ -1,0 +1,51 @@
+name: Reusable Validation
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Checkout Aspire shared source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: MALIEV-Co-Ltd/Maliev.Aspire
+          ref: 01d506203763b914e237268a8746f1406423df86
+          path: shared/Maliev.Aspire
+          persist-credentials: false
+
+      - name: Checkout messaging contracts source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: MALIEV-Co-Ltd/Maliev.MessagingContracts
+          ref: 559a00db0c7920a5247fdff60d4476ad23a9a501
+          path: shared/Maliev.MessagingContracts
+          persist-credentials: false
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore dependencies
+        run: dotnet restore Maliev.ChatbotService.slnx --configfile nuget.validation.config /p:SharedSourceRoot=../shared /p:GITHUB_ACTIONS=false
+
+      - name: Audit NuGet dependencies
+        run: dotnet list Maliev.ChatbotService.slnx package --vulnerable --include-transitive --no-restore
+
+      - name: Build
+        run: dotnet build Maliev.ChatbotService.slnx --configuration Release --no-restore /p:SharedSourceRoot=../shared /p:GITHUB_ACTIONS=false
+
+      - name: Test
+        run: dotnet test Maliev.ChatbotService.slnx --configuration Release --no-restore --no-build --verbosity normal /p:SharedSourceRoot=../shared /p:GITHUB_ACTIONS=false

@@ -1,0 +1,215 @@
+asyncapi: 3.0.0
+info:
+  title: Maliev Chatbot Service Events
+  version: 1.0.0
+  description: Async messaging events published by the Chatbot Service via RabbitMQ/MassTransit
+
+defaultContentType: application/json
+
+channels:
+  chatbot-session-created:
+    address: chatbot-session-created
+    messages:
+      ChatbotSessionCreatedEvent:
+        $ref: '#/components/messages/ChatbotSessionCreatedEvent'
+
+  chatbot-session-closed:
+    address: chatbot-session-closed
+    messages:
+      ChatbotSessionClosedEvent:
+        $ref: '#/components/messages/ChatbotSessionClosedEvent'
+
+  chatbot-message-received:
+    address: chatbot-message-received
+    messages:
+      ChatbotMessageReceivedEvent:
+        $ref: '#/components/messages/ChatbotMessageReceivedEvent'
+
+  chatbot-rate-limit-exceeded:
+    address: chatbot-rate-limit-exceeded
+    messages:
+      ChatbotRateLimitExceededEvent:
+        $ref: '#/components/messages/ChatbotRateLimitExceededEvent'
+
+operations:
+  publishSessionCreated:
+    action: send
+    channel:
+      $ref: '#/channels/chatbot-session-created'
+    summary: Published when a new conversation session is initiated
+
+  publishSessionClosed:
+    action: send
+    channel:
+      $ref: '#/channels/chatbot-session-closed'
+    summary: Published when a session expires or is explicitly closed
+
+  publishMessageReceived:
+    action: send
+    channel:
+      $ref: '#/channels/chatbot-message-received'
+    summary: Published when a user message is received and processed
+
+  publishRateLimitExceeded:
+    action: send
+    channel:
+      $ref: '#/channels/chatbot-rate-limit-exceeded'
+    summary: Published when a user exceeds the 100 msg/hr rate limit
+
+components:
+  messages:
+    ChatbotSessionCreatedEvent:
+      name: ChatbotSessionCreatedEvent
+      title: Session Created Event
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/ChatbotSessionCreatedPayload'
+
+    ChatbotSessionClosedEvent:
+      name: ChatbotSessionClosedEvent
+      title: Session Closed Event
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/ChatbotSessionClosedPayload'
+
+    ChatbotMessageReceivedEvent:
+      name: ChatbotMessageReceivedEvent
+      title: Message Received Event
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/ChatbotMessageReceivedPayload'
+
+    ChatbotRateLimitExceededEvent:
+      name: ChatbotRateLimitExceededEvent
+      title: Rate Limit Exceeded Event
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/ChatbotRateLimitExceededPayload'
+
+  schemas:
+    BaseMessage:
+      type: object
+      required:
+        - messageId
+        - timestamp
+        - source
+      properties:
+        messageId:
+          type: string
+          format: uuid
+          description: Unique identifier for this event
+        timestamp:
+          type: string
+          format: date-time
+          description: When the event occurred
+        source:
+          type: string
+          const: ChatbotService
+          description: Service that published the event
+        correlationId:
+          type: string
+          format: uuid
+          description: Correlation ID for distributed tracing
+
+    ChatbotSessionCreatedPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseMessage'
+        - type: object
+          required:
+            - sessionId
+            - channel
+          properties:
+            sessionId:
+              type: string
+              format: uuid
+            userProfileId:
+              type: string
+              format: uuid
+              description: Null for anonymous users
+            channel:
+              type: string
+              enum: [website, line, facebook, whatsapp, intranet]
+            language:
+              type: string
+              enum: [en, th]
+            expiresAt:
+              type: string
+              format: date-time
+
+    ChatbotSessionClosedPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseMessage'
+        - type: object
+          required:
+            - sessionId
+            - reason
+          properties:
+            sessionId:
+              type: string
+              format: uuid
+            userProfileId:
+              type: string
+              format: uuid
+            reason:
+              type: string
+              enum: [expired, user_closed, admin_closed]
+            messageCount:
+              type: integer
+              description: Total messages in the session
+            summaryGenerated:
+              type: boolean
+              description: Whether a conversation summary was created
+
+    ChatbotMessageReceivedPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseMessage'
+        - type: object
+          required:
+            - sessionId
+            - messageId
+            - contentType
+          properties:
+            sessionId:
+              type: string
+              format: uuid
+            userProfileId:
+              type: string
+              format: uuid
+            channel:
+              type: string
+              enum: [website, line, facebook, whatsapp, intranet]
+            contentType:
+              type: string
+              enum: [text, image, audio, pdf, video]
+            processingTimeMs:
+              type: integer
+              description: Time taken to process the message
+
+    ChatbotRateLimitExceededPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseMessage'
+        - type: object
+          required:
+            - userIdentifier
+            - currentCount
+            - limit
+          properties:
+            userProfileId:
+              type: string
+              format: uuid
+            externalUserId:
+              type: string
+              description: External platform user ID for anonymous users
+            channel:
+              type: string
+              enum: [website, line, facebook, whatsapp, intranet]
+            currentCount:
+              type: integer
+              description: Current message count in the window
+            limit:
+              type: integer
+              const: 100
+            windowResetAt:
+              type: string
+              format: date-time
+              description: When the rate limit window resets

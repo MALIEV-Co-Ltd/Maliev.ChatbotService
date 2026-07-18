@@ -1,0 +1,480 @@
+openapi: 3.0.3
+info:
+  title: Maliev Unified Chatbot Service
+  version: 1.0.0
+  description: API for the unified conversational intelligence layer of the MALIEV ecosystem.
+
+servers:
+  - url: /chatbot
+    description: Service prefix
+
+paths:
+  /liveness:
+    get:
+      summary: Kubernetes liveness probe
+      operationId: liveness
+      tags: [Health]
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: Healthy
+
+  /readiness:
+    get:
+      summary: Kubernetes readiness probe
+      operationId: readiness
+      tags: [Health]
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: Healthy
+
+  /metrics:
+    get:
+      summary: Prometheus metrics endpoint
+      operationId: metrics
+      tags: [Health]
+      responses:
+        '200':
+          description: Prometheus metrics
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /v1/admin/instructions:
+    get:
+      summary: List all system instructions
+      operationId: listInstructions
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: activeOnly
+          in: query
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: List of system instructions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SystemInstruction'
+        '403':
+          description: Forbidden - requires chatbot.instructions.read permission
+    post:
+      summary: Create a new system instruction
+      operationId: createInstruction
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSystemInstructionRequest'
+      responses:
+        '201':
+          description: Instruction created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemInstruction'
+        '403':
+          description: Forbidden - requires chatbot.instructions.update permission
+
+  /v1/admin/instructions/{id}:
+    get:
+      summary: Get a specific system instruction
+      operationId: getInstruction
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: System instruction details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemInstruction'
+        '404':
+          description: Instruction not found
+    put:
+      summary: Update a system instruction
+      operationId: updateInstruction
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSystemInstructionRequest'
+      responses:
+        '200':
+          description: Instruction updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemInstruction'
+        '404':
+          description: Instruction not found
+    delete:
+      summary: Deactivate a system instruction
+      operationId: deleteInstruction
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Instruction deactivated
+        '404':
+          description: Instruction not found
+
+  /v1/sessions/initiate:
+    post:
+      summary: Start or resume a conversation session
+      operationId: initiateSession
+      tags: [Sessions]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InitiateSessionRequest'
+      responses:
+        '200':
+          description: Session active
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+        '429':
+          description: Rate limit exceeded
+
+  /v1/messages:
+    post:
+      summary: Send a message to the chatbot (Website/Intranet channel)
+      operationId: sendMessage
+      tags: [Messages]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessageRequest'
+      responses:
+        '200':
+          description: Message processed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '429':
+          description: Rate limit exceeded (100 msg/hr)
+
+  /v1/webhooks/{channel}:
+    post:
+      summary: Receive webhook events from external channels (LINE, Meta)
+      operationId: receiveWebhook
+      tags: [Webhooks]
+      parameters:
+        - name: channel
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [line, facebook, whatsapp]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Webhook received
+
+  /v1/users/me/preferences:
+    get:
+      summary: Get stored preferences for the current user
+      operationId: getPreferences
+      tags: [User Data]
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: Paginated list of preferences
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedPreferencesResponse'
+
+  /v1/users/me/data:
+    delete:
+      summary: Delete user data (Right to be forgotten)
+      operationId: deleteUserData
+      tags: [User Data]
+      parameters:
+        - name: scope
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [preferences, history, all]
+        - name: confirm
+          in: query
+          required: true
+          schema:
+            type: boolean
+            description: Must be true to confirm deletion
+      responses:
+        '204':
+          description: Data deleted successfully
+        '400':
+          description: Confirmation required
+
+components:
+  schemas:
+    InitiateSessionRequest:
+      type: object
+      required: [channel]
+      properties:
+        channel:
+          type: string
+          enum: [website, line, facebook, whatsapp, intranet]
+        externalUserId:
+          type: string
+        language:
+          type: string
+          enum: [en, th]
+          default: en
+    
+    SessionResponse:
+      type: object
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        welcomeMessage:
+          type: string
+        language:
+          type: string
+          enum: [en, th]
+        expiresAt:
+          type: string
+          format: date-time
+    
+    SendMessageRequest:
+      type: object
+      required: [sessionId, content]
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        content:
+          type: string
+          maxLength: 10000
+        attachments:
+          type: array
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/Attachment'
+    
+    MessageResponse:
+      type: object
+      properties:
+        messageId:
+          type: string
+          format: uuid
+        content:
+          type: string
+        role:
+          type: string
+          enum: [assistant]
+        language:
+          type: string
+          enum: [en, th]
+        suggestedActions:
+          type: array
+          items:
+            $ref: '#/components/schemas/SuggestedAction'
+        processingTimeMs:
+          type: integer
+
+    Attachment:
+      type: object
+      required: [type, url]
+      properties:
+        type:
+          type: string
+          enum: [image, audio, pdf, video]
+        url:
+          type: string
+          format: uri
+        sizeBytes:
+          type: integer
+          maximum: 52428800  # 50MB
+        
+    SuggestedAction:
+      type: object
+      properties:
+        label:
+          type: string
+        action:
+          type: string
+          enum: [reply, link, api_call]
+        payload:
+          type: string
+
+    UserPreference:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        key:
+          type: string
+        value:
+          type: object
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        lastUpdatedAt:
+          type: string
+          format: date-time
+
+    PagedPreferencesResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserPreference'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    PaginationMeta:
+      type: object
+      properties:
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        totalCount:
+          type: integer
+        totalPages:
+          type: integer
+
+    SystemInstruction:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        personaDefinition:
+          type: string
+          description: The AI persona and behavior description
+        businessConstraints:
+          type: string
+          description: Boundaries and rules the chatbot must follow
+        isActive:
+          type: boolean
+        version:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateSystemInstructionRequest:
+      type: object
+      required: [name, personaDefinition, businessConstraints]
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        personaDefinition:
+          type: string
+          maxLength: 10000
+        businessConstraints:
+          type: string
+          maxLength: 10000
+        isActive:
+          type: boolean
+          default: false
+
+    UpdateSystemInstructionRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        personaDefinition:
+          type: string
+          maxLength: 10000
+        businessConstraints:
+          type: string
+          maxLength: 10000
+        isActive:
+          type: boolean
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token with IAM permissions (chatbot.instructions.read, chatbot.instructions.update)
