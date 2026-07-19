@@ -1,11 +1,11 @@
 using Maliev.ChatbotService.Application.Commands;
 using Maliev.ChatbotService.Application.Costing;
 using Maliev.ChatbotService.Application.Interfaces;
+using Maliev.ChatbotService.Application.Messaging;
 using Maliev.ChatbotService.Application.Models;
 using Maliev.ChatbotService.Application.Validators;
 using Maliev.ChatbotService.Domain.Entities;
 using Maliev.ChatbotService.Domain.Enums;
-using Maliev.ChatbotService.Domain.Events;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
@@ -268,19 +268,13 @@ public class SendMessageCommandHandler
             if (currentCount > 100)
             {
                 // Publish ChatbotRateLimitExceededEvent
-                await _eventPublisher.PublishAsync(new ChatbotRateLimitExceededEvent
-                {
-                    MessageId = Guid.NewGuid(),
-                    Timestamp = DateTimeOffset.UtcNow,
-                    Source = "ChatbotService",
-                    CorrelationId = session.Id,
-                    UserProfileId = session.UserProfileId,
-                    SessionId = session.Id,
-                    Channel = session.Channel.ToString(),
-                    CurrentMessageCount = currentCount,
-                    RateLimitThreshold = 100,
-                    ResetAt = DateTimeOffset.UtcNow.AddHours(1)
-                }, cancellationToken);
+                await _eventPublisher.PublishAsync(ChatbotEventFactory.RateLimitExceeded(
+                    session.Id,
+                    session.UserProfileId,
+                    session.Channel.ToString(),
+                    currentCount,
+                    100,
+                    DateTimeOffset.UtcNow.AddHours(1)), cancellationToken);
 
                 _logger.LogWarning("Rate limit exceeded for user {UserProfileId} in session {SessionId}", session.UserProfileId, session.Id);
                 throw new InvalidOperationException("Rate limit exceeded. Please try again later.");
@@ -430,21 +424,15 @@ public class SendMessageCommandHandler
                         _metrics.RecordResponseLatency(stopwatch.Elapsed.TotalMilliseconds);
 
                         // Publish ChatbotMessageReceivedEvent for operation execution
-                        await _eventPublisher.PublishAsync(new ChatbotMessageReceivedEvent
-                        {
-                            MessageId = Guid.NewGuid(),
-                            Timestamp = DateTimeOffset.UtcNow,
-                            Source = "ChatbotService",
-                            CorrelationId = session.Id,
-                            SessionId = session.Id,
-                            UserProfileId = session.UserProfileId,
-                            Channel = session.Channel.ToString(),
-                            Language = detectedLanguage.ToString(),
-                            UserMessageContent = command.Content,
-                            AssistantResponseContent = operationMessage.Content,
-                            ResponseLatencyMs = stopwatch.Elapsed.TotalMilliseconds,
-                            ReceivedAt = userMessage.CreatedAt
-                        }, cancellationToken);
+                        await _eventPublisher.PublishAsync(ChatbotEventFactory.MessageReceived(
+                            session.Id,
+                            session.UserProfileId,
+                            session.Channel.ToString(),
+                            detectedLanguage.ToString(),
+                            command.Content,
+                            operationMessage.Content,
+                            stopwatch.Elapsed.TotalMilliseconds,
+                            userMessage.CreatedAt), cancellationToken);
 
                         // Convert OperationActions to SuggestedActionDto
                         var suggestedActionsDto = operationResult.SuggestedActions.Select(a => new SuggestedActionDto
@@ -889,35 +877,15 @@ public class SendMessageCommandHandler
 
             // Publish ChatbotMessageReceivedEvent
 
-            await _eventPublisher.PublishAsync(new ChatbotMessageReceivedEvent
-
-            {
-
-                MessageId = Guid.NewGuid(),
-
-                Timestamp = DateTimeOffset.UtcNow,
-
-                Source = "ChatbotService",
-
-                CorrelationId = session.Id,
-
-                SessionId = session.Id,
-
-                UserProfileId = session.UserProfileId,
-
-                Channel = session.Channel.ToString(),
-
-                Language = detectedLanguage.ToString(),
-
-                UserMessageContent = command.Content,
-
-                AssistantResponseContent = formattedContent,
-
-                ResponseLatencyMs = stopwatch.Elapsed.TotalMilliseconds,
-
-                ReceivedAt = userMessage.CreatedAt
-
-            }, cancellationToken);
+            await _eventPublisher.PublishAsync(ChatbotEventFactory.MessageReceived(
+                session.Id,
+                session.UserProfileId,
+                session.Channel.ToString(),
+                detectedLanguage.ToString(),
+                command.Content,
+                formattedContent,
+                stopwatch.Elapsed.TotalMilliseconds,
+                userMessage.CreatedAt), cancellationToken);
 
 
 

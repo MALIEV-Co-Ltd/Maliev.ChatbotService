@@ -2,8 +2,8 @@ using Maliev.ChatbotService.Api.Middleware;
 using Maliev.ChatbotService.Api.Models.Requests;
 using Maliev.ChatbotService.Api.Models.Responses;
 using Maliev.ChatbotService.Application.Interfaces;
+using Maliev.ChatbotService.Application.Messaging;
 using Maliev.ChatbotService.Domain.Entities;
-using Maliev.ChatbotService.Domain.Events;
 using Maliev.ChatbotService.Domain.Enums;
 using Maliev.ChatbotService.Infrastructure.Metrics;
 using Maliev.ChatbotService.Infrastructure.Services;
@@ -70,7 +70,7 @@ public class CoverageBoostTests
     }
 
     // ====================================================================
-    // ChatbotSessionClosedEvent - domain event (never instantiated in tests)
+    // ChatbotSessionClosedEvent - centralized integration event contract
     // ====================================================================
 
     [Fact]
@@ -78,30 +78,27 @@ public class CoverageBoostTests
     {
         var sessionId = Guid.NewGuid();
         var userId = Guid.NewGuid();
-        var corrId = Guid.NewGuid();
         var now = DateTimeOffset.UtcNow;
 
-        var evt = new ChatbotSessionClosedEvent
-        {
-            MessageId = Guid.NewGuid(),
-            Timestamp = now,
-            CorrelationId = corrId,
-            SessionId = sessionId,
-            UserProfileId = userId,
-            Channel = "web",
-            StartTime = now.AddHours(-1),
-            EndTime = now,
-            TotalMessageCount = 5,
-            ClosureReason = "expired"
-        };
+        var evt = ChatbotEventFactory.SessionClosed(
+            sessionId,
+            userId,
+            "Website",
+            now.AddHours(-1),
+            now,
+            5,
+            "Expired");
 
-        Assert.Equal(sessionId, evt.SessionId);
-        Assert.Equal(userId, evt.UserProfileId);
-        Assert.Equal(corrId, evt.CorrelationId);
-        Assert.Equal("web", evt.Channel);
-        Assert.Equal("expired", evt.ClosureReason);
-        Assert.Equal(5, evt.TotalMessageCount);
-        Assert.Equal("ChatbotService", evt.Source); // default value
+        Assert.Equal(sessionId, evt.CorrelationId);
+        Assert.Equal("ChatbotService", evt.PublishedBy);
+        Assert.Equal("1.0", evt.MessageVersion);
+        Assert.True(evt.IsPublic);
+        Assert.Empty(evt.ConsumedBy);
+        Assert.Equal(sessionId, evt.Payload.SessionId);
+        Assert.Equal(userId, evt.Payload.UserProfileId);
+        Assert.Equal("Website", evt.Payload.Channel);
+        Assert.Equal("Expired", evt.Payload.ClosureReason);
+        Assert.Equal(5, evt.Payload.TotalMessageCount);
     }
 
     // ====================================================================

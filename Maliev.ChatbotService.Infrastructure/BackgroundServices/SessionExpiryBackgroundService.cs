@@ -1,6 +1,6 @@
 using Maliev.ChatbotService.Application.Interfaces;
+using Maliev.ChatbotService.Application.Messaging;
 using Maliev.ChatbotService.Domain.Enums;
-using Maliev.ChatbotService.Domain.Events;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -114,20 +114,15 @@ public class SessionExpiryBackgroundService : BackgroundService
                 }
 
                 // Publish ChatbotSessionClosedEvent
-                await eventPublisher.PublishAsync(new ChatbotSessionClosedEvent
-                {
-                    MessageId = Guid.NewGuid(),
-                    Timestamp = DateTimeOffset.UtcNow,
-                    Source = "ChatbotService",
-                    CorrelationId = session.Id,
-                    SessionId = session.Id,
-                    UserProfileId = session.UserProfileId,
-                    Channel = session.Channel.ToString(),
-                    StartTime = session.StartTime,
-                    EndTime = DateTimeOffset.UtcNow,
-                    TotalMessageCount = messageCount,
-                    ClosureReason = "SessionExpired"
-                }, cancellationToken);
+                var endTime = DateTimeOffset.UtcNow;
+                await eventPublisher.PublishAsync(ChatbotEventFactory.SessionClosed(
+                    session.Id,
+                    session.UserProfileId,
+                    session.Channel.ToString(),
+                    session.StartTime,
+                    endTime,
+                    messageCount,
+                    "Expired"), cancellationToken);
 
                 _logger.LogInformation("Published ChatbotSessionClosedEvent for session {SessionId}", session.Id);
 

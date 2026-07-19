@@ -1,8 +1,8 @@
 using Maliev.ChatbotService.Application.Commands;
 using Maliev.ChatbotService.Application.Interfaces;
+using Maliev.ChatbotService.Application.Messaging;
 using Maliev.ChatbotService.Domain.Entities;
 using Maliev.ChatbotService.Domain.Enums;
-using Maliev.ChatbotService.Domain.Events;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 
@@ -122,19 +122,13 @@ public class InitiateSessionCommandHandler
             createdSession.Id, userProfile.Id, channel, userProfile.Role);
 
         // Publish ChatbotSessionCreatedEvent
-        await _eventPublisher.PublishAsync(new ChatbotSessionCreatedEvent
-        {
-            MessageId = Guid.NewGuid(),
-            Timestamp = DateTimeOffset.UtcNow,
-            Source = "ChatbotService",
-            CorrelationId = createdSession.Id,
-            SessionId = createdSession.Id,
-            UserProfileId = userProfile.Id,
-            Channel = channel.ToString(),
-            Language = language.ToString(),
-            StartTime = createdSession.StartTime,
-            ExpiresAt = createdSession.ExpiresAt
-        }, cancellationToken);
+        await _eventPublisher.PublishAsync(ChatbotEventFactory.SessionCreated(
+            createdSession.Id,
+            userProfile.Id,
+            channel.ToString(),
+            language.ToString(),
+            createdSession.StartTime,
+            createdSession.ExpiresAt), cancellationToken);
 
         // Get welcome message with context from previous summaries, user memories, and role
         var welcomeMessage = await BuildWelcomeMessageAsync(language, summariesList, userProfile.Id, userProfile.Role, cancellationToken);

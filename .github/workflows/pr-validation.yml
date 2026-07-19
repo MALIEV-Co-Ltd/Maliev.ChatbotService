@@ -1,55 +1,11 @@
-name: PR Validation
+name: Pull Request Validation
 
 on:
   pull_request:
-    branches:
-      - develop
-      - staging
-      - main
 
 permissions:
   contents: read
 
 jobs:
-  prep:
-    runs-on: ubuntu-latest
-    outputs:
-      version_format: ${{ steps.set-version.outputs.version_format }}
-    steps:
-      - id: set-version
-        run: |
-          BASE_BRANCH="${{ github.base_ref }}"
-          if [ "$BASE_BRANCH" == "main" ]; then
-            VERSION_FORMAT="1.0.*"
-          elif [ "$BASE_BRANCH" == "staging" ]; then
-            VERSION_FORMAT="1.0.*-beta*"
-          else
-            VERSION_FORMAT="1.0.*-alpha*"
-          fi
-          echo "version_format=$VERSION_FORMAT" >> $GITHUB_OUTPUT
-
-  build-and-test:
-    needs: prep
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
-
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: "10.x"
-
-      - name: Restore dependencies
-        run: dotnet restore Maliev.ChatbotService.slnx
-        env:
-          NUGET_USERNAME: ${{ github.actor }}
-          NUGET_PASSWORD: ${{ secrets.GITOPS_PAT }}
-
-      - name: Build
-        run: dotnet build Maliev.ChatbotService.slnx --no-restore --configuration Release
-
-      - name: Test
-        run: dotnet test Maliev.ChatbotService.slnx --no-build --configuration Release --verbosity normal
-        working-directory: ${{ github.workspace }}
+  validate:
+    uses: ./.github/workflows/_validate.yml

@@ -5,7 +5,7 @@ using Maliev.ChatbotService.Application.Models;
 using Maliev.ChatbotService.Application.Validators;
 using Maliev.ChatbotService.Domain.Entities;
 using Maliev.ChatbotService.Domain.Enums;
-using Maliev.ChatbotService.Domain.Events;
+using Maliev.MessagingContracts.Contracts.Chatbot;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
