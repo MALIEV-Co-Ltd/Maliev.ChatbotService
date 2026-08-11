@@ -37,7 +37,7 @@ public sealed class WorkflowContractTests
 
         Assert.Contains("workflow_call:", source, StringComparison.Ordinal);
         Assert.Contains("name: validate", source, StringComparison.Ordinal);
-        Assert.Contains("actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0", source, StringComparison.Ordinal);
+        Assert.Contains("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1", source, StringComparison.Ordinal);
         Assert.Contains("actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68", source, StringComparison.Ordinal);
         Assert.Contains("repository: MALIEV-Co-Ltd/Maliev.Aspire", source, StringComparison.Ordinal);
         Assert.Contains("repository: MALIEV-Co-Ltd/Maliev.MessagingContracts", source, StringComparison.Ordinal);
